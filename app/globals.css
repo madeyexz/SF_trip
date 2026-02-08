@@ -647,14 +647,61 @@ input[type='range']::-moz-range-thumb {
   font-size: 0.8rem;
 }
 
+/* ── Full-page calendar view ──────────────────────────── */
+.view-calendar {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  justify-content: center;
+  padding: 32px 24px;
+  background: var(--bg);
+}
+
+.calendar-full {
+  width: 100%;
+  max-width: 960px;
+}
+
+.calendar-full .calendar-panel-header {
+  margin-bottom: 16px;
+}
+
+.calendar-full .calendar-panel-header h2 {
+  font-size: 1.4rem;
+}
+
+.calendar-grid-full {
+  gap: 8px;
+}
+
+.calendar-day-full {
+  min-height: 90px;
+  padding: 10px 8px;
+}
+
+.calendar-hint {
+  margin: 16px 0 0;
+  text-align: center;
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
 /* ── Main layout ──────────────────────────────────────── */
 .layout {
   min-height: 0;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 380px;
   gap: 0;
   flex: 1;
   align-items: stretch;
+}
+
+.layout-map-only {
+  grid-template-columns: 1fr;
+}
+
+.layout-with-sidebar {
+  grid-template-columns: minmax(0, 1fr) 480px;
 }
 
 .map-panel {
@@ -730,75 +777,138 @@ input[type='range']::-moz-range-thumb {
 .sidebar {
   border-left: 1px solid var(--border);
   background: var(--card);
-  padding: 16px;
   height: 100%;
   min-height: 0;
-  overflow-y: auto;
+  overflow: hidden;
 }
 
-.sidebar::-webkit-scrollbar {
-  width: 5px;
+.sidebar-two-col {
+  display: grid;
+  grid-template-columns: 140px minmax(0, 1fr);
+  height: 100%;
+  min-height: 0;
 }
 
-.sidebar::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-.sidebar::-webkit-scrollbar-thumb {
-  background: #d0d8e4;
-  border-radius: 3px;
-}
-
-.sidebar::-webkit-scrollbar-thumb:hover {
-  background: #a8b5c8;
-}
-
-.sidebar-switch {
-  display: block;
-  gap: 8px;
-  margin-bottom: 14px;
-  position: sticky;
-  top: 0;
-  z-index: 20;
-  background: var(--card);
-  padding: 2px 0 8px;
-  border-bottom: 1px solid var(--border);
-}
-
-.sidebar-switch .ui-tabs-list {
+/* ── Day list column ─────────────────────────────────── */
+.day-list {
   display: flex;
-  flex-wrap: nowrap;
-  gap: 4px;
-  overflow-x: auto;
-  -webkit-overflow-scrolling: touch;
-  scrollbar-width: none;
-  grid-template-columns: none;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 6px;
+  overflow-y: auto;
+  border-right: 1px solid var(--border);
+  background: var(--bg-subtle);
+  scrollbar-width: thin;
 }
 
-.sidebar-switch .ui-tabs-list::-webkit-scrollbar {
-  display: none;
+.day-list::-webkit-scrollbar {
+  width: 4px;
 }
 
-.sidebar-switch .ui-tabs-trigger {
-  flex: 0 0 auto;
-  white-space: nowrap;
-  padding: 0 10px;
-  min-height: 32px;
-  font-size: 0.8rem;
+.day-list::-webkit-scrollbar-thumb {
+  background: #d0d8e4;
+  border-radius: 2px;
 }
 
-/* ── Panels ───────────────────────────────────────────── */
-.panel + .panel {
-  margin-top: 20px;
-  padding-top: 20px;
-  border-top: 1px solid var(--border);
+.day-list-item {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 8px 10px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+  transition: all var(--transition);
 }
 
-.panel h2 {
-  margin: 0 0 4px;
+.day-list-item:hover {
+  background: var(--card);
+  border-color: var(--border);
+}
+
+.day-list-item-active {
+  background: var(--accent-light);
+  border-color: var(--accent-border);
+  box-shadow: 0 0 0 2px var(--accent-glow);
+}
+
+.day-list-weekday {
+  font-size: 0.65rem;
+  font-weight: 700;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.day-list-date {
+  font-size: 0.84rem;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.day-list-meta {
+  font-size: 0.65rem;
+  color: var(--text-secondary);
+}
+
+/* ── Itinerary column ────────────────────────────────── */
+.itinerary-col {
+  display: flex;
+  flex-direction: column;
+  padding: 12px 14px;
+  overflow-y: auto;
+  min-height: 0;
+  scrollbar-width: thin;
+}
+
+.itinerary-col::-webkit-scrollbar {
+  width: 4px;
+}
+
+.itinerary-col::-webkit-scrollbar-thumb {
+  background: #d0d8e4;
+  border-radius: 2px;
+}
+
+.itinerary-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 10px;
+  flex-wrap: wrap;
+}
+
+.itinerary-header h2 {
+  margin: 0;
   font-size: 1rem;
   font-weight: 700;
   letter-spacing: -0.015em;
+}
+
+.itinerary-controls {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  margin-top: 4px;
+}
+
+.itinerary-select {
+  min-height: 30px;
+  min-width: 110px;
+}
+
+.itinerary-actions {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+/* ── Panels ───────────────────────────────────────────── */
+.panel-hidden {
+  display: none;
 }
 
 .panel-subtitle {
@@ -885,10 +995,6 @@ input[type='range']::-moz-range-thumb {
 
 .calendar-day-plan {
   color: #0f766e;
-}
-
-.panel-hidden {
-  display: none;
 }
 
 .planner-panel-header {
@@ -1168,7 +1274,7 @@ input[type='range']::-moz-range-thumb {
     overflow: visible;
   }
 
-  .layout {
+  .layout-with-sidebar {
     grid-template-columns: 1fr;
   }
 
@@ -1187,6 +1293,17 @@ input[type='range']::-moz-range-thumb {
     height: auto;
     border-left: none;
     border-top: 1px solid var(--border);
+    overflow: visible;
+  }
+
+  .sidebar-two-col {
+    grid-template-columns: 120px minmax(0, 1fr);
+    height: auto;
+    min-height: 60vh;
+  }
+
+  .view-calendar {
+    padding: 20px 16px;
   }
 }
 
@@ -1203,11 +1320,17 @@ input[type='range']::-moz-range-thumb {
   }
 
   .topbar-nav {
-    display: none;
+    gap: 0;
+  }
+
+  .topbar-nav-item {
+    padding: 5px 8px;
+    font-size: 0.75rem;
+    gap: 3px;
   }
 
   .topbar-actions {
-    margin-left: auto;
+    display: none;
   }
 
   .map-legend {
@@ -1221,17 +1344,32 @@ input[type='range']::-moz-range-thumb {
     min-height: 40vh;
   }
 
-  .sidebar {
-    padding: 12px;
+  .sidebar-two-col {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto 1fr;
   }
 
-  .sidebar-switch {
-    margin-bottom: 10px;
+  .day-list {
+    flex-direction: row;
+    overflow-x: auto;
+    overflow-y: hidden;
+    border-right: none;
+    border-bottom: 1px solid var(--border);
+    padding: 6px;
+  }
+
+  .day-list-item {
+    min-width: 80px;
+    flex-shrink: 0;
   }
 
   .calendar-day {
     min-height: 60px;
     padding: 6px 4px;
+  }
+
+  .calendar-day-full {
+    min-height: 70px;
   }
 
   .planner-calendar {
@@ -1250,9 +1388,17 @@ input[type='range']::-moz-range-thumb {
   .event-link {
     padding: 2px 0;
   }
+
+  .view-calendar {
+    padding: 14px 10px;
+  }
 }
 
 @media (max-width: 420px) {
+  .topbar-nav-item span {
+    display: none;
+  }
+
   .map-legend {
     max-height: 72px;
     overflow: auto;
