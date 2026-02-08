@@ -157,7 +157,13 @@ export default function EventMapClient() {
 
   const uniqueDates = useMemo(
     () =>
-      Array.from(new Set(allEvents.map((event) => event.startDateISO).filter(Boolean))).sort(),
+      Array.from(
+        new Set(
+          allEvents
+            .map((event) => normalizeDateKey(event.startDateISO))
+            .filter(Boolean)
+        )
+      ).sort(),
     [allEvents]
   );
 
@@ -169,11 +175,12 @@ export default function EventMapClient() {
     }
 
     for (const event of allEvents) {
-      if (!event.startDateISO) {
+      const normalizedDateISO = normalizeDateKey(event.startDateISO);
+      if (!normalizedDateISO) {
         continue;
       }
 
-      map.set(event.startDateISO, (map.get(event.startDateISO) || 0) + 1);
+      map.set(normalizedDateISO, (map.get(normalizedDateISO) || 0) + 1);
     }
 
     return map;
@@ -953,7 +960,7 @@ export default function EventMapClient() {
       clearMapMarkers();
 
       const filteredEvents = dateFilter
-        ? eventsInput.filter((event) => event.startDateISO === dateFilter)
+        ? eventsInput.filter((event) => normalizeDateKey(event.startDateISO) === dateFilter)
         : [...eventsInput];
 
       const eventsWithPositions = [];
@@ -1612,8 +1619,8 @@ export default function EventMapClient() {
                   <button type="button" className="absolute left-0 right-0 top-0 h-2 border-none bg-transparent cursor-ns-resize" aria-label="Adjust start time" onPointerDown={(event) => { startPlanDrag(event, item, 'resize-start'); }} />
                   <button type="button" className="absolute top-1 right-1.5 border-none bg-transparent text-slate-600 text-base leading-none cursor-pointer hover:text-slate-900" aria-label="Remove from plan" onClick={(event) => { event.stopPropagation(); removePlanItem(item.id); }}>×</button>
                   <div className="text-[0.72rem] font-bold text-gray-800 tracking-wide">{formatMinuteLabel(item.startMinutes)} - {formatMinuteLabel(item.endMinutes)}</div>
-                  <div className="mt-0.5 text-[0.82rem] font-bold text-slate-900 leading-tight">{item.title}</div>
-                  {item.locationText ? <div className="mt-0.5 text-[0.72rem] text-slate-700 whitespace-nowrap overflow-hidden text-ellipsis">{item.locationText}</div> : null}
+                  <div className="mt-0.5 text-[0.82rem] font-bold text-slate-900 leading-tight break-words">{item.title}</div>
+                  {item.locationText ? <div className="mt-0.5 text-[0.72rem] text-slate-700 leading-tight break-words">{item.locationText}</div> : null}
                   <button type="button" className="absolute left-0 right-0 bottom-0 h-2 border-none bg-transparent cursor-ns-resize" aria-label="Adjust end time" onPointerDown={(event) => { startPlanDrag(event, item, 'resize-end'); }} />
                 </article>
               );
@@ -1646,8 +1653,8 @@ export default function EventMapClient() {
                 if (value === 'day') { setShowAllEvents(false); }
               }}
             >
-              <ToggleGroupItem className="shrink-0 px-3 py-1 text-[0.8rem] font-medium rounded-full" value="day">Day</ToggleGroupItem>
-              <ToggleGroupItem className="shrink-0 px-3 py-1 text-[0.8rem] font-medium rounded-full" value="all">All</ToggleGroupItem>
+              <ToggleGroupItem className="shrink-0 min-w-[84px] justify-center px-5 py-1 text-[0.8rem] font-medium rounded-full" value="day">Day</ToggleGroupItem>
+              <ToggleGroupItem className="shrink-0 min-w-[84px] justify-center px-5 py-1 text-[0.8rem] font-medium rounded-full" value="all">All</ToggleGroupItem>
             </ToggleGroup>
           </div>
         </div>
@@ -1669,7 +1676,7 @@ export default function EventMapClient() {
                 <p className="my-0.5 text-[0.82rem] text-foreground-secondary leading-relaxed"><strong>Time:</strong> {time}</p>
                 <p className="my-0.5 text-[0.82rem] text-foreground-secondary leading-relaxed"><strong>Location:</strong> {location}</p>
                 {event.travelDurationText ? <p className="my-0.5 text-[0.82rem] text-foreground-secondary leading-relaxed"><strong>Travel:</strong> {event.travelDurationText}</p> : null}
-                <p className="my-0.5 text-[0.82rem] text-foreground-secondary leading-relaxed">{truncate(event.description || '', 170)}</p>
+                <p className="my-0.5 text-[0.82rem] text-foreground-secondary leading-relaxed">{event.description || ''}</p>
                 <Button type="button" size="sm" variant="secondary" onClick={() => { addEventToDayPlan(event); }}>Add to day</Button>
                 <a className="inline-flex items-center gap-0.5 mt-1.5 text-accent no-underline font-semibold text-[0.82rem] hover:text-accent-hover hover:underline hover:underline-offset-2" href={event.eventUrl} target="_blank" rel="noreferrer">Open event</a>
               </Card>
@@ -1787,12 +1794,16 @@ export default function EventMapClient() {
                     {source.lastError ? (
                       <p className="my-0.5 text-xs text-rose-600">{source.lastError}</p>
                     ) : null}
+                    {source.readonly ? (
+                      <p className="my-0.5 text-xs text-muted">Readonly fallback source (configure Convex to edit).</p>
+                    ) : null}
                   </div>
                   <div className="flex gap-2 shrink-0">
                     <Button
                       type="button"
                       size="sm"
                       variant="secondary"
+                      disabled={Boolean(source.readonly)}
                       onClick={() => {
                         void handleToggleSourceStatus(source);
                       }}
@@ -1803,6 +1814,7 @@ export default function EventMapClient() {
                       type="button"
                       size="sm"
                       variant="secondary"
+                      disabled={Boolean(source.readonly)}
                       onClick={() => {
                         void handleDeleteSource(source);
                       }}
@@ -1918,7 +1930,7 @@ export default function EventMapClient() {
 
           {showsSidebar && (
             <aside className="border-l border-border bg-card h-full min-h-0 overflow-hidden sidebar-responsive" ref={sidebarRef}>
-              <div className="grid grid-cols-[140px_minmax(0,1fr)] h-full min-h-0 sidebar-grid-responsive">
+              <div className="grid grid-cols-[180px_minmax(0,1fr)] h-full min-h-0 sidebar-grid-responsive">
                 {renderDayList()}
                 {activeView === 'dayroute' && renderPlannerItinerary()}
                 {activeView === 'events' && renderEventsItinerary()}
@@ -2045,7 +2057,8 @@ function sanitizePlannerByDate(value) {
   const result = {};
 
   for (const [dateISO, items] of Object.entries(value || {})) {
-    if (!Array.isArray(items) || !dateISO) {
+    const normalizedDateISO = normalizeDateKey(dateISO);
+    if (!Array.isArray(items) || !normalizedDateISO) {
       continue;
     }
 
@@ -2073,7 +2086,8 @@ function sanitizePlannerByDate(value) {
       })
       .filter((item) => item.sourceKey);
 
-    result[dateISO] = sortPlanItems(cleanedItems);
+    const previousItems = Array.isArray(result[normalizedDateISO]) ? result[normalizedDateISO] : [];
+    result[normalizedDateISO] = sortPlanItems([...previousItems, ...cleanedItems]);
   }
 
   return result;
@@ -2259,7 +2273,12 @@ function escapeHtml(value) {
 }
 
 function formatDate(isoDate) {
-  const parsedDate = new Date(`${isoDate}T00:00:00`);
+  const normalizedDateISO = normalizeDateKey(isoDate);
+  if (!normalizedDateISO) {
+    return isoDate;
+  }
+
+  const parsedDate = new Date(`${normalizedDateISO}T00:00:00`);
   if (Number.isNaN(parsedDate.getTime())) {
     return isoDate;
   }
@@ -2273,7 +2292,12 @@ function formatDate(isoDate) {
 }
 
 function formatDateWeekday(isoDate) {
-  const parsedDate = new Date(`${isoDate}T00:00:00`);
+  const normalizedDateISO = normalizeDateKey(isoDate);
+  if (!normalizedDateISO) {
+    return isoDate;
+  }
+
+  const parsedDate = new Date(`${normalizedDateISO}T00:00:00`);
   if (Number.isNaN(parsedDate.getTime())) {
     return isoDate;
   }
@@ -2284,7 +2308,12 @@ function formatDateWeekday(isoDate) {
 }
 
 function formatDateDayMonth(isoDate) {
-  const parsedDate = new Date(`${isoDate}T00:00:00`);
+  const normalizedDateISO = normalizeDateKey(isoDate);
+  if (!normalizedDateISO) {
+    return isoDate;
+  }
+
+  const parsedDate = new Date(`${normalizedDateISO}T00:00:00`);
   if (Number.isNaN(parsedDate.getTime())) {
     return isoDate;
   }
@@ -2296,7 +2325,12 @@ function formatDateDayMonth(isoDate) {
 }
 
 function formatMonthYear(isoDate) {
-  const parsedDate = new Date(`${isoDate}T00:00:00`);
+  const normalizedDateISO = normalizeDateKey(isoDate);
+  if (!normalizedDateISO) {
+    return isoDate;
+  }
+
+  const parsedDate = new Date(`${normalizedDateISO}T00:00:00`);
   if (Number.isNaN(parsedDate.getTime())) {
     return isoDate;
   }
@@ -2308,7 +2342,12 @@ function formatMonthYear(isoDate) {
 }
 
 function formatDayOfMonth(isoDate) {
-  const parsedDate = new Date(`${isoDate}T00:00:00`);
+  const normalizedDateISO = normalizeDateKey(isoDate);
+  if (!normalizedDateISO) {
+    return isoDate;
+  }
+
+  const parsedDate = new Date(`${normalizedDateISO}T00:00:00`);
   if (Number.isNaN(parsedDate.getTime())) {
     return isoDate;
   }
@@ -2479,23 +2518,30 @@ function toIcsUtcTimestamp(dateInput) {
 }
 
 function toDateOnlyISO(value) {
-  const text = String(value || '').trim();
-  const dateMatch = text.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  return normalizeDateKey(value) || toISODate(new Date());
+}
 
+function normalizeDateKey(value) {
+  const text = String(value || '').trim();
+  if (!text) {
+    return '';
+  }
+
+  const dateMatch = text.match(/^(\d{4})-(\d{2})-(\d{2})/);
   if (dateMatch) {
     return `${dateMatch[1]}-${dateMatch[2]}-${dateMatch[3]}`;
   }
 
   const parsedDate = new Date(text);
-  if (!Number.isNaN(parsedDate.getTime())) {
-    return [
-      parsedDate.getFullYear(),
-      String(parsedDate.getMonth() + 1).padStart(2, '0'),
-      String(parsedDate.getDate()).padStart(2, '0')
-    ].join('-');
+  if (Number.isNaN(parsedDate.getTime())) {
+    return '';
   }
 
-  return toISODate(new Date());
+  return [
+    parsedDate.getFullYear(),
+    String(parsedDate.getMonth() + 1).padStart(2, '0'),
+    String(parsedDate.getDate()).padStart(2, '0')
+  ].join('-');
 }
 
 function escapeIcsText(value) {

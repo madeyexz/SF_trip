@@ -50,7 +50,7 @@
 .planner-item {
   position: absolute; left: 8px; right: 8px; border-radius: 10px;
   border: 1px solid transparent; padding: 14px 28px 12px 10px;
-  overflow: hidden; cursor: grab;
+  overflow-x: hidden; overflow-y: auto; cursor: grab;
   box-shadow: 0 1px 2px rgba(12,18,34,0.04);
   transition: box-shadow 0.2s, border-color 0.2s;
 }
@@ -91,7 +91,7 @@
 @media (max-width: 1200px) {
   .layout-sidebar { grid-template-columns: 1fr !important; }
   .sidebar-responsive { height: auto; border-left: none; border-top: 1px solid var(--color-border); overflow: visible; }
-  .sidebar-grid-responsive { grid-template-columns: 120px minmax(0, 1fr); height: auto; min-height: 60vh; }
+  .sidebar-grid-responsive { grid-template-columns: 160px minmax(0, 1fr); height: auto; min-height: 60vh; }
   .map-container-responsive { position: relative; height: 50vh; min-height: 50vh; }
 }
 
@@ -102,7 +102,7 @@
   .topbar-actions-responsive { display: none !important; }
   .sidebar-grid-responsive { grid-template-columns: 1fr; grid-template-rows: auto 1fr; }
   .day-list-responsive { flex-direction: row; overflow-x: auto; overflow-y: hidden; border-right: none; border-bottom: 1px solid var(--color-border); }
-  .day-list-item-responsive { min-width: 80px; flex-shrink: 0; }
+  .day-list-item-responsive { min-width: 112px; flex-shrink: 0; }
   .map-container-responsive { height: 40vh; min-height: 40vh; }
   .planner-calendar { height: 48vh; min-height: 360px; }
 }
