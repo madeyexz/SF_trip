@@ -5,6 +5,6 @@ import { useRouter } from 'next/navigation';
 
 export default function HomePage() {
   const router = useRouter();
-  useEffect(() => { router.replace('/dayroute'); }, [router]);
+  useEffect(() => { router.replace('/dayplanning'); }, [router]);
   return null;
 }

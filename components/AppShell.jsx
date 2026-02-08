@@ -11,20 +11,20 @@ import {
 const NAV_ITEMS = [
   { id: 'map', href: '/map', icon: MapPin, label: 'Map' },
   { id: 'calendar', href: '/calendar', icon: Calendar, label: 'Calendar' },
-  { id: 'dayroute', href: '/dayroute', icon: Navigation, label: 'Day Route' },
+  { id: 'dayplanning', href: '/dayplanning', icon: Navigation, label: 'Day Planning' },
   { id: 'events', href: '/events', icon: PartyPopper, label: 'Events' },
   { id: 'spots', href: '/spots', icon: Coffee, label: 'Spots' },
   { id: 'sources', href: '/sources', icon: RefreshCw, label: 'Sources' }
 ];
 
-const MAP_TABS = new Set(['map', 'dayroute', 'events', 'spots']);
+const MAP_TABS = new Set(['map', 'dayplanning', 'events', 'spots']);
 
 export default function AppShell({ children }) {
   const pathname = usePathname();
   const router = useRouter();
   const { isSyncing, handleSync, handleDeviceLocation } = useTrip();
 
-  const activeId = NAV_ITEMS.find((n) => pathname.startsWith(n.href))?.id || 'dayroute';
+  const activeId = NAV_ITEMS.find((n) => pathname.startsWith(n.href))?.id || 'dayplanning';
   const showMap = MAP_TABS.has(activeId);
   const hasMapSidebar = activeId !== 'map' && showMap;
 

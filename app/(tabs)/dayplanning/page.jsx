@@ -4,7 +4,7 @@ import DayList from '@/components/DayList';
 import PlannerItinerary from '@/components/PlannerItinerary';
 import { useTrip } from '@/components/providers/TripProvider';
 
-export default function DayRoutePage() {
+export default function DayPlanningPage() {
   const { sidebarRef } = useTrip();
 
   return (

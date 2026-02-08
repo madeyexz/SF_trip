@@ -13,6 +13,7 @@ import type * as planner from "../planner.js";
 import type * as routeCache from "../routeCache.js";
 import type * as sources from "../sources.js";
 import type * as spots from "../spots.js";
+import type * as tripConfig from "../tripConfig.js";
 
 import type {
   ApiFromModules,
@@ -26,6 +27,7 @@ declare const fullApi: ApiFromModules<{
   routeCache: typeof routeCache;
   sources: typeof sources;
   spots: typeof spots;
+  tripConfig: typeof tripConfig;
 }>;
 
 /**
