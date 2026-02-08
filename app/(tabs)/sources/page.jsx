@@ -13,7 +13,7 @@ import { safeHostname } from '@/lib/helpers';
 
 export default function SourcesPage() {
   const {
-    sources, groupedSources,
+    groupedSources,
     newSourceType, setNewSourceType, newSourceUrl, setNewSourceUrl,
     newSourceLabel, setNewSourceLabel, isSavingSource, syncingSourceId,
     handleCreateSource, handleToggleSourceStatus, handleDeleteSource, handleSyncSource

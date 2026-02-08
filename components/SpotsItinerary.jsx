@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { useTrip, getTagColor } from '@/components/providers/TripProvider';
-import { formatTag, normalizePlaceTag, truncate } from '@/lib/helpers';
+import { formatTag, truncate } from '@/lib/helpers';
 
 export default function SpotsItinerary() {
   const {

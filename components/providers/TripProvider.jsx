@@ -16,7 +16,7 @@ import {
 
 import {
   normalizePlaceTag, normalizeAddressKey, getPlaceSourceKey, normalizeDateKey,
-  fetchJson, toISODate, toMonthISO, addMonthsToMonthISO, escapeHtml, truncate,
+  fetchJson, toISODate, toMonthISO, toDateOnlyISO, addMonthsToMonthISO, escapeHtml, truncate,
   formatTag, formatDate, formatDateDayMonth, formatDistance, formatDurationFromSeconds
 } from '@/lib/helpers';
 import {
@@ -899,7 +899,7 @@ export default function TripProvider({ children }) {
   }, [baseLocationText, dayPlanItems, selectedDate, setStatusMessage]);
 
   const shiftCalendarMonth = useCallback((offset) => {
-    const shifted = require('@/lib/helpers').addMonthsToMonthISO(calendarAnchorISO, offset);
+    const shifted = addMonthsToMonthISO(calendarAnchorISO, offset);
     setCalendarMonthISO(shifted);
   }, [calendarAnchorISO]);
 
