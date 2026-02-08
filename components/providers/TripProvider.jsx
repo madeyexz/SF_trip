@@ -711,7 +711,11 @@ export default function TripProvider({ children }) {
         if (!mounted || !mapElementRef.current || !window.google?.maps) return;
         mapRef.current = new window.google.maps.Map(mapElementRef.current, {
           center: { lat: 37.7749, lng: -122.4194 }, zoom: 12,
-          mapTypeControl: false, streetViewControl: false, fullscreenControl: false
+          mapTypeControl: false, streetViewControl: false, fullscreenControl: false,
+          restriction: {
+            latLngBounds: { north: 37.85, south: 37.68, west: -122.55, east: -122.33 },
+            strictBounds: false
+          }
         });
         distanceMatrixRef.current = new window.google.maps.DistanceMatrixService();
         infoWindowRef.current = new window.google.maps.InfoWindow();
