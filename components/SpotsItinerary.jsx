@@ -5,19 +5,19 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { useTrip, getTagColor } from '@/components/providers/TripProvider';
-import { formatTag, truncate } from '@/lib/helpers';
+import { formatDateDayMonth, formatTag, truncate } from '@/lib/helpers';
 
 export default function SpotsItinerary() {
   const {
     visiblePlaces, placeTagFilter, setPlaceTagFilter,
-    placeTagOptions, addPlaceToDayPlan
+    placeTagOptions, addPlaceToDayPlan, selectedDate
   } = useTrip();
 
   return (
     <div className="flex flex-col p-3 overflow-y-auto min-h-0 scrollbar-thin">
       <div className="flex items-start justify-between gap-2 mb-2.5 flex-wrap">
         <div>
-          <h2 className="m-0 text-base font-bold tracking-tight">Curated Spots</h2>
+          <h2 className="m-0 text-base font-bold tracking-tight">Curated Spots {selectedDate ? `· ${formatDateDayMonth(selectedDate)}` : ''}</h2>
           <div className="flex gap-1.5 items-center mt-1">
             <ToggleGroup
               className="flex flex-nowrap overflow-x-auto gap-1.5 scrollbar-none"
