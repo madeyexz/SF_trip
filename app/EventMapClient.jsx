@@ -1339,13 +1339,26 @@ export default function EventMapClient() {
         setAllPlaces(payload.places);
       }
 
-      setStatusMessage(`Synced ${syncedEvents.length} events at ${new Date().toLocaleTimeString()}.`);
+      const ingestionErrors = Array.isArray(payload?.meta?.ingestionErrors)
+        ? payload.meta.ingestionErrors
+        : [];
+      if (ingestionErrors.length > 0) {
+        console.error('Sync ingestion errors:', ingestionErrors);
+      }
+
+      await loadSourcesFromServer();
+
+      const errorSuffix = ingestionErrors.length > 0 ? ` (${ingestionErrors.length} ingestion errors)` : '';
+      setStatusMessage(
+        `Synced ${syncedEvents.length} events at ${new Date().toLocaleTimeString()}${errorSuffix}.`,
+        ingestionErrors.length > 0
+      );
     } catch (error) {
       setStatusMessage(error instanceof Error ? error.message : 'Sync failed', true);
     } finally {
       setIsSyncing(false);
     }
-  }, [setStatusMessage]);
+  }, [loadSourcesFromServer, setStatusMessage]);
 
   const handleDeviceLocation = useCallback(() => {
     if (!navigator.geolocation || !window.google?.maps) {
@@ -1367,6 +1380,91 @@ export default function EventMapClient() {
       }
     );
   }, [allEvents, effectiveDateFilter, filteredPlaces, renderCurrentSelection, setBaseMarker, setStatusMessage, travelMode]);
+
+  const handleCreateSource = useCallback(async (event) => {
+    event.preventDefault();
+
+    const url = newSourceUrl.trim();
+    const label = newSourceLabel.trim();
+    if (!url) {
+      setStatusMessage('Source URL is required.', true);
+      return;
+    }
+
+    setIsSavingSource(true);
+
+    try {
+      const response = await fetch('/api/sources', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          sourceType: newSourceType,
+          url,
+          label
+        })
+      });
+      const payload = await response.json();
+
+      if (!response.ok) {
+        throw new Error(payload?.error || 'Failed to add source.');
+      }
+
+      await loadSourcesFromServer();
+      setNewSourceUrl('');
+      setNewSourceLabel('');
+      setStatusMessage('Added source. Run Sync to ingest data.');
+    } catch (error) {
+      setStatusMessage(error instanceof Error ? error.message : 'Failed to add source.', true);
+    } finally {
+      setIsSavingSource(false);
+    }
+  }, [loadSourcesFromServer, newSourceLabel, newSourceType, newSourceUrl, setStatusMessage]);
+
+  const handleToggleSourceStatus = useCallback(async (source) => {
+    const nextStatus = source?.status === 'active' ? 'paused' : 'active';
+
+    try {
+      const response = await fetch(`/api/sources/${encodeURIComponent(source.id)}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          status: nextStatus
+        })
+      });
+      const payload = await response.json();
+
+      if (!response.ok) {
+        throw new Error(payload?.error || 'Failed to update source.');
+      }
+
+      await loadSourcesFromServer();
+      setStatusMessage(`Source ${nextStatus === 'active' ? 'activated' : 'paused'}.`);
+    } catch (error) {
+      setStatusMessage(error instanceof Error ? error.message : 'Failed to update source.', true);
+    }
+  }, [loadSourcesFromServer, setStatusMessage]);
+
+  const handleDeleteSource = useCallback(async (source) => {
+    try {
+      const response = await fetch(`/api/sources/${encodeURIComponent(source.id)}`, {
+        method: 'DELETE'
+      });
+      const payload = await response.json();
+
+      if (!response.ok) {
+        throw new Error(payload?.error || 'Failed to delete source.');
+      }
+
+      await loadSourcesFromServer();
+      setStatusMessage('Source deleted.');
+    } catch (error) {
+      setStatusMessage(error instanceof Error ? error.message : 'Failed to delete source.', true);
+    }
+  }, [loadSourcesFromServer, setStatusMessage]);
 
   const handleExportPlannerIcs = useCallback(() => {
     if (!selectedDate || dayPlanItems.length === 0) {
@@ -1628,6 +1726,99 @@ export default function EventMapClient() {
     </div>
   );
 
+  const renderSourcesManager = () => (
+    <section className="flex-1 min-h-0 overflow-y-auto p-6 max-sm:p-3.5 bg-bg">
+      <div className="w-full max-w-[980px] mx-auto">
+        <div className="mb-4">
+          <h2 className="m-0 text-xl font-bold">Global Sources</h2>
+          <p className="mt-1 mb-0 text-sm text-muted">
+            Active now: {sourceStats.activeEventSources} event sources, {sourceStats.activeSpotSources} spot sources.
+          </p>
+        </div>
+
+        <Card className="p-4 mb-4">
+          <form className="grid gap-3 md:grid-cols-[120px_minmax(0,1fr)_220px_auto]" onSubmit={handleCreateSource}>
+            <Select value={newSourceType} onValueChange={setNewSourceType}>
+              <SelectTrigger>
+                <SelectValue placeholder="Type" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="event">Event</SelectItem>
+                <SelectItem value="spot">Spot</SelectItem>
+              </SelectContent>
+            </Select>
+            <input
+              className="min-h-9 rounded-md border border-border bg-card px-3 text-sm outline-none focus:border-accent"
+              placeholder="https://example.com/source"
+              value={newSourceUrl}
+              onChange={(event) => setNewSourceUrl(event.target.value)}
+            />
+            <input
+              className="min-h-9 rounded-md border border-border bg-card px-3 text-sm outline-none focus:border-accent"
+              placeholder="Label (optional)"
+              value={newSourceLabel}
+              onChange={(event) => setNewSourceLabel(event.target.value)}
+            />
+            <Button type="submit" size="sm" disabled={isSavingSource}>
+              {isSavingSource ? 'Adding…' : 'Add source'}
+            </Button>
+          </form>
+        </Card>
+
+        <div className="flex flex-col gap-2">
+          {sources.length === 0 ? (
+            <p className="my-3 text-muted text-sm text-center p-7 bg-bg-subtle rounded-[10px] border border-dashed border-border">
+              No saved sources yet.
+            </p>
+          ) : (
+            sources.map((source) => (
+              <Card className="p-3.5" key={source.id || `${source.sourceType}-${source.url}`}>
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <Badge variant="secondary">{source.sourceType}</Badge>
+                      <Badge variant="secondary">{source.status}</Badge>
+                    </div>
+                    <h3 className="m-0 mt-1 text-sm font-semibold">{source.label || source.url}</h3>
+                    <p className="my-1 text-xs text-muted break-all">{source.url}</p>
+                    {source.lastSyncedAt ? (
+                      <p className="my-0 text-xs text-muted">Last synced: {new Date(source.lastSyncedAt).toLocaleString()}</p>
+                    ) : null}
+                    {source.lastError ? (
+                      <p className="my-0.5 text-xs text-rose-600">{source.lastError}</p>
+                    ) : null}
+                  </div>
+                  <div className="flex gap-2 shrink-0">
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="secondary"
+                      onClick={() => {
+                        void handleToggleSourceStatus(source);
+                      }}
+                    >
+                      {source.status === 'active' ? 'Pause' : 'Activate'}
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="secondary"
+                      onClick={() => {
+                        void handleDeleteSource(source);
+                      }}
+                    >
+                      Delete
+                    </Button>
+                  </div>
+                </div>
+              </Card>
+            ))
+          )}
+        </div>
+      </div>
+    </section>
+  );
+
   return (
     <main className="min-h-dvh h-dvh flex flex-col w-full overflow-hidden">
       <header className="flex items-center gap-3 px-5 h-[52px] min-h-[52px] border-b border-border bg-card shadow-[0_1px_2px_rgba(12,18,34,0.04)] relative z-30 topbar-responsive">
@@ -1638,7 +1829,8 @@ export default function EventMapClient() {
             { id: 'calendar', icon: Calendar, label: 'Calendar' },
             { id: 'dayroute', icon: Navigation, label: 'Day Route' },
             { id: 'events', icon: PartyPopper, label: 'Events' },
-            { id: 'spots', icon: Coffee, label: 'Spots' }
+            { id: 'spots', icon: Coffee, label: 'Spots' },
+            { id: 'sources', icon: RefreshCw, label: 'Sources' }
           ].map(({ id, icon: Icon, label }) => (
             <button
               key={id}
@@ -1701,6 +1893,8 @@ export default function EventMapClient() {
           </div>
         </section>
       )}
+
+      {activeView === 'sources' && renderSourcesManager()}
 
       {showsMap && (
         <section className={`min-h-0 grid gap-0 flex-1 items-stretch layout-sidebar ${showsSidebar ? 'grid-cols-[minmax(0,1fr)_480px]' : 'grid-cols-1'}`}>
