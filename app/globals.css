@@ -54,7 +54,7 @@
 .planner-block-layer { position: absolute; inset: 0 0 0 76px; }
 
 .planner-item {
-  position: absolute; left: 8px; right: 8px; border-radius: 10px;
+  position: absolute; border-radius: 10px; box-sizing: border-box;
   border: 1px solid transparent; padding: 14px 28px 12px 10px;
   overflow-x: hidden; overflow-y: auto; cursor: grab;
   box-shadow: 0 1px 2px rgba(12,18,34,0.04);
