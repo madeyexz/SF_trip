@@ -1,5 +1,5 @@
-import EventMapClient from './EventMapClient';
+import { redirect } from 'next/navigation';
 
 export default function HomePage() {
-  return <EventMapClient />;
+  redirect('/dayroute');
 }
