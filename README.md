@@ -62,6 +62,7 @@ pnpm start
 - Click **Sync Events** to pull fresh events from:
   - `https://luma.com/sf`
   - `https://luma.com/cerebralvalley_`
+- Open **Sources** tab to add/pause/delete global event and spot source URLs.
 - Use the **Date filter** slider to switch days.
 - Use **Travel mode** to switch driving/transit/walking.
 - Click **Use My Device Location** to use live GPS instead of the location in `docs/my_location.md`.
@@ -89,6 +90,7 @@ pnpm convex:deploy
 ```
 
 After this, `/api/events` reads from Convex first. `/api/sync` writes to both Convex and local cache.
+Global source management is available at `/api/sources` (requires `CONVEX_URL`).
 Planner day routes are also persisted in Convex via `/api/planner` when `CONVEX_URL` is configured.
 
 ## Notes
@@ -103,6 +105,20 @@ Planner day routes are also persisted in Convex via `/api/planner` when `CONVEX_
 - With Convex configured, generated map routes are additionally cached in Convex and reused across sessions/deploys.
 - If no cache exists, it falls back to `data/sample-events.json`.
 - Static curated places are stored one-time in `data/static-places.json` and are not part of event sync.
+
+## Dedup Strategy
+
+- Events are deduped by `eventUrl` during sync. If duplicates are found, the row with the higher field-completeness score is kept.
+- Event upsert in Convex also keys by `eventUrl`; records missing from a sync are not hard-deleted immediately.
+- Spots are deduped by:
+  - `cornerLink` when present
+  - otherwise normalized `name|location`
+- Spot IDs are generated from the dedupe key (`spot-...`) and Convex upsert keys on this ID.
+- Stale handling for both events and spots uses soft delete:
+  - each missed sync increments `missedSyncCount`
+  - when `missedSyncCount >= 2`, record is marked `isDeleted=true`
+  - active listing queries only return rows where `isDeleted` is not true
+- Known caveat: there is currently a naming mismatch in spot dedupe helper usage (`buildSpotDedupeKey` vs `buildSpotDedupKey`) that should be fixed.
 
 ## Google APIs used
 

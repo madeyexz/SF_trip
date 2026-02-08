@@ -3,7 +3,7 @@ import { deleteSourcePayload, updateSourcePayload } from '@/lib/events';
 export const runtime = 'nodejs';
 
 export async function PATCH(request, { params }) {
-  const { sourceId } = params;
+  const { sourceId } = await params;
   let body = null;
 
   try {
@@ -31,7 +31,7 @@ export async function PATCH(request, { params }) {
 }
 
 export async function DELETE(_request, { params }) {
-  const { sourceId } = params;
+  const { sourceId } = await params;
 
   try {
     const result = await deleteSourcePayload(sourceId);

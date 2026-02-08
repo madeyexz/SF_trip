@@ -87,7 +87,13 @@ export const updateSource = mutation({
       return null;
     }
 
-    const updates = {
+    const updates: {
+      updatedAt: string,
+      label?: string,
+      status?: 'active' | 'paused',
+      lastSyncedAt?: string,
+      lastError?: string
+    } = {
       updatedAt: new Date().toISOString()
     };
 
