@@ -8,7 +8,9 @@
     "cornerLink": "https://www.corner.inc/place/2426",
     "curatorComment": "great outdoor and indoor seating",
     "description": "Cozy cafe with sidewalk tables and eclectic breakfast fare.",
-    "details": "Serves American and Levantine-inspired dishes like avocado toast and sandwiches. Great for a relaxed meal or catching up with friends over coffee."
+    "details": "Serves American and Levantine-inspired dishes like avocado toast and sandwiches. Great for a relaxed meal or catching up with friends over coffee.",
+    "lat": 37.7735205,
+    "lng": -122.3916911
   },
   {
     "id": "corner-2",
@@ -19,7 +21,9 @@
     "cornerLink": "https://www.corner.inc/place/48699",
     "curatorComment": "",
     "description": "Sleek grab-and-go spot with killer espresso and seasonal sips.",
-    "details": "Two locations, one near Chinatown and another in Inner Richmond. Limited seating at Balboa St."
+    "details": "Two locations, one near Chinatown and another in Inner Richmond. Limited seating at Balboa St.",
+    "lat": 37.7764721,
+    "lng": -122.4778225
   },
   {
     "id": "corner-3",
@@ -30,7 +34,9 @@
     "cornerLink": "https://www.corner.inc/place/2421",
     "curatorComment": "also hosts a ton of crypto events",
     "description": "Charming cafe with patio, perfect for work or casual bites.",
-    "details": "Offers breakfast, lunch, coffee, and beer/wine. Known for golden lattes and roasted yam sandwiches."
+    "details": "Offers breakfast, lunch, coffee, and beer/wine. Known for golden lattes and roasted yam sandwiches.",
+    "lat": 37.758945,
+    "lng": -122.4114405
   },
   {
     "id": "corner-4",
@@ -41,7 +47,9 @@
     "cornerLink": "https://www.corner.inc/place/11240",
     "curatorComment": "",
     "description": "Light-drenched industrial-chic cafe with house-made chocolates and pastries",
-    "details": "Offers informative bean-to-bar chocolate tours."
+    "details": "Offers informative bean-to-bar chocolate tours.",
+    "lat": 37.7658206,
+    "lng": -122.4128675
   },
   {
     "id": "corner-5",
@@ -52,7 +60,9 @@
     "cornerLink": "https://www.corner.inc/place/2414",
     "curatorComment": "",
     "description": "Light-filled cafe with exposed brick and beamed ceilings, perfect for getting work done.",
-    "details": "Spacious interior with a backyard patio."
+    "details": "Spacious interior with a backyard patio.",
+    "lat": 37.7724716,
+    "lng": -122.4129614
   },
   {
     "id": "corner-6",
@@ -63,7 +73,9 @@
     "cornerLink": "https://www.corner.inc/place/4091",
     "curatorComment": "new \"afternoon delight\" program! open from 2-5pm weekdays for laptops and working",
     "description": "Moody tavern with creative cocktails and eclectic New American plates.",
-    "details": "Open for brunch, dinner, and afternoon work sessions."
+    "details": "Open for brunch, dinner, and afternoon work sessions.",
+    "lat": 37.7744995,
+    "lng": -122.4374566
   },
   {
     "id": "corner-7",
@@ -74,7 +86,9 @@
     "cornerLink": "https://www.corner.inc/place/1906",
     "curatorComment": "",
     "description": "Matcha haven with soft serve and specialty drinks",
-    "details": "Cozy spot in a bustling area."
+    "details": "Cozy spot in a bustling area.",
+    "lat": 37.7829361,
+    "lng": -122.4674567
   },
   {
     "id": "corner-8",
@@ -85,7 +99,9 @@
     "cornerLink": "https://www.corner.inc/place/2440",
     "curatorComment": "",
     "description": "Cozy neighborhood spot for coffee and light bites, perfect for a sunny day.",
-    "details": "Offers wifi and outlets, making it ideal for work or study sessions."
+    "details": "Offers wifi and outlets, making it ideal for work or study sessions.",
+    "lat": 37.7772667,
+    "lng": -122.4414532
   },
   {
     "id": "corner-9",
@@ -96,7 +112,9 @@
     "cornerLink": "https://www.corner.inc/place/2408",
     "curatorComment": "",
     "description": "Compact French bakery serving authentic pastries and light bites.",
-    "details": "Feels like a slice of Paris with fresh croissants, crepes, and focaccia sandwiches."
+    "details": "Feels like a slice of Paris with fresh croissants, crepes, and focaccia sandwiches.",
+    "lat": 37.7612879,
+    "lng": -122.4307831
   },
   {
     "id": "corner-10",
@@ -107,7 +125,9 @@
     "cornerLink": "https://www.corner.inc/place/593",
     "curatorComment": "it's a small space but really bright and nice vibe!",
     "description": "Cozy neighborhood spot for quality coffee and matcha",
-    "details": "Bright, chill atmosphere perfect for people-watching or a quick work session."
+    "details": "Bright, chill atmosphere perfect for people-watching or a quick work session.",
+    "lat": 37.7874197,
+    "lng": -122.4333838
   },
   {
     "id": "corner-11",
@@ -118,7 +138,9 @@
     "cornerLink": "https://www.corner.inc/place/230",
     "curatorComment": "",
     "description": "Sunny neighborhood spot for coffee and pastries",
-    "details": "Outdoor seating only, perfect for people-watching."
+    "details": "Outdoor seating only, perfect for people-watching.",
+    "lat": 37.7485094,
+    "lng": -122.4291455
   },
   {
     "id": "corner-12",
@@ -129,7 +151,9 @@
     "cornerLink": "https://www.corner.inc/place/2418",
     "curatorComment": "",
     "description": "Bright, airy coffee haven with on-site roaster and killer espresso",
-    "details": "Huge two-story space with industrial vibes and plenty of seating."
+    "details": "Huge two-story space with industrial vibes and plenty of seating.",
+    "lat": 37.7769706,
+    "lng": -122.4085436
   },
   {
     "id": "corner-13",
@@ -140,7 +164,9 @@
     "cornerLink": "https://www.corner.inc/place/2431",
     "curatorComment": "",
     "description": "Bright, spacious cafe with park views and plenty of outlets",
-    "details": "Located on the 7th floor of Salesforce Tower."
+    "details": "Located on the 7th floor of Salesforce Tower.",
+    "lat": 37.7896833,
+    "lng": -122.395541
   },
   {
     "id": "corner-14",
@@ -151,7 +177,9 @@
     "cornerLink": "https://www.corner.inc/place/2585",
     "curatorComment": "",
     "description": "Cozy grab-and-go spot for top-notch espresso and local pastries.",
-    "details": "No indoor seating, but perfect for a quick caffeine fix."
+    "details": "No indoor seating, but perfect for a quick caffeine fix.",
+    "lat": 37.7615934,
+    "lng": -122.4200026
   },
   {
     "id": "corner-15",
@@ -162,7 +190,9 @@
     "cornerLink": "https://www.corner.inc/place/2411",
     "curatorComment": "wifi is alright but vibes are out of the roof",
     "description": "Chic French-inspired café with tasty pastries and sandwiches.",
-    "details": "Perfect spot for people-watching on Hayes Street."
+    "details": "Perfect spot for people-watching on Hayes Street.",
+    "lat": 37.7767753,
+    "lng": -122.4247974
   },
   {
     "id": "corner-16",
@@ -173,7 +203,9 @@
     "cornerLink": "https://www.corner.inc/place/2420",
     "curatorComment": "",
     "description": "Artisanal coffeehouse with lighter roasts and signature drinks.",
-    "details": "Cultivates relationships with growers and roasts beans on-site."
+    "details": "Cultivates relationships with growers and roasts beans on-site.",
+    "lat": 37.7564333,
+    "lng": -122.4213973
   },
   {
     "id": "corner-17",
@@ -184,7 +216,9 @@
     "cornerLink": "https://www.corner.inc/place/2410",
     "curatorComment": "",
     "description": "Spacious, sunny cafe with great coffee and food",
-    "details": "Located in the Castro, it's a popular spot for studying and reading."
+    "details": "Located in the Castro, it's a popular spot for studying and reading.",
+    "lat": 37.7671145,
+    "lng": -122.4290928
   },
   {
     "id": "corner-18",
@@ -195,7 +229,9 @@
     "cornerLink": "https://www.corner.inc/place/2586",
     "curatorComment": "",
     "description": "Cozy neighborhood spot with killer croissants and cheesecake.",
-    "details": "Serves breakfast and lunch."
+    "details": "Serves breakfast and lunch.",
+    "lat": 37.751498,
+    "lng": -122.4325551
   },
   {
     "id": "corner-19",
@@ -206,7 +242,9 @@
     "cornerLink": "https://www.corner.inc/place/2432",
     "curatorComment": "",
     "description": "Laid-back beachside cafe with solid coffee and casual eats.",
-    "details": "Outdoor seating lets you soak up the ocean vibes."
+    "details": "Outdoor seating lets you soak up the ocean vibes.",
+    "lat": 37.76046789999999,
+    "lng": -122.5089635
   },
   {
     "id": "corner-20",
@@ -217,7 +255,9 @@
     "cornerLink": "https://www.corner.inc/place/2433",
     "curatorComment": "",
     "description": "Cozy neighborhood spot for coffee, bagels, and baked goods",
-    "details": "House-roasted coffee and espresso drinks are the main draw."
+    "details": "House-roasted coffee and espresso drinks are the main draw.",
+    "lat": 37.7759728,
+    "lng": -122.4958428
   },
   {
     "id": "corner-21",
@@ -228,18 +268,9 @@
     "cornerLink": "https://www.corner.inc/place/2424",
     "curatorComment": "",
     "description": "Cozy family-owned roaster with exotic brews and chill vibes.",
-    "details": "Stripped-down industrial setting with a nice backyard."
-  },
-  {
-    "id": "corner-22",
-    "name": "The Lighthouse",
-    "tag": "cafes",
-    "location": "685 Gateway Blvd, South San Francisco",
-    "mapLink": "https://www.google.com/maps/search/?api=1&query=685%20Gateway%20Blvd%2C%20South%20San%20Francisco",
-    "cornerLink": "https://www.corner.inc/place/13012",
-    "curatorComment": "",
-    "description": "Spacious cafe with gorgeous interior, perfect for getting work done",
-    "details": "Offers wifi and outlets."
+    "details": "Stripped-down industrial setting with a nice backyard.",
+    "lat": 37.7697067,
+    "lng": -122.453415
   },
   {
     "id": "corner-23",
@@ -250,7 +281,9 @@
     "cornerLink": "https://www.corner.inc/place/2427",
     "curatorComment": "",
     "description": "Bi-level coffeehouse with small-batch brews, sandwiches, and free wifi.",
-    "details": "Perfect spot for remote work or a casual breakfast."
+    "details": "Perfect spot for remote work or a casual breakfast.",
+    "lat": 37.7901081,
+    "lng": -122.4153931
   },
   {
     "id": "corner-24",
@@ -261,7 +294,9 @@
     "cornerLink": "https://www.corner.inc/place/1875",
     "curatorComment": "",
     "description": "Lush, plant-filled coffee oasis near Golden Gate Park.",
-    "details": "Standout drinks include black sesame matcha and cookie butter lattes."
+    "details": "Standout drinks include black sesame matcha and cookie butter lattes.",
+    "lat": 37.7737388,
+    "lng": -122.4661165
   },
   {
     "id": "corner-25",
@@ -272,7 +307,9 @@
     "cornerLink": "https://www.corner.inc/place/2419",
     "curatorComment": "great patio",
     "description": "Charming bi-level café with lush garden patio and greenhouse seating.",
-    "details": "Perfect for brunch, lunch, or a relaxed work session."
+    "details": "Perfect for brunch, lunch, or a relaxed work session.",
+    "lat": 37.7632232,
+    "lng": -122.4156379
   },
   {
     "id": "corner-26",
@@ -283,7 +320,9 @@
     "cornerLink": "https://www.corner.inc/place/2304",
     "curatorComment": "apparently a community favorite and very lit",
     "description": "Futuristic bar with intellectual vibes and creative cocktails",
-    "details": "Open space with bookshelves and scientific instruments."
+    "details": "Open space with bookshelves and scientific instruments.",
+    "lat": 37.8070318,
+    "lng": -122.4311232
   },
   {
     "id": "corner-27",
@@ -294,7 +333,9 @@
     "cornerLink": "https://www.corner.inc/place/2583",
     "curatorComment": "",
     "description": "Minimalist Japanese cafe with stellar matcha and light bites.",
-    "details": "Known for their black sesame latte and katsu sandwiches."
+    "details": "Known for their black sesame latte and katsu sandwiches.",
+    "lat": 37.7639782,
+    "lng": -122.421589
   },
   {
     "id": "corner-28",
@@ -305,7 +346,9 @@
     "cornerLink": "https://www.corner.inc/place/2413",
     "curatorComment": "",
     "description": "Sleek Mission cafe with bold coffee and intimate seating.",
-    "details": "Exposed beams create a rustic ambiance."
+    "details": "Exposed beams create a rustic ambiance.",
+    "lat": 37.76703800000001,
+    "lng": -122.4218141
   },
   {
     "id": "corner-29",
@@ -316,7 +359,9 @@
     "cornerLink": "https://www.corner.inc/place/15527",
     "curatorComment": "lots of seating/tables for work & chats. this place is also a social enterprise/nonprofit",
     "description": "Sleek cafe with housemade bites and Four Barrel coffee in Hayes Valley.",
-    "details": "Social enterprise supporting a good cause."
+    "details": "Social enterprise supporting a good cause.",
+    "lat": 37.7786088,
+    "lng": -122.423165
   },
   {
     "id": "corner-30",
@@ -327,7 +372,9 @@
     "cornerLink": "https://www.corner.inc/place/2436",
     "curatorComment": "",
     "description": "Charming old-school Italian café with live music and literary history.",
-    "details": "Cash only, but affordable prices."
+    "details": "Cash only, but affordable prices.",
+    "lat": 37.7986783,
+    "lng": -122.4073032
   },
   {
     "id": "corner-31",
@@ -338,7 +385,9 @@
     "cornerLink": "https://www.corner.inc/place/2437",
     "curatorComment": "",
     "description": "Cozy spot for craft beers and comfort food",
-    "details": "Perfect for a lazy afternoon with coffee and Wi-Fi."
+    "details": "Perfect for a lazy afternoon with coffee and Wi-Fi.",
+    "lat": 37.7809045,
+    "lng": -122.394228
   },
   {
     "id": "corner-32",
@@ -349,7 +398,9 @@
     "cornerLink": "https://www.corner.inc/place/2438",
     "curatorComment": "",
     "description": "Moroccan-inspired cafe with vegan options and outdoor seating.",
-    "details": "Perfect spot for a caramel latte and a leisurely lunch."
+    "details": "Perfect spot for a caramel latte and a leisurely lunch.",
+    "lat": 37.7390489,
+    "lng": -122.4177139
   },
   {
     "id": "corner-33",
@@ -360,7 +411,9 @@
     "cornerLink": "https://www.corner.inc/place/2428",
     "curatorComment": "",
     "description": "Funky cafe with live jazz and Turkish coffee",
-    "details": "Laid-back spot perfect for working or catching Sunday jazz sessions."
+    "details": "Laid-back spot perfect for working or catching Sunday jazz sessions.",
+    "lat": 37.77217170000001,
+    "lng": -122.430742
   },
   {
     "id": "corner-34",
@@ -371,7 +424,9 @@
     "cornerLink": "https://www.corner.inc/place/2422",
     "curatorComment": "",
     "description": "Light, airy cafe with plenty of seating and outlets for post-workout or pre-work hangouts.",
-    "details": "Perfect spot for getting work done or catching up with friends."
+    "details": "Perfect spot for getting work done or catching up with friends.",
+    "lat": 37.7971221,
+    "lng": -122.4330983
   },
   {
     "id": "corner-35",
@@ -382,7 +437,9 @@
     "cornerLink": "https://www.corner.inc/place/2416",
     "curatorComment": "great wifi!",
     "description": "Cozy corner cafe by day, candlelit wine bar by night",
-    "details": "Perfect for people-watching or getting work done."
+    "details": "Perfect for people-watching or getting work done.",
+    "lat": 37.7947656,
+    "lng": -122.4180347
   },
   {
     "id": "corner-36",
@@ -393,7 +450,9 @@
     "cornerLink": "https://www.corner.inc/place/23699",
     "curatorComment": "secret lounge for start up founders with open bar, snacks, and coffee 👀",
     "description": "Secret lounge for startup founders with open bar, snacks, and coffee.",
-    "details": "Stunning views of the city and convenient location."
+    "details": "Stunning views of the city and convenient location.",
+    "lat": 37.7886378,
+    "lng": -122.4033442
   },
   {
     "id": "corner-37",
@@ -404,7 +463,9 @@
     "cornerLink": "https://www.corner.inc/place/2429",
     "curatorComment": "",
     "description": "Laid-back spot for sustainable coffee and health-conscious bites.",
-    "details": "Spacious interior with ample seating."
+    "details": "Spacious interior with ample seating.",
+    "lat": 37.7974154,
+    "lng": -122.4218452
   },
   {
     "id": "corner-38",
@@ -415,7 +476,9 @@
     "cornerLink": "https://www.corner.inc/place/23776",
     "curatorComment": "great lobby & cafe space for working",
     "description": "Waterfront workspace with Bay Bridge views and cozy vibes",
-    "details": "Hotel lobby doubles as a calm, plant-filled cafe."
+    "details": "Hotel lobby doubles as a calm, plant-filled cafe.",
+    "lat": 37.7935617,
+    "lng": -122.3930866
   },
   {
     "id": "corner-39",
@@ -426,7 +489,9 @@
     "cornerLink": "https://www.corner.inc/place/2425",
     "curatorComment": "they only sell tea but the vibes are very zen and lots of space to work. they also do yoga classes.",
     "description": "Zen tea house with yoga and open mics",
-    "details": "Volunteer-run community space offering a variety of teas and cocoa."
+    "details": "Volunteer-run community space offering a variety of teas and cocoa.",
+    "lat": 37.774474,
+    "lng": -122.430799
   },
   {
     "id": "corner-40",
@@ -437,7 +502,9 @@
     "cornerLink": "https://www.corner.inc/place/2423",
     "curatorComment": "",
     "description": "Serene Japanese hotel with a dreamy lobby, koi pond and endless coffee - perfect for posting up with your laptop all day",
-    "details": "The lobby transforms from a WFH paradise to a sultry lounge scene at night."
+    "details": "The lobby transforms from a WFH paradise to a sultry lounge scene at night.",
+    "lat": 37.7854178,
+    "lng": -122.428327
   },
   {
     "id": "corner-41",
@@ -448,7 +515,9 @@
     "cornerLink": "https://www.corner.inc/place/2417",
     "curatorComment": "amazing vibe and lots of seating but no wifi :(",
     "description": "Bright, airy cafe with top-notch bread and coffee",
-    "details": "Known for their open-face toasts and Monday night pizzas."
+    "details": "Known for their open-face toasts and Monday night pizzas.",
+    "lat": 37.7764757,
+    "lng": -122.437793
   },
   {
     "id": "corner-42",
@@ -459,6 +528,8 @@
     "cornerLink": "https://www.corner.inc/place/2435",
     "curatorComment": "",
     "description": "Bright, airy coffee shop with great brews and stylish wood decor.",
-    "details": "Perfect for casual meet-ups or solo reading sessions."
+    "details": "Perfect for casual meet-ups or solo reading sessions.",
+    "lat": 37.7984825,
+    "lng": -122.422072
   }
 ]

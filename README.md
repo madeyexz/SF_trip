@@ -14,6 +14,7 @@ Next.js app that:
 - Node.js 18+
 - Firecrawl API key
 - Google Maps Platform browser API key
+- Google Maps Platform server API key with Routes API enabled (recommended for route drawing)
 - Optional: Convex project (for persistent cloud DB)
 
 ## Setup
@@ -28,6 +29,8 @@ cp .env.example .env
 
 - `FIRECRAWL_API_KEY` (for event sync)
 - `GOOGLE_MAPS_BROWSER_KEY` (for map rendering)
+- `GOOGLE_MAPS_ROUTES_KEY` (server key used by `/api/route` to draw day routes)
+- `GOOGLE_MAPS_GEOCODING_KEY` (optional server key used by `/api/sync` for pre-geocoding; falls back to server/browser key)
 - `CONVEX_URL` (optional, enables Convex read/write persistence)
 - `MAX_EVENT_URLS` (optional, max individual event pages scraped per sync; default `5`)
 
@@ -62,6 +65,8 @@ pnpm start
 - Use the **Date filter** slider to switch days.
 - Use **Travel mode** to switch driving/transit/walking.
 - Click **Use My Device Location** to use live GPS instead of the location in `docs/my_location.md`.
+- In **Day Route Builder**, use **Download .ics** to export planner stops as iCalendar events.
+- In **Day Route Builder**, use **Add Day to Google Calendar** to open a prefilled Google Calendar draft for that day.
 
 ## Convex Setup (Optional)
 
@@ -84,28 +89,33 @@ pnpm convex:deploy
 ```
 
 After this, `/api/events` reads from Convex first. `/api/sync` writes to both Convex and local cache.
+Planner day routes are also persisted in Convex via `/api/planner` when `CONVEX_URL` is configured.
 
 ## Notes
 
 - Some events hide exact addresses unless you register. Those may only show city-level location.
 - Without Convex configured, the app stores synced events in `data/events-cache.json`.
+- Address geocoding cache is persisted in `data/geocode-cache.json`.
 - With Convex configured, events are persisted in Convex and survive redeploys.
+- With Convex configured, geocode cache is persisted in Convex (`geocodeCache` table).
+- With Convex configured, planner day routes (create/update/delete per date) are persisted in Convex.
+- With Convex configured, generated map routes are cached in Convex and reused to reduce repeated Routes API calls.
 - If no cache exists, it falls back to `data/sample-events.json`.
 - Static curated places are stored one-time in `data/static-places.json` and are not part of event sync.
 
 ## Google APIs used
 
-This app uses a single API key (`GOOGLE_MAPS_BROWSER_KEY`) that powers:
+This app uses `GOOGLE_MAPS_BROWSER_KEY` for map rendering and travel estimates, `GOOGLE_MAPS_ROUTES_KEY` for day-plan route drawing, and optional `GOOGLE_MAPS_GEOCODING_KEY` for server pre-geocoding during sync.
 
 | API | What it does |
 |-----|-------------|
 | Maps JavaScript API | Renders the interactive map |
-| Geocoding API | Converts addresses to lat/lng coordinates |
+| Geocoding API | Pre-geocodes addresses during `/api/sync`; runtime geocode is fallback-only |
 | Distance Matrix API | Calculates travel times (walking/driving/transit) |
-| Directions API | Plans optimized routes for day plans |
+| Routes API | Plans day-plan routes without legacy Directions API |
 | Places Library | Loaded with the Maps JS SDK |
 
-Google Maps Platform gives a **$200/month free credit** on the pay-as-you-go plan, which covers roughly 28k map loads or 40k geocode/directions/distance-matrix requests per month.
+Google Maps Platform now uses **per-SKU monthly free usage caps** (the old `$200` credit model was retired in March 2025). Check current caps in the official pricing page.
 
 ### Viewing your usage & quota
 
@@ -118,4 +128,9 @@ Google Maps Platform gives a **$200/month free credit** on the pay-as-you-go pla
 For `GOOGLE_MAPS_BROWSER_KEY`, lock by:
 
 - HTTP referrers: `http://localhost:3000/*`
-- API restrictions: Maps JavaScript API, Distance Matrix API, Geocoding API, Directions API
+- API restrictions: Maps JavaScript API, Distance Matrix API, Geocoding API
+
+For `GOOGLE_MAPS_ROUTES_KEY`, lock by:
+
+- API restrictions: Routes API
+- Application restriction: IP addresses (server runtime) or keep unrestricted during local development

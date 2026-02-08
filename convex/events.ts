@@ -10,7 +10,9 @@ const eventValidator = v.object({
   startDateISO: v.string(),
   locationText: v.string(),
   address: v.string(),
-  googleMapsUrl: v.string()
+  googleMapsUrl: v.string(),
+  lat: v.optional(v.number()),
+  lng: v.optional(v.number())
 });
 
 export const listEvents = query({
@@ -39,6 +41,64 @@ export const getSyncMeta = query({
 
     const { _creationTime, _id, ...meta } = row;
     return meta;
+  }
+});
+
+export const getGeocodeByAddressKey = query({
+  args: {
+    addressKey: v.string()
+  },
+  handler: async (ctx, args) => {
+    const row = await ctx.db
+      .query('geocodeCache')
+      .withIndex('by_address_key', (q) => q.eq('addressKey', args.addressKey))
+      .first();
+
+    if (!row) {
+      return null;
+    }
+
+    return {
+      addressKey: row.addressKey,
+      lat: row.lat,
+      lng: row.lng,
+      updatedAt: row.updatedAt
+    };
+  }
+});
+
+export const upsertGeocode = mutation({
+  args: {
+    addressKey: v.string(),
+    addressText: v.string(),
+    lat: v.number(),
+    lng: v.number(),
+    updatedAt: v.string()
+  },
+  handler: async (ctx, args) => {
+    const existing = await ctx.db
+      .query('geocodeCache')
+      .withIndex('by_address_key', (q) => q.eq('addressKey', args.addressKey))
+      .first();
+
+    const next = {
+      addressKey: args.addressKey,
+      addressText: args.addressText,
+      lat: args.lat,
+      lng: args.lng,
+      updatedAt: args.updatedAt
+    };
+
+    if (existing) {
+      await ctx.db.patch(existing._id, next);
+    } else {
+      await ctx.db.insert('geocodeCache', next);
+    }
+
+    return {
+      addressKey: args.addressKey,
+      updatedAt: args.updatedAt
+    };
   }
 });
 

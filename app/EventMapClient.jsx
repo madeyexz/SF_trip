@@ -64,6 +64,7 @@ const PLAN_SNAP_MINUTES = 15;
 const PLAN_HOUR_HEIGHT = 50;
 const PLAN_MINUTE_HEIGHT = PLAN_HOUR_HEIGHT / 60;
 const PLAN_STORAGE_KEY = 'sf-trip-day-plans-v1';
+const GEOCODE_CACHE_STORAGE_KEY = 'sf-trip-geocode-cache-v1';
 const MAX_ROUTE_STOPS = 8;
 
 export default function EventMapClient() {
@@ -79,6 +80,8 @@ export default function EventMapClient() {
   const baseLatLngRef = useRef(null);
   const markersRef = useRef([]);
   const positionCacheRef = useRef(new Map());
+  const geocodeStoreRef = useRef(new Map());
+  const plannerHydratedRef = useRef(false);
 
   const [status, setStatus] = useState('Loading trip map...');
   const [statusError, setStatusError] = useState(false);
@@ -98,6 +101,7 @@ export default function EventMapClient() {
   const [plannerByDate, setPlannerByDate] = useState({});
   const [activePlanId, setActivePlanId] = useState('');
   const [routeSummary, setRouteSummary] = useState('');
+  const [isRouteUpdating, setIsRouteUpdating] = useState(false);
 
   const placeTagOptions = useMemo(() => {
     const tags = new Set();
@@ -254,8 +258,99 @@ export default function EventMapClient() {
   }, [visibleEvents]);
 
   useEffect(() => {
+    let mounted = true;
+    let localPlanner = {};
+
     try {
       const raw = window.localStorage.getItem(PLAN_STORAGE_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed && typeof parsed === 'object') {
+          localPlanner = sanitizePlannerByDate(parsed);
+          setPlannerByDate(localPlanner);
+        }
+      }
+    } catch {
+      // Ignore broken local planner cache.
+    }
+
+    async function loadPlannerFromServer() {
+      try {
+        const payload = await fetchJson('/api/planner');
+        if (!mounted) {
+          return;
+        }
+
+        const remotePlanner = sanitizePlannerByDate(payload?.plannerByDate || {});
+        const hasRemotePlans = hasPlannerEntries(remotePlanner);
+        const hasLocalPlans = hasPlannerEntries(localPlanner);
+
+        if (hasRemotePlans || !hasLocalPlans) {
+          setPlannerByDate(remotePlanner);
+        }
+      } catch (error) {
+        console.error('Planner load failed; continuing with local planner cache.', error);
+      } finally {
+        if (mounted) {
+          plannerHydratedRef.current = true;
+        }
+      }
+    }
+
+    void loadPlannerFromServer();
+
+    return () => {
+      mounted = false;
+      plannerHydratedRef.current = true;
+    };
+  }, []);
+
+  const savePlannerToServer = useCallback(async (nextPlannerByDate) => {
+    try {
+      const response = await fetch('/api/planner', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          plannerByDate: compactPlannerByDate(nextPlannerByDate)
+        })
+      });
+
+      if (!response.ok) {
+        const payload = await response.json().catch(() => null);
+        throw new Error(payload?.error || `Planner save failed: ${response.status}`);
+      }
+    } catch (error) {
+      console.error('Planner save failed; retaining local planner cache.', error);
+    }
+  }, []);
+
+  useEffect(() => {
+    const compactPlanner = compactPlannerByDate(plannerByDate);
+
+    try {
+      window.localStorage.setItem(PLAN_STORAGE_KEY, JSON.stringify(compactPlanner));
+    } catch {
+      // Ignore local storage failures.
+    }
+
+    if (!plannerHydratedRef.current) {
+      return;
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      void savePlannerToServer(compactPlanner);
+    }, 450);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+  }, [plannerByDate, savePlannerToServer]);
+
+  useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem(GEOCODE_CACHE_STORAGE_KEY);
       if (!raw) {
         return;
       }
@@ -265,19 +360,36 @@ export default function EventMapClient() {
         return;
       }
 
-      setPlannerByDate(sanitizePlannerByDate(parsed));
+      const cache = new Map();
+
+      for (const [addressKey, coordinates] of Object.entries(parsed)) {
+        const lat = Number(coordinates?.lat);
+        const lng = Number(coordinates?.lng);
+
+        if (Number.isFinite(lat) && Number.isFinite(lng)) {
+          cache.set(addressKey, { lat, lng });
+        }
+      }
+
+      geocodeStoreRef.current = cache;
     } catch {
-      // Ignore broken local planner cache.
+      // Ignore broken geocode cache.
     }
   }, []);
 
-  useEffect(() => {
+  const saveGeocodeCache = useCallback(() => {
+    const payload = {};
+
+    for (const [addressKey, coordinates] of geocodeStoreRef.current.entries()) {
+      payload[addressKey] = coordinates;
+    }
+
     try {
-      window.localStorage.setItem(PLAN_STORAGE_KEY, JSON.stringify(plannerByDate));
+      window.localStorage.setItem(GEOCODE_CACHE_STORAGE_KEY, JSON.stringify(payload));
     } catch {
       // Ignore local storage failures.
     }
-  }, [plannerByDate]);
+  }, []);
 
   const setStatusMessage = useCallback((message, isError = false) => {
     setStatus(message);
@@ -297,6 +409,37 @@ export default function EventMapClient() {
       routePolylineRef.current.setMap(null);
       routePolylineRef.current = null;
     }
+
+    setIsRouteUpdating(false);
+  }, []);
+
+  const applyRoutePolylineStyle = useCallback((isUpdating) => {
+    if (!routePolylineRef.current) {
+      return;
+    }
+
+    if (isUpdating) {
+      routePolylineRef.current.setOptions({
+        strokeOpacity: 0,
+        icons: [
+          {
+            icon: {
+              path: 'M 0,-1 0,1',
+              strokeOpacity: 1,
+              scale: 3
+            },
+            offset: '0',
+            repeat: '12px'
+          }
+        ]
+      });
+      return;
+    }
+
+    routePolylineRef.current.setOptions({
+      strokeOpacity: 0.86,
+      icons: []
+    });
   }, []);
 
   const geocode = useCallback(async (address) => {
@@ -337,10 +480,16 @@ export default function EventMapClient() {
   }, []);
 
   const resolvePosition = useCallback(
-    async (cacheKey, mapLink, fallbackLocation) => {
+    async ({ cacheKey, mapLink, fallbackLocation, lat, lng }) => {
       const cached = positionCacheRef.current.get(cacheKey);
       if (cached) {
         return cached;
+      }
+
+      if (Number.isFinite(lat) && Number.isFinite(lng) && window.google?.maps) {
+        const fromStoredCoordinates = new window.google.maps.LatLng(lat, lng);
+        positionCacheRef.current.set(cacheKey, fromStoredCoordinates);
+        return fromStoredCoordinates;
       }
 
       const fromMapUrl = parseLatLngFromMapUrl(mapLink);
@@ -349,14 +498,41 @@ export default function EventMapClient() {
         return fromMapUrl;
       }
 
+      const addressKey = normalizeAddressKey(fallbackLocation);
+      if (addressKey) {
+        const cachedCoordinates = geocodeStoreRef.current.get(addressKey);
+
+        if (
+          cachedCoordinates &&
+          Number.isFinite(cachedCoordinates.lat) &&
+          Number.isFinite(cachedCoordinates.lng) &&
+          window.google?.maps
+        ) {
+          const fromPersistentCache = new window.google.maps.LatLng(
+            cachedCoordinates.lat,
+            cachedCoordinates.lng
+          );
+          positionCacheRef.current.set(cacheKey, fromPersistentCache);
+          return fromPersistentCache;
+        }
+      }
+
       const geocoded = await geocode(fallbackLocation);
       if (geocoded) {
         positionCacheRef.current.set(cacheKey, geocoded);
+
+        if (addressKey) {
+          geocodeStoreRef.current.set(addressKey, {
+            lat: geocoded.lat(),
+            lng: geocoded.lng()
+          });
+          saveGeocodeCache();
+        }
       }
 
       return geocoded;
     },
-    [geocode, parseLatLngFromMapUrl]
+    [geocode, parseLatLngFromMapUrl, saveGeocodeCache]
   );
 
   const distanceMatrixRequest = useCallback(async (request) => {
@@ -705,11 +881,13 @@ export default function EventMapClient() {
       const eventsWithPositions = [];
 
       for (const event of filteredEvents) {
-        const position = await resolvePosition(
-          `event:${event.eventUrl}`,
-          event.googleMapsUrl,
-          event.address || event.locationText
-        );
+        const position = await resolvePosition({
+          cacheKey: `event:${event.eventUrl}`,
+          mapLink: event.googleMapsUrl,
+          fallbackLocation: event.address || event.locationText,
+          lat: event.lat,
+          lng: event.lng
+        });
 
         const eventWithPosition = {
           ...event,
@@ -765,11 +943,13 @@ export default function EventMapClient() {
       const placesWithPositions = [];
 
       for (const place of placesInput) {
-        const position = await resolvePosition(
-          `place:${place.id || place.name}`,
-          place.mapLink,
-          place.location
-        );
+        const position = await resolvePosition({
+          cacheKey: `place:${place.id || place.name}`,
+          mapLink: place.mapLink,
+          fallbackLocation: place.location,
+          lat: place.lat,
+          lng: place.lng
+        });
 
         const placeWithPosition = {
           ...place,
@@ -946,6 +1126,7 @@ export default function EventMapClient() {
 
     async function drawPlannedRoute() {
       if (!mapRef.current) {
+        setIsRouteUpdating(false);
         return;
       }
 
@@ -970,6 +1151,9 @@ export default function EventMapClient() {
       }
 
       try {
+        setIsRouteUpdating(true);
+        applyRoutePolylineStyle(true);
+
         const route = await requestPlannedRoute({
           origin: baseLatLngRef.current,
           destination: baseLatLngRef.current,
@@ -981,15 +1165,21 @@ export default function EventMapClient() {
           return;
         }
 
-        clearRoute();
+        if (!routePolylineRef.current) {
+          routePolylineRef.current = new window.google.maps.Polyline({
+            path: route.path,
+            strokeColor: '#1d4ed8',
+            strokeOpacity: 0.86,
+            strokeWeight: 5
+          });
+          routePolylineRef.current.setMap(mapRef.current);
+        } else {
+          routePolylineRef.current.setPath(route.path);
+          routePolylineRef.current.setMap(mapRef.current);
+        }
 
-        routePolylineRef.current = new window.google.maps.Polyline({
-          path: route.path,
-          strokeColor: '#1d4ed8',
-          strokeOpacity: 0.86,
-          strokeWeight: 5
-        });
-        routePolylineRef.current.setMap(mapRef.current);
+        applyRoutePolylineStyle(false);
+        setIsRouteUpdating(false);
 
         const routeSuffix =
           plannedRouteStops.length > MAX_ROUTE_STOPS ? ` (showing first ${MAX_ROUTE_STOPS})` : '';
@@ -1002,7 +1192,8 @@ export default function EventMapClient() {
           return;
         }
 
-        clearRoute();
+        applyRoutePolylineStyle(false);
+        setIsRouteUpdating(false);
         const message =
           error instanceof Error
             ? error.message
@@ -1016,7 +1207,15 @@ export default function EventMapClient() {
     return () => {
       cancelled = true;
     };
-  }, [clearRoute, dayPlanItems.length, mapsReady, plannedRouteStops, selectedDate, travelMode]);
+  }, [
+    applyRoutePolylineStyle,
+    clearRoute,
+    dayPlanItems.length,
+    mapsReady,
+    plannedRouteStops,
+    selectedDate,
+    travelMode
+  ]);
 
   const handleSync = useCallback(async () => {
     setIsSyncing(true);
@@ -1066,6 +1265,42 @@ export default function EventMapClient() {
     );
   }, [allEvents, effectiveDateFilter, filteredPlaces, renderCurrentSelection, setBaseMarker, setStatusMessage, travelMode]);
 
+  const handleExportPlannerIcs = useCallback(() => {
+    if (!selectedDate || dayPlanItems.length === 0) {
+      setStatusMessage('Add planner stops before exporting iCal.', true);
+      return;
+    }
+
+    const icsContent = buildPlannerIcs(selectedDate, dayPlanItems);
+    const blob = new Blob([icsContent], { type: 'text/calendar;charset=utf-8' });
+    const downloadUrl = window.URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = downloadUrl;
+    anchor.download = `sf-trip-${selectedDate}.ics`;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    window.URL.revokeObjectURL(downloadUrl);
+
+    setStatusMessage(`Exported iCal for ${formatDate(selectedDate)}.`);
+  }, [dayPlanItems, selectedDate, setStatusMessage]);
+
+  const handleAddDayPlanToGoogleCalendar = useCallback(() => {
+    if (!selectedDate || dayPlanItems.length === 0) {
+      setStatusMessage('Add planner stops before opening Google Calendar.', true);
+      return;
+    }
+
+    const calendarUrl = buildGoogleCalendarDayPlanUrl({
+      dateISO: selectedDate,
+      planItems: dayPlanItems,
+      baseLocationText
+    });
+
+    window.open(calendarUrl, '_blank', 'noopener,noreferrer');
+    setStatusMessage(`Opened Google Calendar draft for ${formatDate(selectedDate)}.`);
+  }, [baseLocationText, dayPlanItems, selectedDate, setStatusMessage]);
+
   const goToSidebarTab = useCallback((tab) => {
     setActiveMobilePanel(tab);
     sidebarRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -1084,6 +1319,8 @@ export default function EventMapClient() {
   const travelReadyCount = visibleEvents.filter(
     (event) => event.travelDurationText && event.travelDurationText !== 'Unavailable'
   ).length;
+  const routeSummaryText =
+    routeSummary || (selectedDate && dayPlanItems.length ? 'Waiting for routable stops...' : 'Add stops to draw route');
 
   return (
     <main className="app-shell">
@@ -1309,6 +1546,10 @@ export default function EventMapClient() {
               );
             })}
           </div>
+          <div className="map-route-summary" role="status" aria-live="polite">
+            <strong>Route:</strong> {routeSummaryText}
+            {isRouteUpdating ? <span className="route-update-indicator">Updating route...</span> : null}
+          </div>
           <div id="map" ref={mapElementRef} />
         </section>
 
@@ -1482,8 +1723,29 @@ export default function EventMapClient() {
 
             <p className="event-meta planner-route-summary">
               <strong>Route:</strong>{' '}
-              {routeSummary || (selectedDate && dayPlanItems.length ? 'Waiting for routable stops...' : 'Add stops to draw route')}
+              {routeSummaryText}
+              {isRouteUpdating ? <span className="route-update-indicator">Updating route...</span> : null}
             </p>
+            <div className="planner-export-actions">
+              <Button
+                type="button"
+                size="sm"
+                variant="secondary"
+                onClick={handleExportPlannerIcs}
+                disabled={!selectedDate || dayPlanItems.length === 0}
+              >
+                Download .ics
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="secondary"
+                onClick={handleAddDayPlanToGoogleCalendar}
+                disabled={!selectedDate || dayPlanItems.length === 0}
+              >
+                Add Day to Google Calendar
+              </Button>
+            </div>
           </section>
 
           <section className={`panel ${activeMobilePanel !== 'events' ? 'panel-hidden' : ''}`}>
@@ -1674,6 +1936,14 @@ function normalizePlaceTag(tag) {
   return 'cafes';
 }
 
+function normalizeAddressKey(value) {
+  return String(value || '')
+    .toLowerCase()
+    .replace(/[^\w\s,.-]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 function formatTag(tag) {
   if (tag === 'all') {
     return 'All';
@@ -1729,6 +1999,24 @@ function sanitizePlannerByDate(value) {
   }
 
   return result;
+}
+
+function compactPlannerByDate(value) {
+  const compacted = {};
+
+  for (const [dateISO, items] of Object.entries(value || {})) {
+    if (!Array.isArray(items) || items.length === 0) {
+      continue;
+    }
+
+    compacted[dateISO] = items;
+  }
+
+  return compacted;
+}
+
+function hasPlannerEntries(value) {
+  return Object.values(value || {}).some((items) => Array.isArray(items) && items.length > 0);
 }
 
 function sortPlanItems(items) {
@@ -2027,6 +2315,98 @@ function formatDurationFromSeconds(totalSeconds) {
   }
 
   return `${minutes}m`;
+}
+
+function buildPlannerIcs(dateISO, planItems) {
+  const sortedItems = sortPlanItems(planItems);
+  const timestamp = toIcsUtcTimestamp(new Date());
+  const lines = [
+    'BEGIN:VCALENDAR',
+    'VERSION:2.0',
+    'PRODID:-//SF Trip Planner//EN',
+    'CALSCALE:GREGORIAN',
+    'METHOD:PUBLISH'
+  ];
+
+  for (const item of sortedItems) {
+    const startValue = toCalendarDateTime(dateISO, item.startMinutes);
+    const endValue = toCalendarDateTime(dateISO, item.endMinutes);
+    const descriptionParts = [
+      `Type: ${item.kind === 'event' ? 'Event' : 'Place'}`,
+      item.link ? `Link: ${item.link}` : ''
+    ].filter(Boolean);
+
+    lines.push(
+      'BEGIN:VEVENT',
+      `UID:${escapeIcsText(`${item.id}-${dateISO}@sf-trip.local`)}`,
+      `DTSTAMP:${timestamp}`,
+      `DTSTART:${startValue}`,
+      `DTEND:${endValue}`,
+      `SUMMARY:${escapeIcsText(item.title || 'Trip stop')}`,
+      `LOCATION:${escapeIcsText(item.locationText || 'San Francisco')}`,
+      `DESCRIPTION:${escapeIcsText(descriptionParts.join('\n'))}`,
+      'END:VEVENT'
+    );
+  }
+
+  lines.push('END:VCALENDAR');
+  return `${lines.join('\r\n')}\r\n`;
+}
+
+function buildGoogleCalendarDayPlanUrl({ dateISO, planItems, baseLocationText }) {
+  const sortedItems = sortPlanItems(planItems);
+  const firstItem = sortedItems[0];
+  const lastItem = sortedItems[sortedItems.length - 1];
+  const startValue = toCalendarDateTime(dateISO, firstItem.startMinutes);
+  const endMinutes = Math.max(lastItem.endMinutes, firstItem.startMinutes + MIN_PLAN_BLOCK_MINUTES);
+  const endValue = toCalendarDateTime(dateISO, endMinutes);
+  const details = sortedItems
+    .map((item) => {
+      const timeRange = `${formatMinuteLabel(item.startMinutes)} - ${formatMinuteLabel(item.endMinutes)}`;
+      const location = item.locationText ? ` @ ${item.locationText}` : '';
+      const link = item.link ? `\n${item.link}` : '';
+      return `${timeRange} ${item.title}${location}${link}`;
+    })
+    .join('\n\n');
+
+  const params = new URLSearchParams({
+    action: 'TEMPLATE',
+    text: `SF Trip Plan - ${formatDate(dateISO)}`,
+    dates: `${startValue}/${endValue}`,
+    details,
+    location: baseLocationText || firstItem.locationText || 'San Francisco, CA',
+    ctz: 'America/Los_Angeles'
+  });
+
+  return `https://calendar.google.com/calendar/render?${params.toString()}`;
+}
+
+function toCalendarDateTime(dateISO, minutesFromMidnight) {
+  const [year, month, day] = String(dateISO || '')
+    .split('-')
+    .map((part) => Number(part));
+  const clampedMinutes = clampMinutes(minutesFromMidnight, 0, MINUTES_IN_DAY);
+  const hours = Math.floor(clampedMinutes / 60);
+  const minutes = clampedMinutes % 60;
+
+  return [
+    String(year).padStart(4, '0'),
+    String(month).padStart(2, '0'),
+    String(day).padStart(2, '0')
+  ].join('') + `T${String(hours).padStart(2, '0')}${String(minutes).padStart(2, '0')}00`;
+}
+
+function toIcsUtcTimestamp(dateInput) {
+  return new Date(dateInput).toISOString().replace(/[-:]/g, '').replace(/\.\d{3}Z$/, 'Z');
+}
+
+function escapeIcsText(value) {
+  return String(value || '')
+    .replaceAll('\\', '\\\\')
+    .replaceAll('\r\n', '\n')
+    .replaceAll('\n', '\\n')
+    .replaceAll(',', '\\,')
+    .replaceAll(';', '\\;');
 }
 
 async function requestPlannedRoute({ origin, destination, waypoints, travelMode }) {

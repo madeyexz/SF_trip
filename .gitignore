@@ -2,6 +2,7 @@ docs/my_location.md
 .env
 node_modules
 data/events-cache.json
+data/geocode-cache.json
 .next
 .convex
 

@@ -9,6 +9,8 @@
  */
 
 import type * as events from "../events.js";
+import type * as planner from "../planner.js";
+import type * as routeCache from "../routeCache.js";
 
 import type {
   ApiFromModules,
@@ -18,6 +20,8 @@ import type {
 
 declare const fullApi: ApiFromModules<{
   events: typeof events;
+  planner: typeof planner;
+  routeCache: typeof routeCache;
 }>;
 
 /**
