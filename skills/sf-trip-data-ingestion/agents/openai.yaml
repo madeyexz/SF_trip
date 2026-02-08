@@ -1,0 +1,4 @@
+interface:
+  display_name: "SF Trip Data Ingestion"
+  short_description: "Maintain SF trip events and place datasets"
+  default_prompt: "Use $sf-trip-data-ingestion to refresh Luma events and Corner places for the map app."
