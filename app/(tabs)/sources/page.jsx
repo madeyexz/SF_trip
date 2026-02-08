@@ -1,7 +1,7 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { RefreshCw } from 'lucide-react';
+import { useState, useEffect, useRef } from 'react';
+import { RefreshCw, Check } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -23,9 +23,24 @@ export default function SourcesPage() {
 
   const [localTripStart, setLocalTripStart] = useState(tripStart);
   const [localTripEnd, setLocalTripEnd] = useState(tripEnd);
+  const [dateSaveState, setDateSaveState] = useState('idle');
+  const saveTimerRef = useRef(null);
 
   useEffect(() => { setLocalTripStart(tripStart); }, [tripStart]);
   useEffect(() => { setLocalTripEnd(tripEnd); }, [tripEnd]);
+
+  const onSaveDates = async (e) => {
+    e.preventDefault();
+    setDateSaveState('saving');
+    try {
+      await handleSaveTripDates(localTripStart, localTripEnd);
+      setDateSaveState('saved');
+      clearTimeout(saveTimerRef.current);
+      saveTimerRef.current = setTimeout(() => setDateSaveState('idle'), 2000);
+    } catch {
+      setDateSaveState('idle');
+    }
+  };
 
   const renderSourceCard = (source) => {
     const isEvent = source.sourceType === 'event';
@@ -79,12 +94,14 @@ export default function SourcesPage() {
           </div>
         </div>
         <Card className="p-3">
-          <form className="flex items-center gap-2 max-sm:flex-col" onSubmit={(e) => { e.preventDefault(); handleSaveTripDates(localTripStart, localTripEnd); }}>
+          <form className="flex items-center gap-2 max-sm:flex-col" onSubmit={onSaveDates}>
             <label className="text-sm font-medium text-foreground-secondary shrink-0">Start</label>
             <Input type="date" value={localTripStart} onChange={(e) => setLocalTripStart(e.target.value)} className="max-w-[180px] max-sm:max-w-none" />
             <label className="text-sm font-medium text-foreground-secondary shrink-0">End</label>
             <Input type="date" value={localTripEnd} onChange={(e) => setLocalTripEnd(e.target.value)} className="max-w-[180px] max-sm:max-w-none" />
-            <Button type="submit" size="sm" className="min-h-[36px] rounded-lg min-w-[80px] shrink-0">Save</Button>
+            <Button type="submit" size="sm" className="min-h-[36px] rounded-lg min-w-[80px] shrink-0" disabled={dateSaveState === 'saving'}>
+              {dateSaveState === 'saving' ? 'Saving...' : dateSaveState === 'saved' ? <><Check size={14} />Saved</> : 'Save'}
+            </Button>
           </form>
         </Card>
 
@@ -97,7 +114,7 @@ export default function SourcesPage() {
 
         <form className="flex items-center gap-2 p-2.5 px-3 bg-card border border-border rounded-xl max-sm:flex-col" onSubmit={handleCreateSource}>
           <Select value={newSourceType} onValueChange={setNewSourceType}>
-            <SelectTrigger className="min-h-[36px] min-w-[100px] rounded-lg">
+            <SelectTrigger className="min-h-[36px] w-[120px] shrink-0 rounded-lg">
               <SelectValue placeholder="Type" />
             </SelectTrigger>
             <SelectContent>

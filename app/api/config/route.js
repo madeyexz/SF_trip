@@ -1,6 +1,7 @@
 import { loadBaseLocation, getCalendarUrls, loadTripConfig, saveTripConfig } from '@/lib/events';
 
 export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
 
 export async function GET() {
   const [baseLocation, tripConfig] = await Promise.all([
@@ -13,8 +14,8 @@ export async function GET() {
     hasFirecrawlKey: Boolean(process.env.FIRECRAWL_API_KEY),
     baseLocation,
     calendars: getCalendarUrls(),
-    tripStart: process.env.TRIP_START || tripConfig.tripStart || '',
-    tripEnd: process.env.TRIP_END || tripConfig.tripEnd || ''
+    tripStart: tripConfig.tripStart || process.env.TRIP_START || '',
+    tripEnd: tripConfig.tripEnd || process.env.TRIP_END || ''
   });
 }
 
