@@ -67,12 +67,13 @@ const PLAN_STORAGE_KEY = 'sf-trip-day-plans-v1';
 const MAX_ROUTE_STOPS = 8;
 
 export default function EventMapClient() {
+  const mapPanelRef = useRef(null);
+  const sidebarRef = useRef(null);
   const mapElementRef = useRef(null);
   const mapRef = useRef(null);
   const geocoderRef = useRef(null);
   const distanceMatrixRef = useRef(null);
-  const directionsServiceRef = useRef(null);
-  const directionsRendererRef = useRef(null);
+  const routePolylineRef = useRef(null);
   const infoWindowRef = useRef(null);
   const baseMarkerRef = useRef(null);
   const baseLatLngRef = useRef(null);
@@ -86,18 +87,17 @@ export default function EventMapClient() {
   const [allPlaces, setAllPlaces] = useState([]);
   const [visibleEvents, setVisibleEvents] = useState([]);
   const [visiblePlaces, setVisiblePlaces] = useState([]);
-  const [dates, setDates] = useState(['']);
-  const [selectedIndex, setSelectedIndex] = useState(0);
+  const [selectedDate, setSelectedDate] = useState('');
+  const [showAllEvents, setShowAllEvents] = useState(true);
   const [travelMode, setTravelMode] = useState('WALKING');
   const [baseLocationText, setBaseLocationText] = useState('');
   const [isSyncing, setIsSyncing] = useState(false);
   const [placeTagFilter, setPlaceTagFilter] = useState('all');
   const [activeMobilePanel, setActiveMobilePanel] = useState('planner');
+  const [calendarMonthISO, setCalendarMonthISO] = useState('');
   const [plannerByDate, setPlannerByDate] = useState({});
   const [activePlanId, setActivePlanId] = useState('');
   const [routeSummary, setRouteSummary] = useState('');
-
-  const selectedDate = useMemo(() => dates[selectedIndex] || '', [dates, selectedIndex]);
 
   const placeTagOptions = useMemo(() => {
     const tags = new Set();
@@ -130,6 +130,79 @@ export default function EventMapClient() {
 
     return map;
   }, [visiblePlaces]);
+
+  const uniqueDates = useMemo(
+    () =>
+      Array.from(new Set(allEvents.map((event) => event.startDateISO).filter(Boolean))).sort(),
+    [allEvents]
+  );
+
+  const eventsByDate = useMemo(() => {
+    const map = new Map();
+
+    for (const date of uniqueDates) {
+      map.set(date, 0);
+    }
+
+    for (const event of allEvents) {
+      if (!event.startDateISO) {
+        continue;
+      }
+
+      map.set(event.startDateISO, (map.get(event.startDateISO) || 0) + 1);
+    }
+
+    return map;
+  }, [allEvents, uniqueDates]);
+
+  const planItemsByDate = useMemo(() => {
+    const map = new Map();
+
+    for (const [dateISO, items] of Object.entries(plannerByDate)) {
+      map.set(dateISO, Array.isArray(items) ? items.length : 0);
+    }
+
+    return map;
+  }, [plannerByDate]);
+
+  const calendarAnchorISO = useMemo(() => {
+    return calendarMonthISO || selectedDate || uniqueDates[0] || toISODate(new Date());
+  }, [calendarMonthISO, selectedDate, uniqueDates]);
+
+  const calendarDays = useMemo(() => buildCalendarGridDates(calendarAnchorISO), [calendarAnchorISO]);
+
+  useEffect(() => {
+    if (uniqueDates.length === 0) {
+      setSelectedDate('');
+      return;
+    }
+
+    if (!selectedDate || !uniqueDates.includes(selectedDate)) {
+      setSelectedDate(uniqueDates[0]);
+    }
+  }, [selectedDate, uniqueDates]);
+
+  useEffect(() => {
+    if (!selectedDate) {
+      return;
+    }
+
+    const selectedMonth = toMonthISO(selectedDate);
+    if (!calendarMonthISO || calendarMonthISO !== selectedMonth) {
+      setCalendarMonthISO(selectedMonth);
+    }
+  }, [calendarMonthISO, selectedDate]);
+
+  const selectedDateIndex = useMemo(() => {
+    if (!selectedDate) {
+      return 0;
+    }
+
+    const index = uniqueDates.indexOf(selectedDate);
+    return index < 0 ? 0 : index;
+  }, [selectedDate, uniqueDates]);
+
+  const effectiveDateFilter = showAllEvents ? '' : selectedDate;
 
   const dayPlanItems = useMemo(() => {
     if (!selectedDate) {
@@ -220,8 +293,9 @@ export default function EventMapClient() {
   }, []);
 
   const clearRoute = useCallback(() => {
-    if (directionsRendererRef.current) {
-      directionsRendererRef.current.set('directions', null);
+    if (routePolylineRef.current) {
+      routePolylineRef.current.setMap(null);
+      routePolylineRef.current = null;
     }
   }, []);
 
@@ -578,7 +652,7 @@ export default function EventMapClient() {
     [distanceMatrixRequest]
   );
 
-  const buildEventInfoWindowHtml = useCallback((event) => {
+  const buildEventInfoWindowHtml = useCallback((event, plannerAction) => {
     const location = event.address || event.locationText || 'Location not listed';
     const time = event.startDateTimeText || 'Time not listed';
     const travel = event.travelDurationText || 'Pending';
@@ -590,12 +664,13 @@ export default function EventMapClient() {
         <p style="margin:4px 0"><strong>Location:</strong> ${escapeHtml(location)}</p>
         <p style="margin:4px 0"><strong>Travel time:</strong> ${escapeHtml(travel)}</p>
         <p style="margin:4px 0">${escapeHtml(truncate(event.description || '', 220))}</p>
+        ${buildInfoWindowAddButton(plannerAction)}
         <a href="${escapeHtml(event.eventUrl)}" target="_blank" rel="noreferrer">Open event</a>
       </div>
     `;
   }, []);
 
-  const buildPlaceInfoWindowHtml = useCallback((place) => {
+  const buildPlaceInfoWindowHtml = useCallback((place, plannerAction) => {
     const displayTag = formatTag(normalizePlaceTag(place.tag));
 
     return `
@@ -606,6 +681,7 @@ export default function EventMapClient() {
         ${place.curatorComment ? `<p style="margin:4px 0"><strong>Curator:</strong> ${escapeHtml(place.curatorComment)}</p>` : ''}
         ${place.description ? `<p style="margin:4px 0">${escapeHtml(place.description)}</p>` : ''}
         ${place.details ? `<p style="margin:4px 0">${escapeHtml(place.details)}</p>` : ''}
+        ${buildInfoWindowAddButton(plannerAction)}
         <div style="display:flex;gap:10px;flex-wrap:wrap">
           <a href="${escapeHtml(place.mapLink)}" target="_blank" rel="noreferrer">Open map</a>
           <a href="${escapeHtml(place.cornerLink)}" target="_blank" rel="noreferrer">Corner page</a>
@@ -654,8 +730,30 @@ export default function EventMapClient() {
               return;
             }
 
-            infoWindowRef.current.setContent(buildEventInfoWindowHtml(eventWithPosition));
+            const addActionId = selectedDate ? `add-${createPlanId()}` : '';
+            const plannerAction = {
+              id: addActionId,
+              label: selectedDate ? `Add to ${formatDateDayMonth(selectedDate)}` : 'Pick planner date first',
+              enabled: Boolean(selectedDate)
+            };
+
+            infoWindowRef.current.setContent(buildEventInfoWindowHtml(eventWithPosition, plannerAction));
             infoWindowRef.current.open({ map: mapRef.current, anchor: marker });
+
+            if (addActionId && window.google?.maps?.event) {
+              window.google.maps.event.addListenerOnce(infoWindowRef.current, 'domready', () => {
+                const button = document.getElementById(addActionId);
+                if (!button) {
+                  return;
+                }
+
+                button.addEventListener('click', (clickEvent) => {
+                  clickEvent.preventDefault();
+                  addEventToDayPlan(eventWithPosition);
+                  setStatusMessage(`Added "${eventWithPosition.name}" to ${formatDate(selectedDate)}.`);
+                });
+              });
+            }
           });
 
           markersRef.current.push(marker);
@@ -695,8 +793,30 @@ export default function EventMapClient() {
               return;
             }
 
-            infoWindowRef.current.setContent(buildPlaceInfoWindowHtml(placeWithPosition));
+            const addActionId = selectedDate ? `add-${createPlanId()}` : '';
+            const plannerAction = {
+              id: addActionId,
+              label: selectedDate ? `Add to ${formatDateDayMonth(selectedDate)}` : 'Pick planner date first',
+              enabled: Boolean(selectedDate)
+            };
+
+            infoWindowRef.current.setContent(buildPlaceInfoWindowHtml(placeWithPosition, plannerAction));
             infoWindowRef.current.open({ map: mapRef.current, anchor: marker });
+
+            if (addActionId && window.google?.maps?.event) {
+              window.google.maps.event.addListenerOnce(infoWindowRef.current, 'domready', () => {
+                const button = document.getElementById(addActionId);
+                if (!button) {
+                  return;
+                }
+
+                button.addEventListener('click', (clickEvent) => {
+                  clickEvent.preventDefault();
+                  addPlaceToDayPlan(placeWithPosition);
+                  setStatusMessage(`Added "${placeWithPosition.name}" to ${formatDate(selectedDate)}.`);
+                });
+              });
+            }
           });
 
           markersRef.current.push(marker);
@@ -725,6 +845,9 @@ export default function EventMapClient() {
       clearMapMarkers,
       fitMapToVisiblePoints,
       resolvePosition,
+      addEventToDayPlan,
+      addPlaceToDayPlan,
+      selectedDate,
       setStatusMessage
     ]
   );
@@ -751,13 +874,6 @@ export default function EventMapClient() {
         setAllEvents(loadedEvents);
         setAllPlaces(loadedPlaces);
 
-        const uniqueDates = Array.from(
-          new Set(loadedEvents.map((event) => event.startDateISO).filter(Boolean))
-        ).sort();
-
-        setDates(['', ...uniqueDates]);
-        setSelectedIndex(0);
-
         if (!config.mapsBrowserKey) {
           setStatusMessage('Missing GOOGLE_MAPS_BROWSER_KEY in .env. Map cannot load.', true);
           return;
@@ -779,17 +895,6 @@ export default function EventMapClient() {
 
         geocoderRef.current = new window.google.maps.Geocoder();
         distanceMatrixRef.current = new window.google.maps.DistanceMatrixService();
-        directionsServiceRef.current = new window.google.maps.DirectionsService();
-        directionsRendererRef.current = new window.google.maps.DirectionsRenderer({
-          suppressMarkers: true,
-          preserveViewport: false,
-          polylineOptions: {
-            strokeColor: '#1d4ed8',
-            strokeOpacity: 0.86,
-            strokeWeight: 5
-          }
-        });
-        directionsRendererRef.current.setMap(mapRef.current);
         infoWindowRef.current = new window.google.maps.InfoWindow();
 
         const geocodedBaseLocation = await geocode(config.baseLocation || '');
@@ -821,10 +926,6 @@ export default function EventMapClient() {
       if (baseMarkerRef.current) {
         baseMarkerRef.current.setMap(null);
       }
-
-      if (directionsRendererRef.current) {
-        directionsRendererRef.current.setMap(null);
-      }
     };
   }, [clearMapMarkers, clearRoute, geocode, setBaseMarker, setStatusMessage]);
 
@@ -833,8 +934,8 @@ export default function EventMapClient() {
       return;
     }
 
-    void renderCurrentSelection(allEvents, filteredPlaces, selectedDate, travelMode);
-  }, [allEvents, filteredPlaces, mapsReady, renderCurrentSelection, selectedDate, travelMode]);
+    void renderCurrentSelection(allEvents, filteredPlaces, effectiveDateFilter, travelMode);
+  }, [allEvents, effectiveDateFilter, filteredPlaces, mapsReady, renderCurrentSelection, travelMode]);
 
   useEffect(() => {
     if (!mapsReady || !window.google?.maps) {
@@ -844,7 +945,7 @@ export default function EventMapClient() {
     let cancelled = false;
 
     async function drawPlannedRoute() {
-      if (!directionsRendererRef.current || !directionsServiceRef.current) {
+      if (!mapRef.current) {
         return;
       }
 
@@ -869,47 +970,44 @@ export default function EventMapClient() {
       }
 
       try {
-        const waypoints = routeStops.map((stop) => ({
-          location: stop.position,
-          stopover: true
-        }));
-
-        const travelModeValue =
-          window.google.maps.TravelMode[travelMode] || window.google.maps.TravelMode.WALKING;
-
-        const directions = await requestGoogleDirections(directionsServiceRef.current, {
+        const route = await requestPlannedRoute({
           origin: baseLatLngRef.current,
           destination: baseLatLngRef.current,
-          waypoints,
-          optimizeWaypoints: false,
-          travelMode: travelModeValue
+          waypoints: routeStops.map((stop) => stop.position),
+          travelMode
         });
 
         if (cancelled) {
           return;
         }
 
-        directionsRendererRef.current.setDirections(directions);
+        clearRoute();
 
-        const route = directions.routes?.[0];
-        const legs = Array.isArray(route?.legs) ? route.legs : [];
-
-        const totalSeconds = legs.reduce((sum, leg) => sum + (leg.duration?.value || 0), 0);
-        const totalMeters = legs.reduce((sum, leg) => sum + (leg.distance?.value || 0), 0);
+        routePolylineRef.current = new window.google.maps.Polyline({
+          path: route.path,
+          strokeColor: '#1d4ed8',
+          strokeOpacity: 0.86,
+          strokeWeight: 5
+        });
+        routePolylineRef.current.setMap(mapRef.current);
 
         const routeSuffix =
           plannedRouteStops.length > MAX_ROUTE_STOPS ? ` (showing first ${MAX_ROUTE_STOPS})` : '';
 
         setRouteSummary(
-          `${routeStops.length} stops${routeSuffix} · ${formatDistance(totalMeters)} · ${formatDurationFromSeconds(totalSeconds)}`
+          `${routeStops.length} stops${routeSuffix} · ${formatDistance(route.totalDistanceMeters)} · ${formatDurationFromSeconds(route.totalDurationSeconds)}`
         );
-      } catch {
+      } catch (error) {
         if (cancelled) {
           return;
         }
 
         clearRoute();
-        setRouteSummary('Could not draw route for the current plan and travel mode.');
+        const message =
+          error instanceof Error
+            ? error.message
+            : 'Could not draw route for the current plan and travel mode.';
+        setRouteSummary(message);
       }
     }
 
@@ -939,12 +1037,6 @@ export default function EventMapClient() {
         setAllPlaces(payload.places);
       }
 
-      const uniqueDates = Array.from(
-        new Set(syncedEvents.map((event) => event.startDateISO).filter(Boolean))
-      ).sort();
-
-      setDates(['', ...uniqueDates]);
-      setSelectedIndex(0);
       setStatusMessage(`Synced ${syncedEvents.length} events at ${new Date().toLocaleTimeString()}.`);
     } catch (error) {
       setStatusMessage(error instanceof Error ? error.message : 'Sync failed', true);
@@ -965,16 +1057,30 @@ export default function EventMapClient() {
       async (position) => {
         const latLng = new window.google.maps.LatLng(position.coords.latitude, position.coords.longitude);
         setBaseMarker(latLng, 'My current location');
-        await renderCurrentSelection(allEvents, filteredPlaces, selectedDate, travelMode);
+        await renderCurrentSelection(allEvents, filteredPlaces, effectiveDateFilter, travelMode);
         setStatusMessage('Using your live device location as trip origin.');
       },
       (error) => {
         setStatusMessage(error.message || 'Could not get device location.', true);
       }
     );
-  }, [allEvents, filteredPlaces, renderCurrentSelection, selectedDate, setBaseMarker, setStatusMessage, travelMode]);
+  }, [allEvents, effectiveDateFilter, filteredPlaces, renderCurrentSelection, setBaseMarker, setStatusMessage, travelMode]);
 
-  const dateLabel = selectedDate ? formatDate(selectedDate) : 'All dates';
+  const goToSidebarTab = useCallback((tab) => {
+    setActiveMobilePanel(tab);
+    sidebarRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, []);
+
+  const goToMap = useCallback(() => {
+    mapPanelRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, []);
+
+  const shiftCalendarMonth = useCallback((offset) => {
+    const shifted = addMonthsToMonthISO(calendarAnchorISO, offset);
+    setCalendarMonthISO(shifted);
+  }, [calendarAnchorISO]);
+
+  const dateLabel = selectedDate ? formatDate(selectedDate) : 'No dated events';
   const travelReadyCount = visibleEvents.filter(
     (event) => event.travelDurationText && event.travelDurationText !== 'Unavailable'
   ).length;
@@ -997,6 +1103,62 @@ export default function EventMapClient() {
           </Button>
         </div>
       </header>
+
+      <nav className="site-header-nav" aria-label="App navigator">
+        <Button
+          type="button"
+          size="sm"
+          variant="secondary"
+          className="site-nav-button"
+          onClick={goToMap}
+        >
+          Map
+        </Button>
+        <Button
+          type="button"
+          size="sm"
+          variant="secondary"
+          className={`site-nav-button${activeMobilePanel === 'calendar' ? ' site-nav-button-active' : ''}`}
+          onClick={() => {
+            goToSidebarTab('calendar');
+          }}
+        >
+          Calendar
+        </Button>
+        <Button
+          type="button"
+          size="sm"
+          variant="secondary"
+          className={`site-nav-button${activeMobilePanel === 'planner' ? ' site-nav-button-active' : ''}`}
+          onClick={() => {
+            goToSidebarTab('planner');
+          }}
+        >
+          Day Route
+        </Button>
+        <Button
+          type="button"
+          size="sm"
+          variant="secondary"
+          className={`site-nav-button${activeMobilePanel === 'events' ? ' site-nav-button-active' : ''}`}
+          onClick={() => {
+            goToSidebarTab('events');
+          }}
+        >
+          Events
+        </Button>
+        <Button
+          type="button"
+          size="sm"
+          variant="secondary"
+          className={`site-nav-button${activeMobilePanel === 'places' ? ' site-nav-button-active' : ''}`}
+          onClick={() => {
+            goToSidebarTab('places');
+          }}
+        >
+          Spots
+        </Button>
+      </nav>
 
       <section className="snapshot-grid">
         <Card className="snapshot-card">
@@ -1034,20 +1196,67 @@ export default function EventMapClient() {
         </div>
 
         <div className="control-group slider-group">
-          <label htmlFor="date-slider">Events by date</label>
+          <label htmlFor="date-slider">Planner date</label>
+          <div className="date-strip" role="tablist" aria-label="Planner dates">
+            {uniqueDates.length === 0 ? (
+              <span className="date-strip-empty">No event dates</span>
+            ) : (
+              uniqueDates.map((dateISO) => {
+                const isActive = dateISO === selectedDate;
+                const eventCount = eventsByDate.get(dateISO) || 0;
+
+                return (
+                  <button
+                    key={dateISO}
+                    type="button"
+                    className={`date-pill${isActive ? ' date-pill-active' : ''}`}
+                    onClick={() => {
+                      setSelectedDate(dateISO);
+                    }}
+                  >
+                    <span className="date-pill-weekday">{formatDateWeekday(dateISO)}</span>
+                    <span className="date-pill-day">{formatDateDayMonth(dateISO)}</span>
+                    <span className="date-pill-count">{eventCount} events</span>
+                  </button>
+                );
+              })
+            )}
+          </div>
           <input
             id="date-slider"
             type="range"
             min="0"
-            max={Math.max(0, dates.length - 1)}
+            max={Math.max(0, uniqueDates.length - 1)}
             step="1"
-            value={selectedIndex}
-            disabled={dates.length <= 1}
+            value={selectedDateIndex}
+            disabled={uniqueDates.length <= 1}
             onChange={(event) => {
-              setSelectedIndex(Number(event.target.value));
+              const index = Number(event.target.value);
+              setSelectedDate(uniqueDates[index] || uniqueDates[0] || '');
             }}
           />
-          <div id="date-label">{dateLabel}</div>
+          <div id="date-label">{selectedDate ? `Planning ${dateLabel}` : dateLabel}</div>
+        </div>
+
+        <div className="control-group">
+          <label>Event view</label>
+          <ToggleGroup
+            className="tag-filter-list"
+            type="single"
+            value={showAllEvents ? 'all' : 'day'}
+            onValueChange={(value) => {
+              if (value === 'all') {
+                setShowAllEvents(true);
+              }
+
+              if (value === 'day') {
+                setShowAllEvents(false);
+              }
+            }}
+          >
+            <ToggleGroupItem className="tag-chip" value="day">Planner Day</ToggleGroupItem>
+            <ToggleGroupItem className="tag-chip" value="all">All Dates</ToggleGroupItem>
+          </ToggleGroup>
         </div>
 
         <div className="control-group tag-filter-group">
@@ -1082,7 +1291,7 @@ export default function EventMapClient() {
       </section>
 
       <section className="layout">
-        <section className="map-panel">
+        <section className="map-panel" ref={mapPanelRef}>
           <div className="map-legend">
             <span className="legend-item">
               <Calendar className="legend-icon" size={14} strokeWidth={2} /> Event
@@ -1103,23 +1312,91 @@ export default function EventMapClient() {
           <div id="map" ref={mapElementRef} />
         </section>
 
-        <aside className="sidebar">
+        <aside className="sidebar" ref={sidebarRef}>
           <Tabs className="sidebar-switch" value={activeMobilePanel} onValueChange={setActiveMobilePanel}>
             <TabsList>
-              <TabsTrigger value="planner">Planner</TabsTrigger>
-              <TabsTrigger value="events">Events</TabsTrigger>
-              <TabsTrigger value="places">Places</TabsTrigger>
+              <TabsTrigger value="calendar">Calendar View</TabsTrigger>
+              <TabsTrigger value="planner">Day Route Builder</TabsTrigger>
+              <TabsTrigger value="events">Event Plan</TabsTrigger>
+              <TabsTrigger value="places">Curated Spots</TabsTrigger>
             </TabsList>
           </Tabs>
 
-          <section className={`panel ${activeMobilePanel !== 'planner' ? 'panel-mobile-hidden' : ''}`}>
+          <section className={`panel ${activeMobilePanel !== 'calendar' ? 'panel-hidden' : ''}`}>
+            <div className="calendar-panel-header">
+              <Button
+                type="button"
+                size="sm"
+                variant="secondary"
+                onClick={() => {
+                  shiftCalendarMonth(-1);
+                }}
+              >
+                Prev
+              </Button>
+              <h2>{formatMonthYear(calendarAnchorISO)}</h2>
+              <Button
+                type="button"
+                size="sm"
+                variant="secondary"
+                onClick={() => {
+                  shiftCalendarMonth(1);
+                }}
+              >
+                Next
+              </Button>
+            </div>
+
+            <div className="calendar-weekdays">
+              {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((weekday) => (
+                <span key={weekday}>{weekday}</span>
+              ))}
+            </div>
+
+            <div className="calendar-grid">
+              {calendarDays.map((dayISO) => {
+                const isCurrentMonth = toMonthISO(dayISO) === toMonthISO(calendarAnchorISO);
+                const isSelected = dayISO === selectedDate;
+                const eventCount = eventsByDate.get(dayISO) || 0;
+                const planCount = planItemsByDate.get(dayISO) || 0;
+
+                return (
+                  <button
+                    key={dayISO}
+                    type="button"
+                    className={[
+                      'calendar-day',
+                      isCurrentMonth ? '' : 'calendar-day-outside',
+                      isSelected ? 'calendar-day-selected' : ''
+                    ]
+                      .filter(Boolean)
+                      .join(' ')}
+                    onClick={() => {
+                      setSelectedDate(dayISO);
+                      setShowAllEvents(false);
+                    }}
+                  >
+                    <span className="calendar-day-num">{formatDayOfMonth(dayISO)}</span>
+                    <span className="calendar-day-meta">{eventCount} e</span>
+                    <span className="calendar-day-meta calendar-day-plan">{planCount} p</span>
+                  </button>
+                );
+              })}
+            </div>
+
+            <p className="event-meta panel-subtitle">
+              Tap a date to set planner day. `e` = events, `p` = planned stops.
+            </p>
+          </section>
+
+          <section className={`panel ${activeMobilePanel !== 'planner' ? 'panel-hidden' : ''}`}>
             <div className="planner-panel-header">
               <div>
                 <h2>Day Route Builder</h2>
                 <p className="event-meta panel-subtitle">
                   {selectedDate
                     ? `Planning for ${formatDate(selectedDate)}`
-                    : 'Pick a specific date from the slider to start planning.'}
+                    : 'Pick a date from the calendar strip to start planning.'}
                 </p>
               </div>
               <Button
@@ -1200,7 +1477,7 @@ export default function EventMapClient() {
                 </div>
               </div>
             ) : (
-              <p className="empty-state">Move the date slider off “All dates” to plan a specific day.</p>
+              <p className="empty-state">Pick a date in the planner controls to start your day plan.</p>
             )}
 
             <p className="event-meta planner-route-summary">
@@ -1209,7 +1486,7 @@ export default function EventMapClient() {
             </p>
           </section>
 
-          <section className={`panel ${activeMobilePanel !== 'events' ? 'panel-mobile-hidden' : ''}`}>
+          <section className={`panel ${activeMobilePanel !== 'events' ? 'panel-hidden' : ''}`}>
             <h2>Event Plan</h2>
             <p className="event-meta panel-subtitle">
               <strong>Origin:</strong> {baseLocationText || 'Not set'}
@@ -1257,7 +1534,7 @@ export default function EventMapClient() {
             </div>
           </section>
 
-          <section className={`panel ${activeMobilePanel !== 'places' ? 'panel-mobile-hidden' : ''}`}>
+          <section className={`panel ${activeMobilePanel !== 'places' ? 'panel-hidden' : ''}`}>
             <h2>Curated Spots</h2>
             <p className="event-meta panel-subtitle">One-time traveler list with curator notes.</p>
             <div className="card-list">
@@ -1325,6 +1602,26 @@ function getTagIconComponent(tag) {
 
 function getTagIconNode(tag) {
   return TAG_ICON_NODES[normalizePlaceTag(tag)] || mapPinIconNode;
+}
+
+function buildInfoWindowAddButton(plannerAction) {
+  if (!plannerAction) {
+    return '';
+  }
+
+  if (!plannerAction.enabled || !plannerAction.id) {
+    return `<p style="margin:6px 0;color:#64748b;font-size:12px;">Pick a planner date first to add this stop.</p>`;
+  }
+
+  return `
+    <button
+      id="${escapeHtml(plannerAction.id)}"
+      type="button"
+      style="margin:6px 0 8px;padding:6px 10px;border:1px solid #93c5fd;background:#eff6ff;color:#1d4ed8;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;"
+    >
+      ${escapeHtml(plannerAction.label || 'Add to selected date')}
+    </button>
+  `;
 }
 
 function createLucidePinIcon(iconNode, color) {
@@ -1609,6 +1906,101 @@ function formatDate(isoDate) {
   });
 }
 
+function formatDateWeekday(isoDate) {
+  const parsedDate = new Date(`${isoDate}T00:00:00`);
+  if (Number.isNaN(parsedDate.getTime())) {
+    return isoDate;
+  }
+
+  return parsedDate.toLocaleDateString(undefined, {
+    weekday: 'short'
+  });
+}
+
+function formatDateDayMonth(isoDate) {
+  const parsedDate = new Date(`${isoDate}T00:00:00`);
+  if (Number.isNaN(parsedDate.getTime())) {
+    return isoDate;
+  }
+
+  return parsedDate.toLocaleDateString(undefined, {
+    month: 'short',
+    day: 'numeric'
+  });
+}
+
+function formatMonthYear(isoDate) {
+  const parsedDate = new Date(`${isoDate}T00:00:00`);
+  if (Number.isNaN(parsedDate.getTime())) {
+    return isoDate;
+  }
+
+  return parsedDate.toLocaleDateString(undefined, {
+    month: 'long',
+    year: 'numeric'
+  });
+}
+
+function formatDayOfMonth(isoDate) {
+  const parsedDate = new Date(`${isoDate}T00:00:00`);
+  if (Number.isNaN(parsedDate.getTime())) {
+    return isoDate;
+  }
+
+  return String(parsedDate.getDate());
+}
+
+function toISODate(dateInput) {
+  const date = new Date(dateInput);
+  if (Number.isNaN(date.getTime())) {
+    return '';
+  }
+
+  return [
+    date.getFullYear(),
+    String(date.getMonth() + 1).padStart(2, '0'),
+    String(date.getDate()).padStart(2, '0')
+  ].join('-');
+}
+
+function toMonthISO(isoDate) {
+  if (typeof isoDate !== 'string' || isoDate.length < 7) {
+    return '';
+  }
+
+  return `${isoDate.slice(0, 7)}-01`;
+}
+
+function addMonthsToMonthISO(monthISO, offset) {
+  const parsed = new Date(`${monthISO}T00:00:00`);
+  if (Number.isNaN(parsed.getTime())) {
+    return toMonthISO(toISODate(new Date()));
+  }
+
+  parsed.setMonth(parsed.getMonth() + offset);
+  parsed.setDate(1);
+  return toISODate(parsed);
+}
+
+function buildCalendarGridDates(anchorISO) {
+  const anchor = new Date(`${toMonthISO(anchorISO)}T00:00:00`);
+  if (Number.isNaN(anchor.getTime())) {
+    return [];
+  }
+
+  const start = new Date(anchor);
+  start.setDate(1 - start.getDay());
+
+  const dates = [];
+  for (let index = 0; index < 42; index += 1) {
+    const date = new Date(start);
+    date.setDate(start.getDate() + index);
+    dates.push(toISODate(date));
+  }
+
+  return dates;
+}
+
 function formatDistance(totalMeters) {
   if (!Number.isFinite(totalMeters) || totalMeters <= 0) {
     return 'n/a';
@@ -1637,16 +2029,111 @@ function formatDurationFromSeconds(totalSeconds) {
   return `${minutes}m`;
 }
 
-async function requestGoogleDirections(directionsService, request) {
-  return new Promise((resolve, reject) => {
-    directionsService.route(request, (response, statusValue) => {
-      if (statusValue === 'OK') {
-        resolve(response);
-      } else {
-        reject(new Error(`Directions request failed: ${statusValue}`));
-      }
-    });
+async function requestPlannedRoute({ origin, destination, waypoints, travelMode }) {
+  const originPoint = toLatLngLiteral(origin);
+  const destinationPoint = toLatLngLiteral(destination);
+
+  if (!originPoint || !destinationPoint) {
+    throw new Error('Set your home location before drawing a route.');
+  }
+
+  const waypointPoints = Array.isArray(waypoints)
+    ? waypoints.map(toLatLngLiteral).filter(Boolean)
+    : [];
+
+  const response = await fetch('/api/route', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      origin: originPoint,
+      destination: destinationPoint,
+      waypoints: waypointPoints,
+      travelMode
+    })
   });
+
+  const payload = await response.json();
+
+  if (!response.ok) {
+    throw new Error(payload.error || `Route request failed: ${response.status}`);
+  }
+
+  const path = decodeEncodedPolyline(payload.encodedPolyline || '');
+  if (!path.length) {
+    throw new Error('No route geometry returned for this plan.');
+  }
+
+  return {
+    path,
+    totalDistanceMeters: Number(payload.totalDistanceMeters) || 0,
+    totalDurationSeconds: Number(payload.totalDurationSeconds) || 0
+  };
+}
+
+function toLatLngLiteral(position) {
+  if (!position) {
+    return null;
+  }
+
+  const latValue = typeof position.lat === 'function' ? position.lat() : position.lat;
+  const lngValue = typeof position.lng === 'function' ? position.lng() : position.lng;
+  const lat = Number(latValue);
+  const lng = Number(lngValue);
+
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+    return null;
+  }
+
+  return { lat, lng };
+}
+
+function decodeEncodedPolyline(encoded) {
+  if (!encoded || typeof encoded !== 'string') {
+    return [];
+  }
+
+  let index = 0;
+  let latitude = 0;
+  let longitude = 0;
+  const coordinates = [];
+
+  while (index < encoded.length) {
+    let result = 0;
+    let shift = 0;
+    let byte = 0;
+
+    do {
+      byte = encoded.charCodeAt(index) - 63;
+      index += 1;
+      result |= (byte & 0x1f) << shift;
+      shift += 5;
+    } while (byte >= 0x20 && index < encoded.length);
+
+    const latitudeDelta = result & 1 ? ~(result >> 1) : result >> 1;
+    latitude += latitudeDelta;
+
+    result = 0;
+    shift = 0;
+
+    do {
+      byte = encoded.charCodeAt(index) - 63;
+      index += 1;
+      result |= (byte & 0x1f) << shift;
+      shift += 5;
+    } while (byte >= 0x20 && index < encoded.length);
+
+    const longitudeDelta = result & 1 ? ~(result >> 1) : result >> 1;
+    longitude += longitudeDelta;
+
+    coordinates.push({
+      lat: latitude / 1e5,
+      lng: longitude / 1e5
+    });
+  }
+
+  return coordinates;
 }
 
 async function fetchJson(url) {
