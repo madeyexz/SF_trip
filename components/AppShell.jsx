@@ -56,7 +56,7 @@ export default function AppShell({ children }) {
         </div>
       </header>
       <div className={`min-h-0 flex-1 grid items-stretch ${hasMapSidebar ? 'layout-sidebar grid-cols-[minmax(0,3fr)_5fr]' : showMap ? 'grid-cols-1' : ''}`} style={showMap ? undefined : { display: 'contents' }}>
-        <div style={showMap ? undefined : { position: 'absolute', width: 0, height: 0, overflow: 'hidden', pointerEvents: 'none' }} aria-hidden={!showMap}>
+        <div className={showMap ? 'map-panel-shell min-h-0' : ''} style={showMap ? undefined : { position: 'absolute', width: 0, height: 0, overflow: 'hidden', pointerEvents: 'none' }} aria-hidden={!showMap}>
           <MapPanel />
         </div>
         {children}
