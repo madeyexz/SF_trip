@@ -1,10 +1,12 @@
 'use client';
 
+import { AlertTriangle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { useTrip } from '@/components/providers/TripProvider';
 import { formatDateDayMonth } from '@/lib/helpers';
+import { parseEventTimeRange } from '@/lib/planner-helpers';
 
 export default function EventsItinerary() {
   const {
@@ -41,10 +43,17 @@ export default function EventsItinerary() {
           visibleEvents.map((event) => {
             const location = event.address || event.locationText || 'Location not listed';
             const time = event.startDateTimeText || 'Time not listed';
+            const eventRange = parseEventTimeRange(event.startDateTimeText);
+            const hasConflict = eventRange && visibleEvents.some((other) => {
+              if (other.eventUrl === event.eventUrl) return false;
+              const otherRange = parseEventTimeRange(other.startDateTimeText);
+              return otherRange && eventRange.startMinutes < otherRange.endMinutes && eventRange.endMinutes > otherRange.startMinutes;
+            });
             return (
-              <Card className="p-3.5 hover:border-accent-border hover:shadow-[0_0_0_3px_var(--color-accent-glow)]" key={event.eventUrl}>
+              <Card className={`p-3.5 hover:border-accent-border hover:shadow-[0_0_0_3px_var(--color-accent-glow)] ${hasConflict ? 'border-amber-400 bg-amber-50' : ''}`} key={event.eventUrl}>
                 <h3 className="m-0 mb-1.5 text-[0.92rem] font-semibold leading-snug">{event.name}</h3>
                 <p className="my-0.5 text-[0.82rem] text-foreground-secondary leading-relaxed"><strong>Time:</strong> {time}</p>
+                {hasConflict ? <p className="my-1 text-[0.82rem] text-amber-800 bg-amber-100 border border-amber-300 rounded-md px-2 py-1 font-semibold flex items-center gap-1.5"><AlertTriangle size={14} className="text-amber-600 shrink-0" /> Time conflict with another event</p> : null}
                 <p className="my-0.5 text-[0.82rem] text-foreground-secondary leading-relaxed"><strong>Location:</strong> {location}</p>
                 {event.travelDurationText ? <p className="my-0.5 text-[0.82rem] text-foreground-secondary leading-relaxed"><strong>Travel:</strong> {event.travelDurationText}</p> : null}
                 <p className="my-0.5 text-[0.82rem] text-foreground-secondary leading-relaxed">{event.description || ''}</p>
