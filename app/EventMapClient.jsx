@@ -78,7 +78,7 @@ export default function EventMapClient() {
   const [visiblePlaces, setVisiblePlaces] = useState([]);
   const [dates, setDates] = useState(['']);
   const [selectedIndex, setSelectedIndex] = useState(0);
-  const [travelMode, setTravelMode] = useState('DRIVING');
+  const [travelMode, setTravelMode] = useState('WALKING');
   const [baseLocationText, setBaseLocationText] = useState('');
   const [isSyncing, setIsSyncing] = useState(false);
   const [placeTagFilter, setPlaceTagFilter] = useState('all');
@@ -709,9 +709,10 @@ export default function EventMapClient() {
           </ToggleGroup>
         </div>
 
-        <div className="status" style={{ color: statusError ? '#b00020' : '#1d1d1d' }}>
-          {status}
-          <span className="status-meta"> Travel times ready for {travelReadyCount}/{visibleEvents.length} events.</span>
+        <div className="status">
+          <span className={`status-dot${statusError ? ' status-dot-error' : ''}`} />
+          <span style={{ color: statusError ? '#e11d48' : undefined }}>{status}</span>
+          <span className="status-meta">Travel times ready for {travelReadyCount}/{visibleEvents.length} events.</span>
         </div>
       </section>
 
