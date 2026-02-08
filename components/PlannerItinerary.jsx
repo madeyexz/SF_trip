@@ -21,7 +21,7 @@ export default function PlannerItinerary() {
     routeSummary || (selectedDate && dayPlanItems.length ? 'Waiting for routable stops...' : 'Add stops to draw route');
 
   return (
-    <div className="flex flex-col p-3 overflow-y-auto min-h-0 scrollbar-thin">
+    <div className="flex flex-col p-3 min-h-0 h-full overflow-hidden">
       <div className="flex items-start justify-between gap-2 mb-2.5 flex-wrap">
         <div>
           <h2 className="m-0 text-base font-bold tracking-tight">{selectedDate ? formatDate(selectedDate) : 'No date selected'}</h2>
@@ -81,7 +81,7 @@ export default function PlannerItinerary() {
         <p className="my-3 text-muted text-sm text-center p-7 bg-bg-subtle rounded-[10px] border border-dashed border-border">Pick a date from the left to start planning.</p>
       )}
 
-      <div className="mt-2.5 flex items-center gap-1.5 flex-wrap p-2 border border-border rounded-[10px] bg-bg-subtle text-foreground-secondary text-[0.8rem]" role="status" aria-live="polite">
+      <div className="mt-2.5 shrink-0 flex items-center gap-1.5 flex-wrap p-2 border border-border rounded-[10px] bg-bg-subtle text-foreground-secondary text-[0.8rem]" role="status" aria-live="polite">
         <strong>Route:</strong> {routeSummaryText}
         {isRouteUpdating ? <span className="inline-flex items-center ml-2 text-[0.78rem] font-semibold text-accent before:content-[''] before:w-1.5 before:h-1.5 before:rounded-full before:bg-current before:mr-1.5 before:animate-[statusPulse_1.1s_ease-in-out_infinite]">Updating...</span> : null}
       </div>

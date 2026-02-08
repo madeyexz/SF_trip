@@ -35,8 +35,8 @@
 /* Planner time grid -- too structural for pure Tailwind */
 .planner-calendar {
   position: relative;
-  height: 58vh;
-  min-height: 420px;
+  flex: 1;
+  min-height: 0;
   border: 1px solid var(--color-border);
   border-radius: 14px;
   overflow: auto;
@@ -112,5 +112,5 @@
   .day-list-responsive { flex-direction: column; overflow-y: auto; overflow-x: hidden; border-right: 1px solid var(--color-border); border-bottom: none; }
   .day-list-item-responsive { min-width: 112px; flex-shrink: 0; }
   .map-container-responsive { height: 40vh; min-height: 40vh; }
-  .planner-calendar { height: 48vh; min-height: 360px; }
+  .planner-calendar { flex: 1; min-height: 300px; }
 }
