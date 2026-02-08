@@ -93,9 +93,29 @@ After this, `/api/events` reads from Convex first. `/api/sync` writes to both Co
 - If no cache exists, it falls back to `data/sample-events.json`.
 - Static curated places are stored one-time in `data/static-places.json` and are not part of event sync.
 
-## Google Maps key restrictions (recommended)
+## Google APIs used
+
+This app uses a single API key (`GOOGLE_MAPS_BROWSER_KEY`) that powers:
+
+| API | What it does |
+|-----|-------------|
+| Maps JavaScript API | Renders the interactive map |
+| Geocoding API | Converts addresses to lat/lng coordinates |
+| Distance Matrix API | Calculates travel times (walking/driving/transit) |
+| Directions API | Plans optimized routes for day plans |
+| Places Library | Loaded with the Maps JS SDK |
+
+Google Maps Platform gives a **$200/month free credit** on the pay-as-you-go plan, which covers roughly 28k map loads or 40k geocode/directions/distance-matrix requests per month.
+
+### Viewing your usage & quota
+
+1. Open the **APIs & Services dashboard**: https://console.cloud.google.com/apis/dashboard
+2. Click any enabled API to see request counts, errors, and latency.
+3. Check billing spend: https://console.cloud.google.com/billing
+
+### Key restrictions (recommended)
 
 For `GOOGLE_MAPS_BROWSER_KEY`, lock by:
 
 - HTTP referrers: `http://localhost:3000/*`
-- API restrictions: Maps JavaScript API, Distance Matrix API, Geocoding API
+- API restrictions: Maps JavaScript API, Distance Matrix API, Geocoding API, Directions API
