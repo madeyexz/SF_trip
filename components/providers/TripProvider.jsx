@@ -114,6 +114,7 @@ export default function TripProvider({ children }) {
   const [activePlanId, setActivePlanId] = useState('');
   const [routeSummary, setRouteSummary] = useState('');
   const [isRouteUpdating, setIsRouteUpdating] = useState(false);
+  const [baseLocationVersion, setBaseLocationVersion] = useState(0);
   const [sources, setSources] = useState([]);
   const [newSourceType, setNewSourceType] = useState('event');
   const [newSourceUrl, setNewSourceUrl] = useState('');
@@ -589,7 +590,7 @@ export default function TripProvider({ children }) {
   }, []);
 
   const renderCurrentSelection = useCallback(
-    async (eventsInput, placesInput, dateFilter, activeTravelMode) => {
+    async (eventsInput, placesInput, dateFilter, activeTravelMode, shouldFitBounds = true) => {
       if (!mapsReady || !window.google?.maps || !mapRef.current) return;
       clearMapMarkers();
       const filteredEvents = (dateFilter
@@ -683,12 +684,12 @@ export default function TripProvider({ children }) {
         const evtsWithTravel = await calculateTravelTimes(evtsWithPositions, activeTravelMode);
         setVisibleEvents(evtsWithTravel);
         setVisiblePlaces(placesWithPositions);
-        fitMapToVisiblePoints(evtsWithTravel, placesWithPositions);
+        if (shouldFitBounds) fitMapToVisiblePoints(evtsWithTravel, placesWithPositions);
       } catch (error) {
         setStatusMessage(error instanceof Error ? error.message : 'Could not calculate travel times.', true);
         setVisibleEvents(evtsWithPositions);
         setVisiblePlaces(placesWithPositions);
-        fitMapToVisiblePoints(evtsWithPositions, placesWithPositions);
+        if (shouldFitBounds) fitMapToVisiblePoints(evtsWithPositions, placesWithPositions);
       }
     },
     [mapsReady, buildEventInfoWindowHtml, buildPlaceInfoWindowHtml, calculateTravelTimes,
@@ -780,7 +781,7 @@ export default function TripProvider({ children }) {
     if (!mapsReady) return;
     const eventsToRender = hiddenCategories.has('event') ? [] : allEvents;
     const placesToRender = filteredPlaces.filter((p) => !hiddenCategories.has(normalizePlaceTag(p.tag)));
-    void renderCurrentSelection(eventsToRender, placesToRender, effectiveDateFilter, travelMode);
+    void renderCurrentSelection(eventsToRender, placesToRender, effectiveDateFilter, travelMode, false);
   }, [allEvents, effectiveDateFilter, filteredPlaces, hiddenCategories, mapsReady, renderCurrentSelection, travelMode]);
 
   // ---- Route drawing ----
@@ -827,7 +828,7 @@ export default function TripProvider({ children }) {
     }
 
     return () => { cancelled = true; window.clearTimeout(timeoutId); };
-  }, [activePlanId, applyRoutePolylineStyle, clearRoute, dayPlanItems.length, mapsReady, plannedRouteStops, selectedDate, travelMode]);
+  }, [activePlanId, applyRoutePolylineStyle, baseLocationVersion, clearRoute, dayPlanItems.length, mapsReady, plannedRouteStops, selectedDate, travelMode]);
 
   // ---- Handlers ----
   const handleSync = useCallback(async () => {
@@ -978,6 +979,20 @@ export default function TripProvider({ children }) {
     }
   }, [setStatusMessage]);
 
+  const handleSaveBaseLocation = useCallback(async (text) => {
+    await fetchJson('/api/config', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ tripStart, tripEnd, baseLocation: text }),
+    });
+    setBaseLocationText(text);
+    if (mapsReady && window.google?.maps) {
+      const geocodedBase = await geocode(text);
+      if (geocodedBase) setBaseMarker(geocodedBase, `Base location: ${text}`);
+    }
+    setBaseLocationVersion((v) => v + 1);
+  }, [tripStart, tripEnd, mapsReady, geocode, setBaseMarker]);
+
   const toggleCategory = useCallback((category) => {
     setHiddenCategories((prev) => {
       const next = new Set(prev);
@@ -1003,7 +1018,7 @@ export default function TripProvider({ children }) {
     status, statusError, mapsReady,
     allEvents, allPlaces, visibleEvents, visiblePlaces,
     selectedDate, setSelectedDate, showAllEvents, setShowAllEvents,
-    travelMode, setTravelMode, baseLocationText,
+    travelMode, setTravelMode, baseLocationText, setBaseLocationText,
     isSyncing, placeTagFilter, setPlaceTagFilter, hiddenCategories, toggleCategory,
     calendarMonthISO, setCalendarMonthISO,
     plannerByDate, setPlannerByDate,
@@ -1022,7 +1037,7 @@ export default function TripProvider({ children }) {
     setStatusMessage,
     handleSync, handleDeviceLocation,
     handleCreateSource, handleToggleSourceStatus, handleDeleteSource, handleSyncSource,
-    handleSaveTripDates,
+    handleSaveTripDates, handleSaveBaseLocation,
     handleExportPlannerIcs, handleAddDayPlanToGoogleCalendar,
     addEventToDayPlan, addPlaceToDayPlan, removePlanItem, clearDayPlan, startPlanDrag,
     shiftCalendarMonth,

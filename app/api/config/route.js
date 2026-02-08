@@ -1,4 +1,4 @@
-import { loadBaseLocation, getCalendarUrls, loadTripConfig, saveTripConfig } from '@/lib/events';
+import { loadBaseLocation, saveBaseLocation, getCalendarUrls, loadTripConfig, saveTripConfig } from '@/lib/events';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -25,6 +25,9 @@ export async function POST(request) {
     const tripStart = typeof body.tripStart === 'string' ? body.tripStart.trim() : '';
     const tripEnd = typeof body.tripEnd === 'string' ? body.tripEnd.trim() : '';
     await saveTripConfig({ tripStart, tripEnd });
+    if (typeof body.baseLocation === 'string') {
+      await saveBaseLocation(body.baseLocation);
+    }
     return Response.json({ ok: true, tripStart, tripEnd });
   } catch (err) {
     return Response.json({ error: err.message }, { status: 400 });

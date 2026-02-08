@@ -100,6 +100,7 @@ export default defineSchema({
     key: v.string(),
     tripStart: v.string(),
     tripEnd: v.string(),
+    baseLocation: v.optional(v.string()),
     updatedAt: v.string()
   }).index('by_key', ['key'])
 });

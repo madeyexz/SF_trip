@@ -13,7 +13,7 @@ const NAV_ITEMS = [
   { id: 'calendar', href: '/calendar', icon: Calendar, label: 'Calendar' },
   { id: 'planning', href: '/planning', icon: Navigation, label: 'Planning' },
   { id: 'spots', href: '/spots', icon: Coffee, label: 'Spots' },
-  { id: 'sources', href: '/sources', icon: RefreshCw, label: 'Sources' }
+  { id: 'config', href: '/config', icon: RefreshCw, label: 'Config' }
 ];
 
 const MAP_TABS = new Set(['map', 'planning', 'spots']);

@@ -12,22 +12,27 @@ import {
 import { useTrip } from '@/components/providers/TripProvider';
 import { safeHostname } from '@/lib/helpers';
 
-export default function SourcesPage() {
+export default function ConfigPage() {
   const {
     groupedSources,
     newSourceType, setNewSourceType, newSourceUrl, setNewSourceUrl,
     newSourceLabel, setNewSourceLabel, isSavingSource, syncingSourceId,
     handleCreateSource, handleToggleSourceStatus, handleDeleteSource, handleSyncSource,
-    tripStart, tripEnd, handleSaveTripDates
+    tripStart, tripEnd, handleSaveTripDates,
+    baseLocationText, handleSaveBaseLocation
   } = useTrip();
 
   const [localTripStart, setLocalTripStart] = useState(tripStart);
   const [localTripEnd, setLocalTripEnd] = useState(tripEnd);
   const [dateSaveState, setDateSaveState] = useState('idle');
+  const [localBaseLocation, setLocalBaseLocation] = useState(baseLocationText);
+  const [locationSaveState, setLocationSaveState] = useState('idle');
   const saveTimerRef = useRef(null);
+  const locationTimerRef = useRef(null);
 
   useEffect(() => { setLocalTripStart(tripStart); }, [tripStart]);
   useEffect(() => { setLocalTripEnd(tripEnd); }, [tripEnd]);
+  useEffect(() => { setLocalBaseLocation(baseLocationText); }, [baseLocationText]);
 
   const onSaveDates = async (e) => {
     e.preventDefault();
@@ -39,6 +44,19 @@ export default function SourcesPage() {
       saveTimerRef.current = setTimeout(() => setDateSaveState('idle'), 2000);
     } catch {
       setDateSaveState('idle');
+    }
+  };
+
+  const onSaveLocation = async (e) => {
+    e.preventDefault();
+    setLocationSaveState('saving');
+    try {
+      await handleSaveBaseLocation(localBaseLocation);
+      setLocationSaveState('saved');
+      clearTimeout(locationTimerRef.current);
+      locationTimerRef.current = setTimeout(() => setLocationSaveState('idle'), 2000);
+    } catch {
+      setLocationSaveState('idle');
     }
   };
 
@@ -101,6 +119,22 @@ export default function SourcesPage() {
             <Input type="date" value={localTripEnd} onChange={(e) => setLocalTripEnd(e.target.value)} className="max-w-[180px] max-sm:max-w-none" />
             <Button type="submit" size="sm" className="min-h-[36px] rounded-lg min-w-[80px] shrink-0" disabled={dateSaveState === 'saving'}>
               {dateSaveState === 'saving' ? 'Saving...' : dateSaveState === 'saved' ? <><Check size={14} />Saved</> : 'Save'}
+            </Button>
+          </form>
+        </Card>
+
+        <div className="flex items-center justify-between gap-4">
+          <div>
+            <h2 className="m-0 text-xl font-extrabold tracking-tight">Base Location</h2>
+            <p className="mt-0.5 text-muted text-[0.82rem]">Your home base for travel time calculations and route planning.</p>
+          </div>
+        </div>
+        <Card className="p-3">
+          <form className="flex items-center gap-2 max-sm:flex-col" onSubmit={onSaveLocation}>
+            <label className="text-sm font-medium text-foreground-secondary shrink-0">Address</label>
+            <Input type="text" value={localBaseLocation} onChange={(e) => setLocalBaseLocation(e.target.value)} placeholder="e.g. 1100 California St, San Francisco, CA 94108, United States" className="max-sm:max-w-none" />
+            <Button type="submit" size="sm" className="min-h-[36px] rounded-lg min-w-[80px] shrink-0" disabled={locationSaveState === 'saving'}>
+              {locationSaveState === 'saving' ? 'Saving...' : locationSaveState === 'saved' ? <><Check size={14} />Saved</> : 'Save'}
             </Button>
           </form>
         </Card>
