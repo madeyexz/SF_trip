@@ -927,7 +927,9 @@ export default function TripProvider({ children }) {
       setTripStart(start);
       setTripEnd(end);
     } catch (err) {
-      setStatusMessage(`Failed to save trip dates: ${err.message}`, true);
+      const message = err instanceof Error ? err.message : 'Unknown error';
+      setStatusMessage(`Failed to save trip dates: ${message}`, true);
+      throw err;
     }
   }, [setStatusMessage]);
 
