@@ -94,5 +94,11 @@ export default defineSchema({
     syncedAt: v.string(),
     calendars: v.array(v.string()),
     eventCount: v.number()
+  }).index('by_key', ['key']),
+  tripConfig: defineTable({
+    key: v.string(),
+    tripStart: v.string(),
+    tripEnd: v.string(),
+    updatedAt: v.string()
   }).index('by_key', ['key'])
 });
