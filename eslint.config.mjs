@@ -36,7 +36,7 @@ export default [
     }
   },
   {
-    ignores: ['node_modules/**', '.next/**', 'convex/**', 'skills/**', 'lib/**']
+    ignores: ['node_modules/**', '.next/**', '.vercel/**', 'convex/**', 'skills/**', 'lib/**']
   },
   prettierConfig
 ];
