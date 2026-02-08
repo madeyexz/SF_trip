@@ -96,10 +96,11 @@ Planner day routes are also persisted in Convex via `/api/planner` when `CONVEX_
 - Some events hide exact addresses unless you register. Those may only show city-level location.
 - Without Convex configured, the app stores synced events in `data/events-cache.json`.
 - Address geocoding cache is persisted in `data/geocode-cache.json`.
+- Generated route cache is also persisted locally in `data/route-cache.json`.
 - With Convex configured, events are persisted in Convex and survive redeploys.
 - With Convex configured, geocode cache is persisted in Convex (`geocodeCache` table).
 - With Convex configured, planner day routes (create/update/delete per date) are persisted in Convex.
-- With Convex configured, generated map routes are cached in Convex and reused to reduce repeated Routes API calls.
+- With Convex configured, generated map routes are additionally cached in Convex and reused across sessions/deploys.
 - If no cache exists, it falls back to `data/sample-events.json`.
 - Static curated places are stored one-time in `data/static-places.json` and are not part of event sync.
 
@@ -114,6 +115,51 @@ This app uses `GOOGLE_MAPS_BROWSER_KEY` for map rendering and travel estimates, 
 | Distance Matrix API | Calculates travel times (walking/driving/transit) |
 | Routes API | Plans day-plan routes without legacy Directions API |
 | Places Library | Loaded with the Maps JS SDK |
+
+## How we minimize Google API calls
+
+This app intentionally uses multi-layer caching and request dedupe to reduce billable Google usage.
+
+### 1) Geocoding API minimization
+
+- Runtime geocoding goes through server endpoint `/api/geocode` (not direct browser Geocoder calls).
+- Server geocode lookup order:
+  1. in-memory map (per server process)
+  2. `data/geocode-cache.json`
+  3. Convex `geocodeCache` (if `CONVEX_URL` is configured)
+  4. Google Geocoding API (only on miss)
+- Client also keeps a browser cache (`localStorage` key: `sf-trip-geocode-cache-v1`) to avoid repeated lookups in the same browser.
+- During sync, events/places are enriched with coordinates and persisted so future runtime geocoding is often skipped entirely.
+
+### 2) Routes API minimization
+
+- `/api/route` creates a deterministic hash key from `travelMode + origin + destination + waypoints`.
+- Route lookup order:
+  1. local server cache file `data/route-cache.json`
+  2. Convex `routeCache` (if configured)
+  3. Google Routes API (only on miss)
+- Route results are written back to cache after live fetch.
+- Client side also memoizes route results in-session and reuses identical route requests.
+- Route draw requests are debounced and skipped while dragging planner blocks to avoid burst calls.
+
+### 3) Distance Matrix API minimization
+
+- Travel-time requests are cached in-session by `travelMode + base location + destination`.
+- Cached destinations are not requested again.
+- Only missing destinations are sent to Distance Matrix.
+- Requests are chunked (up to 25 destinations per call).
+- `"Unavailable"` responses are cached too, preventing repeated failed lookups.
+
+### 4) Maps JavaScript API minimization
+
+- Google Maps script is loaded once and reused for the session.
+- Most data operations (geocode/route caching) are moved server-side to avoid extra client SDK requests.
+
+### 5) Operational best practices
+
+- Keep `lat/lng` on events and places whenever possible.
+- Run sync to warm caches before heavy planning sessions.
+- Keep `CONVEX_URL` enabled for cross-session persistence beyond local JSON files.
 
 Google Maps Platform now uses **per-SKU monthly free usage caps** (the old `$200` credit model was retired in March 2025). Check current caps in the official pricing page.
 
