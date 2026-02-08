@@ -80,6 +80,8 @@ export default function EventMapClient() {
   const markersRef = useRef([]);
   const positionCacheRef = useRef(new Map());
   const geocodeStoreRef = useRef(new Map());
+  const travelTimeCacheRef = useRef(new Map());
+  const plannedRouteCacheRef = useRef(new Map());
   const plannerHydratedRef = useRef(false);
 
   const [status, setStatus] = useState('Loading trip map...');
@@ -196,15 +198,6 @@ export default function EventMapClient() {
     }
   }, [calendarMonthISO, selectedDate]);
 
-  const selectedDateIndex = useMemo(() => {
-    if (!selectedDate) {
-      return 0;
-    }
-
-    const index = uniqueDates.indexOf(selectedDate);
-    return index < 0 ? 0 : index;
-  }, [selectedDate, uniqueDates]);
-
   const effectiveDateFilter = showAllEvents ? '' : selectedDate;
 
   const dayPlanItems = useMemo(() => {
@@ -243,18 +236,6 @@ export default function EventMapClient() {
 
     return stops;
   }, [dayPlanItems, eventLookup, placeLookup]);
-
-  const nearestEvent = useMemo(() => {
-    const valid = visibleEvents
-      .map((event) => ({
-        ...event,
-        _travelMins: parseDurationToMinutes(event.travelDurationText)
-      }))
-      .filter((event) => event._travelMins !== null)
-      .sort((left, right) => left._travelMins - right._travelMins);
-
-    return valid[0] || null;
-  }, [visibleEvents]);
 
   useEffect(() => {
     let mounted = true;
@@ -806,11 +787,42 @@ export default function EventMapClient() {
       }
 
       const travelModeValue = window.google.maps.TravelMode[activeTravelMode];
+      const baseKey = toCoordinateKey(baseLatLngRef.current);
+
+      if (!travelModeValue || !baseKey) {
+        return eventsWithPositions;
+      }
+
       const enrichedByUrl = new Map(eventsWithPositions.map((event) => [event.eventUrl, { ...event }]));
+      const missingEvents = [];
+
+      for (const event of withLocation) {
+        const destinationKey = toCoordinateKey(event._position);
+        if (!destinationKey) {
+          missingEvents.push(event);
+          continue;
+        }
+
+        const cacheKey = createTravelTimeCacheKey({
+          travelMode: activeTravelMode,
+          baseKey,
+          destinationKey
+        });
+        const cachedDuration = travelTimeCacheRef.current.get(cacheKey);
+
+        if (typeof cachedDuration === 'string') {
+          const target = enrichedByUrl.get(event.eventUrl);
+          if (target) {
+            target.travelDurationText = cachedDuration;
+          }
+        } else {
+          missingEvents.push(event);
+        }
+      }
 
       const chunkSize = 25;
-      for (let index = 0; index < withLocation.length; index += chunkSize) {
-        const chunk = withLocation.slice(index, index + chunkSize);
+      for (let index = 0; index < missingEvents.length; index += chunkSize) {
+        const chunk = missingEvents.slice(index, index + chunkSize);
         const response = await distanceMatrixRequest({
           origins: [baseLatLngRef.current],
           destinations: chunk.map((event) => event._position),
@@ -828,12 +840,36 @@ export default function EventMapClient() {
             continue;
           }
 
+          const destinationKey = toCoordinateKey(chunkEvent._position);
           if (element?.status === 'OK') {
-            target.travelDurationText = element.duration?.text || '';
+            const durationText = element.duration?.text || '';
+            target.travelDurationText = durationText;
+
+            if (destinationKey) {
+              const cacheKey = createTravelTimeCacheKey({
+                travelMode: activeTravelMode,
+                baseKey,
+                destinationKey
+              });
+              travelTimeCacheRef.current.set(cacheKey, durationText);
+            }
           } else {
             target.travelDurationText = 'Unavailable';
+
+            if (destinationKey) {
+              const cacheKey = createTravelTimeCacheKey({
+                travelMode: activeTravelMode,
+                baseKey,
+                destinationKey
+              });
+              travelTimeCacheRef.current.set(cacheKey, 'Unavailable');
+            }
           }
         }
+      }
+
+      if (travelTimeCacheRef.current.size > 4000) {
+        travelTimeCacheRef.current.clear();
       }
 
       return eventsWithPositions.map((event) => enrichedByUrl.get(event.eventUrl) || event);
@@ -1135,10 +1171,17 @@ export default function EventMapClient() {
     }
 
     let cancelled = false;
+    const timeoutId = window.setTimeout(() => {
+      void drawPlannedRoute();
+    }, 320);
 
     async function drawPlannedRoute() {
       if (!mapRef.current) {
         setIsRouteUpdating(false);
+        return;
+      }
+
+      if (activePlanId) {
         return;
       }
 
@@ -1166,12 +1209,26 @@ export default function EventMapClient() {
         setIsRouteUpdating(true);
         applyRoutePolylineStyle(true);
 
-        const route = await requestPlannedRoute({
+        const routeRequestInput = {
           origin: baseLatLngRef.current,
           destination: baseLatLngRef.current,
           waypoints: routeStops.map((stop) => stop.position),
           travelMode
-        });
+        };
+        const routeCacheKey = createRouteRequestCacheKey(routeRequestInput);
+        let route = routeCacheKey ? plannedRouteCacheRef.current.get(routeCacheKey) : null;
+
+        if (!route) {
+          route = await requestPlannedRoute(routeRequestInput);
+
+          if (routeCacheKey) {
+            plannedRouteCacheRef.current.set(routeCacheKey, route);
+          }
+        }
+
+        if (plannedRouteCacheRef.current.size > 1000) {
+          plannedRouteCacheRef.current.clear();
+        }
 
         if (cancelled) {
           return;
@@ -1218,8 +1275,10 @@ export default function EventMapClient() {
 
     return () => {
       cancelled = true;
+      window.clearTimeout(timeoutId);
     };
   }, [
+    activePlanId,
     applyRoutePolylineStyle,
     clearRoute,
     dayPlanItems.length,
@@ -1341,7 +1400,6 @@ export default function EventMapClient() {
     setCalendarMonthISO(shifted);
   }, [calendarAnchorISO]);
 
-  const dateLabel = selectedDate ? formatDate(selectedDate) : 'No dated events';
   const travelReadyCount = visibleEvents.filter(
     (event) => event.travelDurationText && event.travelDurationText !== 'Unavailable'
   ).length;
@@ -1683,10 +1741,10 @@ function buildInfoWindowAddButton(plannerAction) {
 function createLucidePinIcon(iconNode, color) {
   const iconSvg = renderLucideIconNode(iconNode);
   const svg = `
-    <svg xmlns=\"http://www.w3.org/2000/svg\" width=\"38\" height=\"48\" viewBox=\"0 0 38 48\">
-      <path d=\"M19 1C9.6 1 2 8.6 2 18c0 11.7 14.1 26.9 16.2 29.1a1.2 1.2 0 0 0 1.6 0C21.9 44.9 36 29.7 36 18 36 8.6 28.4 1 19 1z\" fill=\"${color}\" stroke=\"#ffffff\" stroke-width=\"2\" />
-      <circle cx=\"19\" cy=\"18\" r=\"10\" fill=\"rgba(255,255,255,0.16)\" />
-      <g transform=\"translate(7 6)\" fill=\"none\" stroke=\"#ffffff\" stroke-width=\"2.2\" stroke-linecap=\"round\" stroke-linejoin=\"round\">
+    <svg xmlns="http://www.w3.org/2000/svg" width="38" height="48" viewBox="0 0 38 48">
+      <path d="M19 1C9.6 1 2 8.6 2 18c0 11.7 14.1 26.9 16.2 29.1a1.2 1.2 0 0 0 1.6 0C21.9 44.9 36 29.7 36 18 36 8.6 28.4 1 19 1z" fill="${color}" stroke="#ffffff" stroke-width="2" />
+      <circle cx="19" cy="18" r="10" fill="rgba(255,255,255,0.16)" />
+      <g transform="translate(7 6)" fill="none" stroke="#ffffff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
         ${iconSvg}
       </g>
     </svg>
@@ -2266,6 +2324,27 @@ async function requestPlannedRoute({ origin, destination, waypoints, travelMode 
   };
 }
 
+function createRouteRequestCacheKey({ origin, destination, waypoints, travelMode }) {
+  const originPoint = toLatLngLiteral(origin);
+  const destinationPoint = toLatLngLiteral(destination);
+  const waypointPoints = Array.isArray(waypoints)
+    ? waypoints.map(toLatLngLiteral).filter(Boolean)
+    : [];
+
+  if (!originPoint || !destinationPoint) {
+    return '';
+  }
+
+  const normalizePoint = (point) => `${point.lat.toFixed(5)},${point.lng.toFixed(5)}`;
+
+  return [
+    String(travelMode || ''),
+    normalizePoint(originPoint),
+    normalizePoint(destinationPoint),
+    waypointPoints.map(normalizePoint).join('|')
+  ].join(';');
+}
+
 function toLatLngLiteral(position) {
   if (!position) {
     return null;
@@ -2281,6 +2360,19 @@ function toLatLngLiteral(position) {
   }
 
   return { lat, lng };
+}
+
+function toCoordinateKey(position) {
+  const point = toLatLngLiteral(position);
+  if (!point) {
+    return '';
+  }
+
+  return `${point.lat.toFixed(5)},${point.lng.toFixed(5)}`;
+}
+
+function createTravelTimeCacheKey({ travelMode, baseKey, destinationKey }) {
+  return `${String(travelMode || '')};${baseKey};${destinationKey}`;
 }
 
 function decodeEncodedPolyline(encoded) {

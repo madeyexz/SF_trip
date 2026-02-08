@@ -11,8 +11,12 @@ This project is a Next.js 15 app for SF event mapping.
 ## Build, Test, and Development Commands
 - `pnpm install`: install dependencies.
 - `pnpm dev`: run Next.js locally at `http://localhost:3000`.
-- `pnpm build`: create production build (use as primary pre-PR validation).
+- `pnpm build`: create production build.
 - `pnpm start`: run the production build locally.
+- `pnpm lint`: run ESLint (use as primary pre-PR validation).
+- `pnpm lint:fix`: auto-fix ESLint issues.
+- `pnpm format`: format all files with Prettier.
+- `pnpm format:check`: check formatting without writing.
 - `pnpm convex:dev`: initialize/dev-connect Convex.
 - `pnpm convex:deploy`: deploy Convex schema/functions.
 
@@ -28,7 +32,7 @@ This project is a Next.js 15 app for SF event mapping.
 
 ## Testing Guidelines
 No automated test suite is currently configured (no Jest/Vitest/Playwright scripts yet).
-- Minimum check before opening a PR: `pnpm build` must pass.
+- Minimum check before opening a PR: `pnpm lint` must pass.
 - For feature changes, manually verify:
   - map rendering and controls in `app/EventMapClient.jsx`
   - `/api/events` and `/api/sync` behavior
