@@ -319,7 +319,7 @@ export default function TripProvider({ children }) {
   }, []);
 
   const clearMapMarkers = useCallback(() => {
-    for (const m of markersRef.current) m.setMap(null);
+    for (const m of markersRef.current) m.map = null;
     markersRef.current = [];
   }, []);
 
@@ -430,12 +430,12 @@ export default function TripProvider({ children }) {
   }, []);
 
   const setBaseMarker = useCallback((latLng, title) => {
-    if (!mapRef.current || !window.google?.maps) return;
+    if (!mapRef.current || !window.google?.maps?.marker) return;
     baseLatLngRef.current = latLng;
-    if (baseMarkerRef.current) baseMarkerRef.current.setMap(null);
-    baseMarkerRef.current = new window.google.maps.Marker({
+    if (baseMarkerRef.current) baseMarkerRef.current.map = null;
+    baseMarkerRef.current = new window.google.maps.marker.AdvancedMarkerElement({
       map: mapRef.current, position: latLng, title,
-      icon: createLucidePinIcon(houseIconNode, '#111827')
+      content: createLucidePinIcon(houseIconNode, '#111827')
     });
   }, []);
 
@@ -599,11 +599,12 @@ export default function TripProvider({ children }) {
         });
         const ewp = { ...event, _position: position, travelDurationText: '' };
         if (position) {
-          const marker = new window.google.maps.Marker({
+          const marker = new window.google.maps.marker.AdvancedMarkerElement({
             map: mapRef.current, position, title: event.name,
-            icon: createLucidePinIcon(calendarIconNode, '#ea580c')
+            content: createLucidePinIcon(calendarIconNode, '#ea580c'),
+            gmpClickable: true
           });
-          marker.addListener('click', () => {
+          marker.addEventListener('gmp-click', () => {
             if (!infoWindowRef.current) return;
             const addActionId = selectedDate ? `add-${createPlanId()}` : '';
             const plannerAction = {
@@ -638,11 +639,12 @@ export default function TripProvider({ children }) {
         });
         const pwp = { ...place, _position: position, tag: normalizePlaceTag(place.tag) };
         if (position) {
-          const marker = new window.google.maps.Marker({
+          const marker = new window.google.maps.marker.AdvancedMarkerElement({
             map: mapRef.current, position, title: place.name,
-            icon: createLucidePinIcon(getTagIconNode(pwp.tag), getTagColor(pwp.tag))
+            content: createLucidePinIcon(getTagIconNode(pwp.tag), getTagColor(pwp.tag)),
+            gmpClickable: true
           });
-          marker.addListener('click', () => {
+          marker.addEventListener('gmp-click', () => {
             if (!infoWindowRef.current) return;
             const addActionId = selectedDate ? `add-${createPlanId()}` : '';
             const plannerAction = {
@@ -691,11 +693,13 @@ export default function TripProvider({ children }) {
     let mounted = true;
     async function bootstrap() {
       try {
-        const [config, eventsPayload, sourcesPayload] = await Promise.all([
+        let eventsPayload;
+        const [config, syncResult, sourcesPayload] = await Promise.all([
           fetchJson('/api/config'),
-          fetchJson('/api/events'),
+          fetch('/api/sync', { method: 'POST' }).then((r) => r.json()).catch(() => null),
           fetchJson('/api/sources').catch(() => ({ sources: [] }))
         ]);
+        eventsPayload = syncResult && !syncResult.error ? syncResult : await fetchJson('/api/events');
         if (!mounted) return;
         setTripStart(config.tripStart || '');
         setTripEnd(config.tripEnd || '');
@@ -708,9 +712,11 @@ export default function TripProvider({ children }) {
         setSources(loadedSources);
         if (!config.mapsBrowserKey) { setStatusMessage('Missing GOOGLE_MAPS_BROWSER_KEY in .env. Map cannot load.', true); return; }
         await loadGoogleMapsScript(config.mapsBrowserKey);
+        await window.google.maps.importLibrary('marker');
         if (!mounted || !mapElementRef.current || !window.google?.maps) return;
         mapRef.current = new window.google.maps.Map(mapElementRef.current, {
           center: { lat: 37.7749, lng: -122.4194 }, zoom: 12,
+          mapId: config.mapsMapId || 'DEMO_MAP_ID',
           mapTypeControl: false, streetViewControl: false, fullscreenControl: false,
           restriction: {
             latLngBounds: { north: 37.85, south: 37.68, west: -122.55, east: -122.33 },
@@ -729,7 +735,7 @@ export default function TripProvider({ children }) {
       }
     }
     void bootstrap();
-    return () => { mounted = false; clearMapMarkers(); clearRoute(); if (baseMarkerRef.current) baseMarkerRef.current.setMap(null); };
+    return () => { mounted = false; clearMapMarkers(); clearRoute(); if (baseMarkerRef.current) baseMarkerRef.current.map = null; };
   }, [clearMapMarkers, clearRoute, geocode, setBaseMarker, setStatusMessage]);
 
   // ---- Re-render on filter changes ----

@@ -11,6 +11,7 @@ export async function GET() {
 
   return Response.json({
     mapsBrowserKey: process.env.GOOGLE_MAPS_BROWSER_KEY || '',
+    mapsMapId: process.env.GOOGLE_MAPS_MAP_ID || '',
     baseLocation,
     calendars: getCalendarUrls(),
     tripStart: tripConfig.tripStart || process.env.TRIP_START || '',
