@@ -79,7 +79,8 @@ export default defineSchema({
     createdAt: v.string(),
     updatedAt: v.string(),
     lastSyncedAt: v.optional(v.string()),
-    lastError: v.optional(v.string())
+    lastError: v.optional(v.string()),
+    rssStateJson: v.optional(v.string())
   }).index('by_type_status', ['sourceType', 'status'])
     .index('by_url', ['url']),
   geocodeCache: defineTable({

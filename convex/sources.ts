@@ -79,7 +79,8 @@ export const updateSource = mutation({
     label: v.optional(v.string()),
     status: v.optional(sourceStatusValidator),
     lastSyncedAt: v.optional(v.string()),
-    lastError: v.optional(v.string())
+    lastError: v.optional(v.string()),
+    rssStateJson: v.optional(v.string())
   },
   handler: async (ctx, args) => {
     const existing = await ctx.db.get(args.sourceId);
@@ -92,7 +93,8 @@ export const updateSource = mutation({
       label?: string,
       status?: 'active' | 'paused',
       lastSyncedAt?: string,
-      lastError?: string
+      lastError?: string,
+      rssStateJson?: string
     } = {
       updatedAt: new Date().toISOString()
     };
@@ -111,6 +113,10 @@ export const updateSource = mutation({
 
     if (typeof args.lastError === 'string') {
       updates.lastError = args.lastError.trim();
+    }
+
+    if (typeof args.rssStateJson === 'string') {
+      updates.rssStateJson = args.rssStateJson.trim();
     }
 
     await ctx.db.patch(args.sourceId, updates);

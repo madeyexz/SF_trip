@@ -15,6 +15,12 @@
   --color-accent-glow: rgba(59, 108, 245, 0.12);
   --color-border: #e4e9f1;
   --color-border-hover: #c8d0df;
+  --color-info: #2a7de1;
+  --color-info-light: #e8f1fd;
+  --color-info-border: #93c0f5;
+  --color-success: #1a9a5b;
+  --color-success-light: #e6f7ef;
+  --color-success-border: #7fd4a8;
 }
 
 @layer base {

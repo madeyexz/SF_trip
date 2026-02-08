@@ -2,17 +2,18 @@
 
 Next.js app that:
 
-1. syncs Luma event details via Firecrawl
-2. plots events on Google Maps
-3. pins your base location (from `docs/my_location.md`)
-4. estimates travel time from your base location to each event
-5. filters events by date with a slider
-6. shows a static curated places layer (cafes/bars/eat/go out/shops)
+1. syncs event data from iCal feeds and Beehiiv RSS
+2. uses Firecrawl to extract event listings from new Beehiiv newsletter posts
+3. plots events on Google Maps
+4. pins your base location (from `docs/my_location.md`)
+5. estimates travel time from your base location to each event
+6. filters events by date with a slider
+7. shows a static curated places layer (cafes/bars/eat/go out/shops)
 
 ## Requirements
 
 - Node.js 18+
-- Firecrawl API key
+- Firecrawl API key (for Beehiiv RSS newsletter extraction)
 - Google Maps Platform browser API key
 - Google Maps Platform server API key with Routes API enabled (recommended for route drawing)
 - Optional: Convex project (for persistent cloud DB)
@@ -27,12 +28,13 @@ cp .env.example .env
 
 2. Fill in `.env`:
 
-- `FIRECRAWL_API_KEY` (for event sync)
+- `FIRECRAWL_API_KEY` (for Beehiiv RSS extraction in `/api/sync`)
 - `GOOGLE_MAPS_BROWSER_KEY` (for map rendering)
 - `GOOGLE_MAPS_ROUTES_KEY` (server key used by `/api/route` to draw day routes)
 - `GOOGLE_MAPS_GEOCODING_KEY` (optional server key used by `/api/sync` for pre-geocoding; falls back to server/browser key)
 - `CONVEX_URL` (optional, enables Convex read/write persistence)
-- `MAX_EVENT_URLS` (optional, max individual event pages scraped per sync; default `5`)
+- `RSS_INITIAL_ITEMS` (optional, number of newsletter posts to process on first sync; default `1`)
+- `RSS_MAX_ITEMS_PER_SYNC` (optional, cap on new newsletter posts processed per sync; default `3`)
 
 3. Install dependencies:
 
@@ -62,6 +64,7 @@ pnpm start
 - Click **Sync Events** to pull fresh events from:
   - `https://luma.com/sf`
   - `https://luma.com/cerebralvalley_`
+- `/api/sync` also polls `https://rss.beehiiv.com/feeds/9B98D9gG4C.xml` and only parses unseen/updated newsletter items using RSS `guid` (or link) + item update version (`atom:updated` / `atom:published` / `pubDate`).
 - Open **Sources** tab to add/pause/delete global event and spot source URLs.
 - Use the **Date filter** slider to switch days.
 - Use **Travel mode** to switch driving/transit/walking.
