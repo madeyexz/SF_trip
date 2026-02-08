@@ -4,6 +4,7 @@ node_modules
 data/events-cache.json
 data/geocode-cache.json
 data/route-cache.json
+data/trip-config.json
 .next
 .convex
 

@@ -17,7 +17,8 @@ import {
 import {
   normalizePlaceTag, normalizeAddressKey, getPlaceSourceKey, normalizeDateKey,
   fetchJson, toISODate, toMonthISO, toDateOnlyISO, addMonthsToMonthISO, escapeHtml, truncate,
-  formatTag, formatDate, formatDateDayMonth, formatDistance, formatDurationFromSeconds
+  formatTag, formatDate, formatDateDayMonth, formatDistance, formatDurationFromSeconds,
+  buildISODateRange
 } from '@/lib/helpers';
 import {
   createPlanId, sortPlanItems, sanitizePlannerByDate, compactPlannerByDate,
@@ -118,6 +119,8 @@ export default function TripProvider({ children }) {
   const [newSourceLabel, setNewSourceLabel] = useState('');
   const [isSavingSource, setIsSavingSource] = useState(false);
   const [syncingSourceId, setSyncingSourceId] = useState('');
+  const [tripStart, setTripStart] = useState('');
+  const [tripEnd, setTripEnd] = useState('');
 
   const placeTagOptions = useMemo(() => {
     const tags = new Set();
@@ -150,10 +153,20 @@ export default function TripProvider({ children }) {
     return groups;
   }, [sources]);
 
-  const uniqueDates = useMemo(
-    () => Array.from(new Set(allEvents.map((e) => normalizeDateKey(e.startDateISO)).filter(Boolean))).sort(),
-    [allEvents]
-  );
+  const uniqueDates = useMemo(() => {
+    if (tripStart && tripEnd) {
+      return buildISODateRange(tripStart, tripEnd);
+    }
+    const dateSet = new Set();
+    for (const e of allEvents) {
+      const d = normalizeDateKey(e.startDateISO);
+      if (d) dateSet.add(d);
+    }
+    for (const d of Object.keys(plannerByDate)) {
+      if (d) dateSet.add(d);
+    }
+    return Array.from(dateSet).sort();
+  }, [tripStart, tripEnd, allEvents, plannerByDate]);
 
   const eventsByDate = useMemo(() => {
     const map = new Map();
@@ -684,6 +697,8 @@ export default function TripProvider({ children }) {
           fetchJson('/api/sources').catch(() => ({ sources: [] }))
         ]);
         if (!mounted) return;
+        setTripStart(config.tripStart || '');
+        setTripEnd(config.tripEnd || '');
         setBaseLocationText(config.baseLocation || '');
         const loadedEvents = Array.isArray(eventsPayload.events) ? eventsPayload.events : [];
         const loadedPlaces = Array.isArray(eventsPayload.places) ? eventsPayload.places : [];
@@ -898,6 +913,20 @@ export default function TripProvider({ children }) {
     setStatusMessage(`Opened ${openedCount} Google Calendar drafts for ${formatDate(toDateOnlyISO(selectedDate))}.`);
   }, [baseLocationText, dayPlanItems, selectedDate, setStatusMessage]);
 
+  const handleSaveTripDates = useCallback(async (start, end) => {
+    try {
+      await fetchJson('/api/config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tripStart: start, tripEnd: end }),
+      });
+      setTripStart(start);
+      setTripEnd(end);
+    } catch (err) {
+      setStatusMessage(`Failed to save trip dates: ${err.message}`, true);
+    }
+  }, [setStatusMessage]);
+
   const shiftCalendarMonth = useCallback((offset) => {
     const shifted = addMonthsToMonthISO(calendarAnchorISO, offset);
     setCalendarMonthISO(shifted);
@@ -923,6 +952,7 @@ export default function TripProvider({ children }) {
     sources, groupedSources,
     newSourceType, setNewSourceType, newSourceUrl, setNewSourceUrl,
     newSourceLabel, setNewSourceLabel, isSavingSource, syncingSourceId,
+    tripStart, setTripStart, tripEnd, setTripEnd,
     // Derived
     placeTagOptions, filteredPlaces, eventLookup, placeLookup,
     uniqueDates, eventsByDate, planItemsByDate,
@@ -932,6 +962,7 @@ export default function TripProvider({ children }) {
     setStatusMessage,
     handleSync, handleDeviceLocation,
     handleCreateSource, handleToggleSourceStatus, handleDeleteSource, handleSyncSource,
+    handleSaveTripDates,
     handleExportPlannerIcs, handleAddDayPlanToGoogleCalendar,
     addEventToDayPlan, addPlaceToDayPlan, removePlanItem, clearDayPlan, startPlanDrag,
     shiftCalendarMonth,

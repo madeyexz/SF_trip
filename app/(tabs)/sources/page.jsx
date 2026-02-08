@@ -1,5 +1,6 @@
 'use client';
 
+import { useState, useEffect } from 'react';
 import { RefreshCw } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -16,8 +17,15 @@ export default function SourcesPage() {
     groupedSources,
     newSourceType, setNewSourceType, newSourceUrl, setNewSourceUrl,
     newSourceLabel, setNewSourceLabel, isSavingSource, syncingSourceId,
-    handleCreateSource, handleToggleSourceStatus, handleDeleteSource, handleSyncSource
+    handleCreateSource, handleToggleSourceStatus, handleDeleteSource, handleSyncSource,
+    tripStart, tripEnd, handleSaveTripDates
   } = useTrip();
+
+  const [localTripStart, setLocalTripStart] = useState(tripStart);
+  const [localTripEnd, setLocalTripEnd] = useState(tripEnd);
+
+  useEffect(() => { setLocalTripStart(tripStart); }, [tripStart]);
+  useEffect(() => { setLocalTripEnd(tripEnd); }, [tripEnd]);
 
   const renderSourceCard = (source) => {
     const isEvent = source.sourceType === 'event';
@@ -64,6 +72,22 @@ export default function SourcesPage() {
   return (
     <section className="flex-1 min-h-0 overflow-y-auto p-8 max-sm:p-4 bg-bg">
       <div className="w-full mx-auto flex flex-col gap-5">
+        <div className="flex items-center justify-between gap-4">
+          <div>
+            <h2 className="m-0 text-xl font-extrabold tracking-tight">Trip Config</h2>
+            <p className="mt-0.5 text-muted text-[0.82rem]">Set your trip date range to populate the day planner.</p>
+          </div>
+        </div>
+        <Card className="p-3">
+          <form className="flex items-center gap-2 max-sm:flex-col" onSubmit={(e) => { e.preventDefault(); handleSaveTripDates(localTripStart, localTripEnd); }}>
+            <label className="text-sm font-medium text-foreground-secondary shrink-0">Start</label>
+            <Input type="date" value={localTripStart} onChange={(e) => setLocalTripStart(e.target.value)} className="max-w-[180px] max-sm:max-w-none" />
+            <label className="text-sm font-medium text-foreground-secondary shrink-0">End</label>
+            <Input type="date" value={localTripEnd} onChange={(e) => setLocalTripEnd(e.target.value)} className="max-w-[180px] max-sm:max-w-none" />
+            <Button type="submit" size="sm" className="min-h-[36px] rounded-lg min-w-[80px] shrink-0">Save</Button>
+          </form>
+        </Card>
+
         <div className="flex items-center justify-between gap-4">
           <div>
             <h2 className="m-0 text-xl font-extrabold tracking-tight">Sources</h2>

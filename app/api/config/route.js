@@ -1,14 +1,31 @@
-import { loadBaseLocation, getCalendarUrls } from '@/lib/events';
+import { loadBaseLocation, getCalendarUrls, loadTripConfig, saveTripConfig } from '@/lib/events';
 
 export const runtime = 'nodejs';
 
 export async function GET() {
-  const baseLocation = await loadBaseLocation();
+  const [baseLocation, tripConfig] = await Promise.all([
+    loadBaseLocation(),
+    loadTripConfig()
+  ]);
 
   return Response.json({
     mapsBrowserKey: process.env.GOOGLE_MAPS_BROWSER_KEY || '',
     hasFirecrawlKey: Boolean(process.env.FIRECRAWL_API_KEY),
     baseLocation,
-    calendars: getCalendarUrls()
+    calendars: getCalendarUrls(),
+    tripStart: process.env.TRIP_START || tripConfig.tripStart || '',
+    tripEnd: process.env.TRIP_END || tripConfig.tripEnd || ''
   });
+}
+
+export async function POST(request) {
+  try {
+    const body = await request.json();
+    const tripStart = typeof body.tripStart === 'string' ? body.tripStart.trim() : '';
+    const tripEnd = typeof body.tripEnd === 'string' ? body.tripEnd.trim() : '';
+    await saveTripConfig({ tripStart, tripEnd });
+    return Response.json({ ok: true, tripStart, tripEnd });
+  } catch (err) {
+    return Response.json({ error: err.message }, { status: 400 });
+  }
 }
