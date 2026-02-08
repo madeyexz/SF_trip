@@ -1291,14 +1291,34 @@ export default function EventMapClient() {
       return;
     }
 
-    const calendarUrl = buildGoogleCalendarDayPlanUrl({
+    const draftUrls = buildGoogleCalendarStopUrls({
       dateISO: selectedDate,
       planItems: dayPlanItems,
       baseLocationText
     });
 
-    window.open(calendarUrl, '_blank', 'noopener,noreferrer');
-    setStatusMessage(`Opened Google Calendar draft for ${formatDate(selectedDate)}.`);
+    let openedCount = 0;
+    for (const calendarUrl of draftUrls) {
+      const draftWindow = window.open(calendarUrl, '_blank', 'noopener,noreferrer');
+      if (draftWindow) {
+        openedCount += 1;
+      }
+    }
+
+    if (openedCount === 0) {
+      setStatusMessage('Google Calendar pop-up blocked. Allow pop-ups and try again.', true);
+      return;
+    }
+
+    if (openedCount < draftUrls.length) {
+      setStatusMessage(
+        `Opened ${openedCount}/${draftUrls.length} Google drafts. Your browser blocked some pop-ups.`,
+        true
+      );
+      return;
+    }
+
+    setStatusMessage(`Opened ${openedCount} Google Calendar drafts for ${formatDate(toDateOnlyISO(selectedDate))}.`);
   }, [baseLocationText, dayPlanItems, selectedDate, setStatusMessage]);
 
   const goToSidebarTab = useCallback((tab) => {
@@ -1743,7 +1763,7 @@ export default function EventMapClient() {
                 onClick={handleAddDayPlanToGoogleCalendar}
                 disabled={!selectedDate || dayPlanItems.length === 0}
               >
-                Add Day to Google Calendar
+                Add Stops to Google Calendar
               </Button>
             </div>
           </section>
@@ -2318,6 +2338,7 @@ function formatDurationFromSeconds(totalSeconds) {
 }
 
 function buildPlannerIcs(dateISO, planItems) {
+  const dateOnlyISO = toDateOnlyISO(dateISO);
   const sortedItems = sortPlanItems(planItems);
   const timestamp = toIcsUtcTimestamp(new Date());
   const lines = [
@@ -2329,8 +2350,8 @@ function buildPlannerIcs(dateISO, planItems) {
   ];
 
   for (const item of sortedItems) {
-    const startValue = toCalendarDateTime(dateISO, item.startMinutes);
-    const endValue = toCalendarDateTime(dateISO, item.endMinutes);
+    const startValue = toCalendarDateTime(dateOnlyISO, item.startMinutes);
+    const endValue = toCalendarDateTime(dateOnlyISO, item.endMinutes);
     const descriptionParts = [
       `Type: ${item.kind === 'event' ? 'Event' : 'Place'}`,
       item.link ? `Link: ${item.link}` : ''
@@ -2338,7 +2359,7 @@ function buildPlannerIcs(dateISO, planItems) {
 
     lines.push(
       'BEGIN:VEVENT',
-      `UID:${escapeIcsText(`${item.id}-${dateISO}@sf-trip.local`)}`,
+      `UID:${escapeIcsText(`${item.id}-${dateOnlyISO}@sf-trip.local`)}`,
       `DTSTAMP:${timestamp}`,
       `DTSTART:${startValue}`,
       `DTEND:${endValue}`,
@@ -2353,36 +2374,35 @@ function buildPlannerIcs(dateISO, planItems) {
   return `${lines.join('\r\n')}\r\n`;
 }
 
-function buildGoogleCalendarDayPlanUrl({ dateISO, planItems, baseLocationText }) {
+function buildGoogleCalendarStopUrls({ dateISO, planItems, baseLocationText }) {
+  const dateOnlyISO = toDateOnlyISO(dateISO);
   const sortedItems = sortPlanItems(planItems);
-  const firstItem = sortedItems[0];
-  const lastItem = sortedItems[sortedItems.length - 1];
-  const startValue = toCalendarDateTime(dateISO, firstItem.startMinutes);
-  const endMinutes = Math.max(lastItem.endMinutes, firstItem.startMinutes + MIN_PLAN_BLOCK_MINUTES);
-  const endValue = toCalendarDateTime(dateISO, endMinutes);
-  const details = sortedItems
-    .map((item) => {
-      const timeRange = `${formatMinuteLabel(item.startMinutes)} - ${formatMinuteLabel(item.endMinutes)}`;
-      const location = item.locationText ? ` @ ${item.locationText}` : '';
-      const link = item.link ? `\n${item.link}` : '';
-      return `${timeRange} ${item.title}${location}${link}`;
-    })
-    .join('\n\n');
+  return sortedItems.map((item) => {
+    const startValue = toCalendarDateTime(dateOnlyISO, item.startMinutes);
+    const endMinutes = Math.max(item.endMinutes, item.startMinutes + MIN_PLAN_BLOCK_MINUTES);
+    const endValue = toCalendarDateTime(dateOnlyISO, endMinutes);
+    const detailsParts = [
+      `Planned time: ${formatMinuteLabel(item.startMinutes)} - ${formatMinuteLabel(item.endMinutes)}`,
+      item.kind === 'event' ? 'Type: Event' : 'Type: Place',
+      item.link || ''
+    ].filter(Boolean);
 
-  const params = new URLSearchParams({
-    action: 'TEMPLATE',
-    text: `SF Trip Plan - ${formatDate(dateISO)}`,
-    dates: `${startValue}/${endValue}`,
-    details,
-    location: baseLocationText || firstItem.locationText || 'San Francisco, CA',
-    ctz: 'America/Los_Angeles'
+    const params = new URLSearchParams({
+      action: 'TEMPLATE',
+      text: `${item.title} - ${formatDate(dateOnlyISO)}`,
+      dates: `${startValue}/${endValue}`,
+      details: detailsParts.join('\n'),
+      location: item.locationText || baseLocationText || 'San Francisco, CA',
+      ctz: 'America/Los_Angeles'
+    });
+
+    return `https://calendar.google.com/calendar/render?${params.toString()}`;
   });
-
-  return `https://calendar.google.com/calendar/render?${params.toString()}`;
 }
 
 function toCalendarDateTime(dateISO, minutesFromMidnight) {
-  const [year, month, day] = String(dateISO || '')
+  const normalizedDateISO = toDateOnlyISO(dateISO);
+  const [year, month, day] = normalizedDateISO
     .split('-')
     .map((part) => Number(part));
   const clampedMinutes = clampMinutes(minutesFromMidnight, 0, MINUTES_IN_DAY);
@@ -2398,6 +2418,26 @@ function toCalendarDateTime(dateISO, minutesFromMidnight) {
 
 function toIcsUtcTimestamp(dateInput) {
   return new Date(dateInput).toISOString().replace(/[-:]/g, '').replace(/\.\d{3}Z$/, 'Z');
+}
+
+function toDateOnlyISO(value) {
+  const text = String(value || '').trim();
+  const dateMatch = text.match(/^(\d{4})-(\d{2})-(\d{2})/);
+
+  if (dateMatch) {
+    return `${dateMatch[1]}-${dateMatch[2]}-${dateMatch[3]}`;
+  }
+
+  const parsedDate = new Date(text);
+  if (!Number.isNaN(parsedDate.getTime())) {
+    return [
+      parsedDate.getFullYear(),
+      String(parsedDate.getMonth() + 1).padStart(2, '0'),
+      String(parsedDate.getDate()).padStart(2, '0')
+    ].join('-');
+  }
+
+  return toISODate(new Date());
 }
 
 function escapeIcsText(value) {

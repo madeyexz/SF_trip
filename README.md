@@ -66,7 +66,7 @@ pnpm start
 - Use **Travel mode** to switch driving/transit/walking.
 - Click **Use My Device Location** to use live GPS instead of the location in `docs/my_location.md`.
 - In **Day Route Builder**, use **Download .ics** to export planner stops as iCalendar events.
-- In **Day Route Builder**, use **Add Day to Google Calendar** to open a prefilled Google Calendar draft for that day.
+- In **Day Route Builder**, use **Add Stops to Google Calendar** to open one prefilled Google Calendar draft per stop.
 
 ## Convex Setup (Optional)
 
