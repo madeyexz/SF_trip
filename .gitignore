@@ -8,3 +8,4 @@ data/route-cache.json
 .convex
 
 .env.local
+.vercel

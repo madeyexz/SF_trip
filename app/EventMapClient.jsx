@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
 import {
   Select,
   SelectContent,
@@ -1766,9 +1767,9 @@ export default function EventMapClient() {
     const displayTitle = source.label || safeHostname(source.url);
 
     return (
-      <div
-        className={`rounded-[10px] border border-border bg-card transition-all duration-150 hover:border-border-hover hover:shadow-[0_1px_4px_rgba(12,18,34,0.05)] ${source.status === 'paused' ? 'opacity-60' : ''}`}
-        style={{ borderLeft: `3px solid ${isEvent ? 'rgba(59,108,245,0.5)' : 'rgba(13,148,136,0.5)'}`, padding: '10px 12px' }}
+      <Card
+        className={`p-3 transition-all duration-150 hover:border-border-hover hover:shadow-[0_1px_4px_rgba(12,18,34,0.05)] ${source.status === 'paused' ? 'opacity-60' : ''}`}
+        style={{ borderLeft: `3px solid ${isEvent ? 'rgba(59,108,245,0.5)' : 'rgba(13,148,136,0.5)'}` }}
         key={source.id || `${source.sourceType}-${source.url}`}
       >
         <div className="flex items-start justify-between gap-2">
@@ -1776,10 +1777,10 @@ export default function EventMapClient() {
             <h4 className="m-0 text-[0.86rem] font-bold text-foreground leading-snug">{displayTitle}</h4>
             <a className="block mt-0.5 text-muted text-[0.72rem] no-underline truncate hover:text-accent hover:underline" href={source.url} target="_blank" rel="noreferrer" title={source.url}>{source.url}</a>
           </div>
-          <span className={`shrink-0 inline-flex items-center gap-1 text-[0.66rem] font-semibold capitalize px-1.5 py-0.5 rounded-md ${isActive ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-amber-50 text-amber-800 border border-amber-200'}`}>
+          <Badge variant={isActive ? 'default' : 'secondary'} className={`shrink-0 gap-1 capitalize ${isActive ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-800'}`}>
             <span className={`w-1.5 h-1.5 rounded-full ${isActive ? 'bg-emerald-500 shadow-[0_0_4px_rgba(16,185,129,0.5)]' : 'bg-amber-500'}`} />
             {source.status}
-          </span>
+          </Badge>
         </div>
         <div className="flex items-center gap-1.5 mt-1.5 text-muted text-[0.7rem]">
           <span>{source.lastSyncedAt ? `Synced ${new Date(source.lastSyncedAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}` : 'Never synced'}</span>
@@ -1787,17 +1788,17 @@ export default function EventMapClient() {
           {source.readonly ? <span className="italic">· Read-only</span> : null}
         </div>
         <div className="flex gap-1.5 mt-2">
-          <button type="button" className="px-2 py-0.5 rounded-md border border-accent/30 bg-accent-light text-accent text-[0.7rem] font-semibold cursor-pointer transition-all duration-150 hover:bg-accent/10 disabled:opacity-40 disabled:cursor-not-allowed" disabled={isSyncingThis || Boolean(source.readonly)} onClick={() => { void handleSyncSource(source); }}>
-            {isSyncingThis ? <><RefreshCw size={10} className="inline animate-spin mr-1" />Syncing...</> : 'Sync'}
-          </button>
-          <button type="button" className="px-2 py-0.5 rounded-md border border-border bg-card text-foreground-secondary text-[0.7rem] font-semibold cursor-pointer transition-all duration-150 hover:bg-bg-subtle hover:border-border-hover disabled:opacity-40 disabled:cursor-not-allowed" disabled={Boolean(source.readonly)} onClick={() => { void handleToggleSourceStatus(source); }}>
+          <Button type="button" size="sm" variant="default" className="text-[0.7rem] min-h-[26px] px-2 py-0.5" disabled={isSyncingThis || Boolean(source.readonly)} onClick={() => { void handleSyncSource(source); }}>
+            {isSyncingThis ? <><RefreshCw size={10} className="animate-spin" />Syncing...</> : 'Sync'}
+          </Button>
+          <Button type="button" size="sm" variant="secondary" className="text-[0.7rem] min-h-[26px] px-2 py-0.5" disabled={Boolean(source.readonly)} onClick={() => { void handleToggleSourceStatus(source); }}>
             {isActive ? 'Pause' : 'Resume'}
-          </button>
-          <button type="button" className="px-2 py-0.5 rounded-md border border-rose-200 bg-rose-50 text-rose-600 text-[0.7rem] font-semibold cursor-pointer transition-all duration-150 hover:bg-rose-100 hover:border-rose-300 hover:text-rose-700 disabled:opacity-40 disabled:cursor-not-allowed" disabled={Boolean(source.readonly)} onClick={() => { void handleDeleteSource(source); }}>
+          </Button>
+          <Button type="button" size="sm" variant="secondary" className="text-[0.7rem] min-h-[26px] px-2 py-0.5 border-rose-200 bg-rose-50 text-rose-600 hover:bg-rose-100 hover:border-rose-300 hover:text-rose-700" disabled={Boolean(source.readonly)} onClick={() => { void handleDeleteSource(source); }}>
             Remove
-          </button>
+          </Button>
         </div>
-      </div>
+      </Card>
     );
   };
 
@@ -1823,8 +1824,8 @@ export default function EventMapClient() {
               <SelectItem value="spot">Spot</SelectItem>
             </SelectContent>
           </Select>
-          <input className="sources-input" placeholder="https://example.com/source" value={newSourceUrl} onChange={(event) => setNewSourceUrl(event.target.value)} />
-          <input className="sources-input max-w-[160px] max-sm:max-w-none" placeholder="Label (optional)" value={newSourceLabel} onChange={(event) => setNewSourceLabel(event.target.value)} />
+          <Input placeholder="https://example.com/source" value={newSourceUrl} onChange={(event) => setNewSourceUrl(event.target.value)} />
+          <Input className="max-w-[160px] max-sm:max-w-none" placeholder="Label (optional)" value={newSourceLabel} onChange={(event) => setNewSourceLabel(event.target.value)} />
           <Button type="submit" size="sm" className="min-h-[36px] rounded-lg min-w-[100px] shrink-0 max-sm:w-full" disabled={isSavingSource}>
             {isSavingSource ? 'Adding...' : 'Add Source'}
           </Button>

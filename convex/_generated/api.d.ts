@@ -11,6 +11,8 @@
 import type * as events from "../events.js";
 import type * as planner from "../planner.js";
 import type * as routeCache from "../routeCache.js";
+import type * as sources from "../sources.js";
+import type * as spots from "../spots.js";
 
 import type {
   ApiFromModules,
@@ -22,6 +24,8 @@ declare const fullApi: ApiFromModules<{
   events: typeof events;
   planner: typeof planner;
   routeCache: typeof routeCache;
+  sources: typeof sources;
+  spots: typeof spots;
 }>;
 
 /**
