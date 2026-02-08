@@ -1,4 +1,4 @@
-import { deleteSourcePayload, updateSourcePayload } from '@/lib/events';
+import { deleteSourcePayload, syncSingleSource, updateSourcePayload } from '@/lib/events';
 
 export const runtime = 'nodejs';
 
@@ -26,6 +26,22 @@ export async function PATCH(request, { params }) {
         error: error instanceof Error ? error.message : 'Failed to update source.'
       },
       { status: 400 }
+    );
+  }
+}
+
+export async function POST(_request, { params }) {
+  const { sourceId } = await params;
+
+  try {
+    const result = await syncSingleSource(sourceId);
+    return Response.json(result);
+  } catch (error) {
+    return Response.json(
+      {
+        error: error instanceof Error ? error.message : 'Failed to sync source.'
+      },
+      { status: 500 }
     );
   }
 }
