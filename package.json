@@ -25,6 +25,7 @@
     "convex": "^1.31.7",
     "lucide-react": "^0.563.0",
     "next": "^15.1.0",
+    "node-ical": "^0.25.1",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "tailwind-merge": "^3.4.0"

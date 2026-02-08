@@ -787,7 +787,7 @@ export default function TripProvider({ children }) {
   // ---- Handlers ----
   const handleSync = useCallback(async () => {
     setIsSyncing(true);
-    setStatusMessage('Syncing latest events with Firecrawl...');
+    setStatusMessage('Syncing latest events...');
     try {
       const response = await fetch('/api/sync', { method: 'POST' });
       const payload = await response.json();

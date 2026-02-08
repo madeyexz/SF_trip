@@ -11,7 +11,6 @@ export async function GET() {
 
   return Response.json({
     mapsBrowserKey: process.env.GOOGLE_MAPS_BROWSER_KEY || '',
-    hasFirecrawlKey: Boolean(process.env.FIRECRAWL_API_KEY),
     baseLocation,
     calendars: getCalendarUrls(),
     tripStart: tripConfig.tripStart || process.env.TRIP_START || '',

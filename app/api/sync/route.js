@@ -5,15 +5,6 @@ export const runtime = 'nodejs';
 let syncInFlight = null;
 
 export async function POST() {
-  if (!process.env.FIRECRAWL_API_KEY) {
-    return Response.json(
-      {
-        error: 'FIRECRAWL_API_KEY is missing. Add it in .env to sync events.'
-      },
-      { status: 400 }
-    );
-  }
-
   try {
     if (!syncInFlight) {
       syncInFlight = syncEvents().finally(() => {
