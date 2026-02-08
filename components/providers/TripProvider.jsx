@@ -18,7 +18,7 @@ import {
   normalizePlaceTag, normalizeAddressKey, getPlaceSourceKey, normalizeDateKey,
   fetchJson, toISODate, toMonthISO, toDateOnlyISO, addMonthsToMonthISO, escapeHtml, truncate,
   formatTag, formatDate, formatDateDayMonth, formatDistance, formatDurationFromSeconds,
-  buildISODateRange
+  buildISODateRange, daysFromNow, formatSourceLabel
 } from '@/lib/helpers';
 import {
   createPlanId, sortPlanItems, sanitizePlannerByDate, compactPlannerByDate,
@@ -27,7 +27,7 @@ import {
   PLAN_STORAGE_KEY, GEOCODE_CACHE_STORAGE_KEY, MAX_ROUTE_STOPS
 } from '@/lib/planner-helpers';
 import {
-  createLucidePinIcon, toCoordinateKey, createTravelTimeCacheKey,
+  createLucidePinIcon, createLucidePinIconWithLabel, toCoordinateKey, createTravelTimeCacheKey,
   createRouteRequestCacheKey, requestPlannedRoute,
   loadGoogleMapsScript, buildInfoWindowAddButton
 } from '@/lib/map-helpers';
@@ -575,7 +575,11 @@ export default function TripProvider({ children }) {
     const location = event.address || event.locationText || 'Location not listed';
     const time = event.startDateTimeText || 'Time not listed';
     const travel = event.travelDurationText || 'Pending';
-    return `<div style="max-width:330px"><h3 style="margin:0 0 6px;font-size:16px">${escapeHtml(event.name)}</h3><p style="margin:4px 0"><strong>Time:</strong> ${escapeHtml(time)}</p><p style="margin:4px 0"><strong>Location:</strong> ${escapeHtml(location)}</p><p style="margin:4px 0"><strong>Travel time:</strong> ${escapeHtml(travel)}</p><p style="margin:4px 0">${escapeHtml(truncate(event.description || '', 220))}</p>${buildInfoWindowAddButton(plannerAction)}<a href="${escapeHtml(event.eventUrl)}" target="_blank" rel="noreferrer">Open event</a></div>`;
+    const days = daysFromNow(event.startDateISO);
+    const daysLabel = days === 0 ? 'Today' : days === 1 ? 'Tomorrow' : days > 0 ? `In ${days} days` : `${Math.abs(days)} days ago`;
+    const sourceLabel = formatSourceLabel(event.sourceUrl);
+    const sourceLine = sourceLabel ? `<p style="margin:4px 0"><strong>Source:</strong> ${escapeHtml(sourceLabel)}</p>` : '';
+    return `<div style="max-width:330px"><h3 style="margin:0 0 6px;font-size:16px">${escapeHtml(event.name)}</h3><p style="margin:4px 0"><strong>Time:</strong> ${escapeHtml(time)} <span style="color:#6b7280;font-size:12px">(${escapeHtml(daysLabel)})</span></p><p style="margin:4px 0"><strong>Location:</strong> ${escapeHtml(location)}</p><p style="margin:4px 0"><strong>Travel time:</strong> ${escapeHtml(travel)}</p>${sourceLine}<p style="margin:4px 0">${escapeHtml(truncate(event.description || '', 220))}</p>${buildInfoWindowAddButton(plannerAction)}<a href="${escapeHtml(event.eventUrl)}" target="_blank" rel="noreferrer">Open event</a></div>`;
   }, []);
 
   const buildPlaceInfoWindowHtml = useCallback((place, plannerAction) => {
@@ -587,9 +591,10 @@ export default function TripProvider({ children }) {
     async (eventsInput, placesInput, dateFilter, activeTravelMode) => {
       if (!mapsReady || !window.google?.maps || !mapRef.current) return;
       clearMapMarkers();
-      const filteredEvents = dateFilter
+      const filteredEvents = (dateFilter
         ? eventsInput.filter((e) => normalizeDateKey(e.startDateISO) === dateFilter)
-        : [...eventsInput];
+        : [...eventsInput]
+      ).filter((e) => daysFromNow(e.startDateISO) >= 0);
 
       const evtsWithPositions = [];
       for (const event of filteredEvents) {
@@ -599,9 +604,11 @@ export default function TripProvider({ children }) {
         });
         const ewp = { ...event, _position: position, travelDurationText: '' };
         if (position) {
+          const days = daysFromNow(event.startDateISO);
+          const dayLabel = days === 0 ? 'today' : `${days}d`;
           const marker = new window.google.maps.marker.AdvancedMarkerElement({
             map: mapRef.current, position, title: event.name,
-            content: createLucidePinIcon(calendarIconNode, '#ea580c'),
+            content: createLucidePinIconWithLabel(calendarIconNode, '#ea580c', dayLabel),
             gmpClickable: true
           });
           marker.addEventListener('gmp-click', () => {

@@ -72,6 +72,16 @@ pnpm start
 - In **Day Route Builder**, use **Download .ics** to export planner stops as iCalendar events.
 - In **Day Route Builder**, use **Add Stops to Google Calendar** to open one prefilled Google Calendar draft per stop.
 
+### When Firecrawl Runs
+
+For Beehiiv RSS items, Firecrawl extraction is triggered only when:
+
+- the RSS item `guid` (fallback `link`) has never been seen before, or
+- the same `guid` exists but has a newer version timestamp (`atom:updated`, fallback `atom:published`, then `pubDate`).
+
+Firecrawl is skipped when the item identity/version is unchanged from the stored seen-state.
+Even when a post is reprocessed, extracted events are still deduped/upserted by canonicalized `eventUrl`.
+
 ## Convex Setup (Optional)
 
 If you want events persisted in a database (instead of only local JSON cache):
