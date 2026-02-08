@@ -446,11 +446,12 @@ export default function TripProvider({ children }) {
     setPlannerByDate((prev) => {
       const current = Array.isArray(prev[selectedDate]) ? prev[selectedDate] : [];
       const timeFromEvent = parseEventTimeRange(event.startDateTimeText);
-      const slot = getSuggestedPlanSlot(current, timeFromEvent, 90);
+      const startMinutes = timeFromEvent ? timeFromEvent.startMinutes : 9 * 60;
+      const endMinutes = timeFromEvent ? timeFromEvent.endMinutes : startMinutes + 90;
       const next = sortPlanItems([...current, {
         id: createPlanId(), kind: 'event', sourceKey: event.eventUrl,
         title: event.name, locationText: event.address || event.locationText || '',
-        link: event.eventUrl, startMinutes: slot.startMinutes, endMinutes: slot.endMinutes
+        link: event.eventUrl, startMinutes, endMinutes
       }]);
       return { ...prev, [selectedDate]: next };
     });
