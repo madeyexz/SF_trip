@@ -1831,7 +1831,7 @@ export default function EventMapClient() {
         </form>
 
         {/* Two-column grid: events | spots */}
-        <div className="grid grid-cols-2 gap-5 max-sm:grid-cols-1">
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '20px' }}>
           {[
             { key: 'event', title: 'Events', dotColor: 'bg-accent' },
             { key: 'spot', title: 'Spots', dotColor: 'bg-teal-600' }
