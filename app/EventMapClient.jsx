@@ -58,11 +58,21 @@ const TAG_ICON_NODES = {
   shops: shoppingBagIconNode
 };
 
+const MINUTES_IN_DAY = 24 * 60;
+const MIN_PLAN_BLOCK_MINUTES = 30;
+const PLAN_SNAP_MINUTES = 15;
+const PLAN_HOUR_HEIGHT = 50;
+const PLAN_MINUTE_HEIGHT = PLAN_HOUR_HEIGHT / 60;
+const PLAN_STORAGE_KEY = 'sf-trip-day-plans-v1';
+const MAX_ROUTE_STOPS = 8;
+
 export default function EventMapClient() {
   const mapElementRef = useRef(null);
   const mapRef = useRef(null);
   const geocoderRef = useRef(null);
   const distanceMatrixRef = useRef(null);
+  const directionsServiceRef = useRef(null);
+  const directionsRendererRef = useRef(null);
   const infoWindowRef = useRef(null);
   const baseMarkerRef = useRef(null);
   const baseLatLngRef = useRef(null);
@@ -82,7 +92,10 @@ export default function EventMapClient() {
   const [baseLocationText, setBaseLocationText] = useState('');
   const [isSyncing, setIsSyncing] = useState(false);
   const [placeTagFilter, setPlaceTagFilter] = useState('all');
-  const [activeMobilePanel, setActiveMobilePanel] = useState('events');
+  const [activeMobilePanel, setActiveMobilePanel] = useState('planner');
+  const [plannerByDate, setPlannerByDate] = useState({});
+  const [activePlanId, setActivePlanId] = useState('');
+  const [routeSummary, setRouteSummary] = useState('');
 
   const selectedDate = useMemo(() => dates[selectedIndex] || '', [dates, selectedIndex]);
 
@@ -103,6 +116,58 @@ export default function EventMapClient() {
     return allPlaces.filter((place) => normalizePlaceTag(place.tag) === placeTagFilter);
   }, [allPlaces, placeTagFilter]);
 
+  const eventLookup = useMemo(
+    () => new Map(visibleEvents.map((event) => [event.eventUrl, event])),
+    [visibleEvents]
+  );
+
+  const placeLookup = useMemo(() => {
+    const map = new Map();
+
+    for (const place of visiblePlaces) {
+      map.set(getPlaceSourceKey(place), place);
+    }
+
+    return map;
+  }, [visiblePlaces]);
+
+  const dayPlanItems = useMemo(() => {
+    if (!selectedDate) {
+      return [];
+    }
+
+    const items = plannerByDate[selectedDate];
+    return Array.isArray(items) ? sortPlanItems(items) : [];
+  }, [plannerByDate, selectedDate]);
+
+  const plannedRouteStops = useMemo(() => {
+    const stops = [];
+
+    for (const item of dayPlanItems) {
+      if (item.kind === 'event') {
+        const event = eventLookup.get(item.sourceKey);
+        if (event?._position) {
+          stops.push({
+            id: item.id,
+            title: item.title,
+            position: event._position
+          });
+        }
+      } else {
+        const place = placeLookup.get(item.sourceKey);
+        if (place?._position) {
+          stops.push({
+            id: item.id,
+            title: item.title,
+            position: place._position
+          });
+        }
+      }
+    }
+
+    return stops;
+  }, [dayPlanItems, eventLookup, placeLookup]);
+
   const nearestEvent = useMemo(() => {
     const valid = visibleEvents
       .map((event) => ({
@@ -115,6 +180,32 @@ export default function EventMapClient() {
     return valid[0] || null;
   }, [visibleEvents]);
 
+  useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem(PLAN_STORAGE_KEY);
+      if (!raw) {
+        return;
+      }
+
+      const parsed = JSON.parse(raw);
+      if (!parsed || typeof parsed !== 'object') {
+        return;
+      }
+
+      setPlannerByDate(sanitizePlannerByDate(parsed));
+    } catch {
+      // Ignore broken local planner cache.
+    }
+  }, []);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(PLAN_STORAGE_KEY, JSON.stringify(plannerByDate));
+    } catch {
+      // Ignore local storage failures.
+    }
+  }, [plannerByDate]);
+
   const setStatusMessage = useCallback((message, isError = false) => {
     setStatus(message);
     setStatusError(isError);
@@ -126,6 +217,12 @@ export default function EventMapClient() {
     }
 
     markersRef.current = [];
+  }, []);
+
+  const clearRoute = useCallback(() => {
+    if (directionsRendererRef.current) {
+      directionsRendererRef.current.set('directions', null);
+    }
   }, []);
 
   const geocode = useCallback(async (address) => {
@@ -265,6 +362,174 @@ export default function EventMapClient() {
       icon: createLucidePinIcon(houseIconNode, '#111827')
     });
   }, []);
+
+  const addEventToDayPlan = useCallback(
+    (event) => {
+      if (!selectedDate) {
+        setStatusMessage('Select a specific date before adding events to your day plan.', true);
+        return;
+      }
+
+      setPlannerByDate((previous) => {
+        const current = Array.isArray(previous[selectedDate]) ? previous[selectedDate] : [];
+        const timeFromEvent = parseEventTimeRange(event.startDateTimeText);
+        const slot = getSuggestedPlanSlot(current, timeFromEvent, 90);
+
+        const next = sortPlanItems([
+          ...current,
+          {
+            id: createPlanId(),
+            kind: 'event',
+            sourceKey: event.eventUrl,
+            title: event.name,
+            locationText: event.address || event.locationText || '',
+            link: event.eventUrl,
+            startMinutes: slot.startMinutes,
+            endMinutes: slot.endMinutes
+          }
+        ]);
+
+        return {
+          ...previous,
+          [selectedDate]: next
+        };
+      });
+    },
+    [selectedDate, setStatusMessage]
+  );
+
+  const addPlaceToDayPlan = useCallback(
+    (place) => {
+      if (!selectedDate) {
+        setStatusMessage('Select a specific date before adding places to your day plan.', true);
+        return;
+      }
+
+      setPlannerByDate((previous) => {
+        const current = Array.isArray(previous[selectedDate]) ? previous[selectedDate] : [];
+        const slot = getSuggestedPlanSlot(current, null, 75);
+
+        const next = sortPlanItems([
+          ...current,
+          {
+            id: createPlanId(),
+            kind: 'place',
+            sourceKey: getPlaceSourceKey(place),
+            title: place.name,
+            locationText: place.location || '',
+            link: place.mapLink || place.cornerLink || '',
+            tag: normalizePlaceTag(place.tag),
+            startMinutes: slot.startMinutes,
+            endMinutes: slot.endMinutes
+          }
+        ]);
+
+        return {
+          ...previous,
+          [selectedDate]: next
+        };
+      });
+    },
+    [selectedDate, setStatusMessage]
+  );
+
+  const removePlanItem = useCallback((itemId) => {
+    if (!selectedDate) {
+      return;
+    }
+
+    setPlannerByDate((previous) => {
+      const current = Array.isArray(previous[selectedDate]) ? previous[selectedDate] : [];
+      const next = current.filter((item) => item.id !== itemId);
+
+      return {
+        ...previous,
+        [selectedDate]: next
+      };
+    });
+  }, [selectedDate]);
+
+  const clearDayPlan = useCallback(() => {
+    if (!selectedDate) {
+      return;
+    }
+
+    setPlannerByDate((previous) => ({
+      ...previous,
+      [selectedDate]: []
+    }));
+  }, [selectedDate]);
+
+  const startPlanDrag = useCallback(
+    (pointerEvent, item, mode) => {
+      if (!selectedDate) {
+        return;
+      }
+
+      pointerEvent.preventDefault();
+      pointerEvent.stopPropagation();
+
+      const startY = pointerEvent.clientY;
+      const initialStart = item.startMinutes;
+      const initialEnd = item.endMinutes;
+
+      setActivePlanId(item.id);
+
+      const onMove = (moveEvent) => {
+        const deltaY = moveEvent.clientY - startY;
+        const deltaMinutes = snapMinutes(deltaY / PLAN_MINUTE_HEIGHT);
+        const duration = Math.max(MIN_PLAN_BLOCK_MINUTES, initialEnd - initialStart);
+
+        setPlannerByDate((previous) => {
+          const current = Array.isArray(previous[selectedDate]) ? previous[selectedDate] : [];
+          const targetIndex = current.findIndex((candidate) => candidate.id === item.id);
+
+          if (targetIndex < 0) {
+            return previous;
+          }
+
+          const target = current[targetIndex];
+          let nextStart = target.startMinutes;
+          let nextEnd = target.endMinutes;
+
+          if (mode === 'move') {
+            nextStart = clampMinutes(initialStart + deltaMinutes, 0, MINUTES_IN_DAY - duration);
+            nextEnd = nextStart + duration;
+          } else if (mode === 'resize-start') {
+            nextStart = clampMinutes(initialStart + deltaMinutes, 0, initialEnd - MIN_PLAN_BLOCK_MINUTES);
+            nextEnd = initialEnd;
+          } else if (mode === 'resize-end') {
+            nextStart = initialStart;
+            nextEnd = clampMinutes(initialEnd + deltaMinutes, initialStart + MIN_PLAN_BLOCK_MINUTES, MINUTES_IN_DAY);
+          }
+
+          const updated = {
+            ...target,
+            startMinutes: snapMinutes(nextStart),
+            endMinutes: snapMinutes(nextEnd)
+          };
+
+          const next = [...current];
+          next[targetIndex] = updated;
+
+          return {
+            ...previous,
+            [selectedDate]: sortPlanItems(next)
+          };
+        });
+      };
+
+      const onUp = () => {
+        window.removeEventListener('pointermove', onMove);
+        window.removeEventListener('pointerup', onUp);
+        setActivePlanId('');
+      };
+
+      window.addEventListener('pointermove', onMove);
+      window.addEventListener('pointerup', onUp);
+    },
+    [selectedDate]
+  );
 
   const calculateTravelTimes = useCallback(
     async (eventsWithPositions, activeTravelMode) => {
@@ -514,6 +779,17 @@ export default function EventMapClient() {
 
         geocoderRef.current = new window.google.maps.Geocoder();
         distanceMatrixRef.current = new window.google.maps.DistanceMatrixService();
+        directionsServiceRef.current = new window.google.maps.DirectionsService();
+        directionsRendererRef.current = new window.google.maps.DirectionsRenderer({
+          suppressMarkers: true,
+          preserveViewport: false,
+          polylineOptions: {
+            strokeColor: '#1d4ed8',
+            strokeOpacity: 0.86,
+            strokeWeight: 5
+          }
+        });
+        directionsRendererRef.current.setMap(mapRef.current);
         infoWindowRef.current = new window.google.maps.InfoWindow();
 
         const geocodedBaseLocation = await geocode(config.baseLocation || '');
@@ -540,12 +816,17 @@ export default function EventMapClient() {
     return () => {
       mounted = false;
       clearMapMarkers();
+      clearRoute();
 
       if (baseMarkerRef.current) {
         baseMarkerRef.current.setMap(null);
       }
+
+      if (directionsRendererRef.current) {
+        directionsRendererRef.current.setMap(null);
+      }
     };
-  }, [clearMapMarkers, geocode, setBaseMarker, setStatusMessage]);
+  }, [clearMapMarkers, clearRoute, geocode, setBaseMarker, setStatusMessage]);
 
   useEffect(() => {
     if (!mapsReady) {
@@ -554,6 +835,90 @@ export default function EventMapClient() {
 
     void renderCurrentSelection(allEvents, filteredPlaces, selectedDate, travelMode);
   }, [allEvents, filteredPlaces, mapsReady, renderCurrentSelection, selectedDate, travelMode]);
+
+  useEffect(() => {
+    if (!mapsReady || !window.google?.maps) {
+      return;
+    }
+
+    let cancelled = false;
+
+    async function drawPlannedRoute() {
+      if (!directionsRendererRef.current || !directionsServiceRef.current) {
+        return;
+      }
+
+      if (!selectedDate || dayPlanItems.length === 0) {
+        clearRoute();
+        setRouteSummary('');
+        return;
+      }
+
+      if (!baseLatLngRef.current) {
+        clearRoute();
+        setRouteSummary('Set your home location before drawing a route.');
+        return;
+      }
+
+      const routeStops = plannedRouteStops.slice(0, MAX_ROUTE_STOPS);
+
+      if (routeStops.length === 0) {
+        clearRoute();
+        setRouteSummary('Route needs map-ready items with known coordinates.');
+        return;
+      }
+
+      try {
+        const waypoints = routeStops.map((stop) => ({
+          location: stop.position,
+          stopover: true
+        }));
+
+        const travelModeValue =
+          window.google.maps.TravelMode[travelMode] || window.google.maps.TravelMode.WALKING;
+
+        const directions = await requestGoogleDirections(directionsServiceRef.current, {
+          origin: baseLatLngRef.current,
+          destination: baseLatLngRef.current,
+          waypoints,
+          optimizeWaypoints: false,
+          travelMode: travelModeValue
+        });
+
+        if (cancelled) {
+          return;
+        }
+
+        directionsRendererRef.current.setDirections(directions);
+
+        const route = directions.routes?.[0];
+        const legs = Array.isArray(route?.legs) ? route.legs : [];
+
+        const totalSeconds = legs.reduce((sum, leg) => sum + (leg.duration?.value || 0), 0);
+        const totalMeters = legs.reduce((sum, leg) => sum + (leg.distance?.value || 0), 0);
+
+        const routeSuffix =
+          plannedRouteStops.length > MAX_ROUTE_STOPS ? ` (showing first ${MAX_ROUTE_STOPS})` : '';
+
+        setRouteSummary(
+          `${routeStops.length} stops${routeSuffix} · ${formatDistance(totalMeters)} · ${formatDurationFromSeconds(totalSeconds)}`
+        );
+      } catch {
+        if (cancelled) {
+          return;
+        }
+
+        clearRoute();
+        setRouteSummary('Could not draw route for the current plan and travel mode.');
+      }
+    }
+
+    void drawPlannedRoute();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [clearRoute, dayPlanItems.length, mapsReady, plannedRouteStops, selectedDate, travelMode]);
 
   const handleSync = useCallback(async () => {
     setIsSyncing(true);
@@ -741,10 +1106,108 @@ export default function EventMapClient() {
         <aside className="sidebar">
           <Tabs className="sidebar-switch" value={activeMobilePanel} onValueChange={setActiveMobilePanel}>
             <TabsList>
+              <TabsTrigger value="planner">Planner</TabsTrigger>
               <TabsTrigger value="events">Events</TabsTrigger>
               <TabsTrigger value="places">Places</TabsTrigger>
             </TabsList>
           </Tabs>
+
+          <section className={`panel ${activeMobilePanel !== 'planner' ? 'panel-mobile-hidden' : ''}`}>
+            <div className="planner-panel-header">
+              <div>
+                <h2>Day Route Builder</h2>
+                <p className="event-meta panel-subtitle">
+                  {selectedDate
+                    ? `Planning for ${formatDate(selectedDate)}`
+                    : 'Pick a specific date from the slider to start planning.'}
+                </p>
+              </div>
+              <Button
+                type="button"
+                size="sm"
+                variant="secondary"
+                onClick={clearDayPlan}
+                disabled={!selectedDate || dayPlanItems.length === 0}
+              >
+                Clear
+              </Button>
+            </div>
+
+            {selectedDate ? (
+              <div className="planner-calendar">
+                <div className="planner-time-grid">
+                  {Array.from({ length: 24 }, (_, hour) => (
+                    <div className="planner-hour-row" key={hour} style={{ top: `${hour * PLAN_HOUR_HEIGHT}px` }}>
+                      <span className="planner-hour-label">{formatHour(hour)}</span>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="planner-block-layer">
+                  {dayPlanItems.map((item) => {
+                    const top = item.startMinutes * PLAN_MINUTE_HEIGHT;
+                    const height = Math.max(28, (item.endMinutes - item.startMinutes) * PLAN_MINUTE_HEIGHT);
+                    const itemClass = [
+                      'planner-item',
+                      item.kind === 'event' ? 'planner-item-event' : 'planner-item-place',
+                      activePlanId === item.id ? 'planner-item-active' : ''
+                    ]
+                      .filter(Boolean)
+                      .join(' ');
+
+                    return (
+                      <article
+                        className={itemClass}
+                        key={item.id}
+                        style={{ top: `${top}px`, height: `${height}px` }}
+                        onPointerDown={(event) => {
+                          startPlanDrag(event, item, 'move');
+                        }}
+                      >
+                        <button
+                          type="button"
+                          className="planner-resize planner-resize-top"
+                          aria-label="Adjust start time"
+                          onPointerDown={(event) => {
+                            startPlanDrag(event, item, 'resize-start');
+                          }}
+                        />
+                        <button
+                          type="button"
+                          className="planner-remove"
+                          aria-label="Remove from plan"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            removePlanItem(item.id);
+                          }}
+                        >
+                          ×
+                        </button>
+                        <div className="planner-item-time">{formatMinuteLabel(item.startMinutes)} - {formatMinuteLabel(item.endMinutes)}</div>
+                        <div className="planner-item-title">{item.title}</div>
+                        {item.locationText ? <div className="planner-item-location">{item.locationText}</div> : null}
+                        <button
+                          type="button"
+                          className="planner-resize planner-resize-bottom"
+                          aria-label="Adjust end time"
+                          onPointerDown={(event) => {
+                            startPlanDrag(event, item, 'resize-end');
+                          }}
+                        />
+                      </article>
+                    );
+                  })}
+                </div>
+              </div>
+            ) : (
+              <p className="empty-state">Move the date slider off “All dates” to plan a specific day.</p>
+            )}
+
+            <p className="event-meta planner-route-summary">
+              <strong>Route:</strong>{' '}
+              {routeSummary || (selectedDate && dayPlanItems.length ? 'Waiting for routable stops...' : 'Add stops to draw route')}
+            </p>
+          </section>
 
           <section className={`panel ${activeMobilePanel !== 'events' ? 'panel-mobile-hidden' : ''}`}>
             <h2>Event Plan</h2>
@@ -774,6 +1237,16 @@ export default function EventMapClient() {
                         </p>
                       ) : null}
                       <p className="event-meta">{truncate(event.description || '', 170)}</p>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="secondary"
+                        onClick={() => {
+                          addEventToDayPlan(event);
+                        }}
+                      >
+                        Add to day
+                      </Button>
                       <a className="event-link" href={event.eventUrl} target="_blank" rel="noreferrer">
                         Open event
                       </a>
@@ -813,6 +1286,16 @@ export default function EventMapClient() {
                     ) : null}
                     {place.description ? <p className="event-meta">{truncate(place.description, 180)}</p> : null}
                     {place.details ? <p className="event-meta">{truncate(place.details, 220)}</p> : null}
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="secondary"
+                      onClick={() => {
+                        addPlaceToDayPlan(place);
+                      }}
+                    >
+                      Add to day
+                    </Button>
                     <p className="event-meta links-row">
                       <a className="event-link" href={place.mapLink} target="_blank" rel="noreferrer">
                         Open map
@@ -905,6 +1388,173 @@ function formatTag(tag) {
     .join(' ');
 }
 
+function getPlaceSourceKey(place) {
+  return place.id || `${place.name}|${place.location}`;
+}
+
+function createPlanId() {
+  return `plan-${Math.random().toString(36).slice(2, 9)}`;
+}
+
+function sanitizePlannerByDate(value) {
+  const result = {};
+
+  for (const [dateISO, items] of Object.entries(value || {})) {
+    if (!Array.isArray(items) || !dateISO) {
+      continue;
+    }
+
+    const cleanedItems = items
+      .filter((item) => item && typeof item === 'object')
+      .map((item) => {
+        const startMinutes = clampMinutes(Number(item.startMinutes), 0, MINUTES_IN_DAY);
+        const endMinutes = clampMinutes(
+          Number(item.endMinutes),
+          startMinutes + MIN_PLAN_BLOCK_MINUTES,
+          MINUTES_IN_DAY
+        );
+
+        return {
+          id: typeof item.id === 'string' && item.id ? item.id : createPlanId(),
+          kind: item.kind === 'event' ? 'event' : 'place',
+          sourceKey: String(item.sourceKey || ''),
+          title: String(item.title || 'Untitled stop'),
+          locationText: String(item.locationText || ''),
+          link: String(item.link || ''),
+          tag: normalizePlaceTag(item.tag),
+          startMinutes,
+          endMinutes
+        };
+      })
+      .filter((item) => item.sourceKey);
+
+    result[dateISO] = sortPlanItems(cleanedItems);
+  }
+
+  return result;
+}
+
+function sortPlanItems(items) {
+  return [...items].sort((left, right) => left.startMinutes - right.startMinutes);
+}
+
+function clampMinutes(value, min, max) {
+  if (!Number.isFinite(value)) {
+    return min;
+  }
+
+  return Math.min(max, Math.max(min, Math.round(value)));
+}
+
+function snapMinutes(value) {
+  if (!Number.isFinite(value)) {
+    return 0;
+  }
+
+  return Math.round(value / PLAN_SNAP_MINUTES) * PLAN_SNAP_MINUTES;
+}
+
+function parseEventTimeRange(value) {
+  if (!value || typeof value !== 'string') {
+    return null;
+  }
+
+  const matches = [...value.matchAll(/\b(\d{1,2})(?::(\d{2}))?\s*(AM|PM)\b/gi)];
+  if (!matches.length) {
+    return null;
+  }
+
+  const start = toMinuteOfDay(matches[0]);
+  const fallbackEnd = clampMinutes(start + 90, start + MIN_PLAN_BLOCK_MINUTES, MINUTES_IN_DAY);
+  const endFromText = matches[1] ? toMinuteOfDay(matches[1]) : fallbackEnd;
+  const end = endFromText > start ? endFromText : fallbackEnd;
+
+  return {
+    startMinutes: start,
+    endMinutes: end
+  };
+}
+
+function toMinuteOfDay(match) {
+  const hourRaw = Number(match?.[1] || 0);
+  const minuteRaw = Number(match?.[2] || 0);
+  const period = String(match?.[3] || '').toUpperCase();
+
+  let hour = hourRaw % 12;
+  if (period === 'PM') {
+    hour += 12;
+  }
+
+  return clampMinutes(hour * 60 + minuteRaw, 0, MINUTES_IN_DAY - MIN_PLAN_BLOCK_MINUTES);
+}
+
+function getSuggestedPlanSlot(existingItems, preferredRange, fallbackDurationMinutes) {
+  const duration = Math.max(MIN_PLAN_BLOCK_MINUTES, fallbackDurationMinutes);
+  const sorted = sortPlanItems(existingItems || []);
+
+  if (preferredRange) {
+    const preferredStart = clampMinutes(preferredRange.startMinutes, 0, MINUTES_IN_DAY - MIN_PLAN_BLOCK_MINUTES);
+    const preferredEnd = clampMinutes(
+      preferredRange.endMinutes,
+      preferredStart + MIN_PLAN_BLOCK_MINUTES,
+      MINUTES_IN_DAY
+    );
+
+    if (!hasOverlappingSlot(sorted, preferredStart, preferredEnd)) {
+      return {
+        startMinutes: preferredStart,
+        endMinutes: preferredEnd
+      };
+    }
+  }
+
+  let cursor = 9 * 60;
+  const maxStart = MINUTES_IN_DAY - duration;
+
+  while (cursor <= maxStart) {
+    const start = snapMinutes(cursor);
+    const end = start + duration;
+
+    if (!hasOverlappingSlot(sorted, start, end)) {
+      return {
+        startMinutes: start,
+        endMinutes: end
+      };
+    }
+
+    cursor += PLAN_SNAP_MINUTES;
+  }
+
+  return {
+    startMinutes: clampMinutes(MINUTES_IN_DAY - duration, 0, MINUTES_IN_DAY - MIN_PLAN_BLOCK_MINUTES),
+    endMinutes: MINUTES_IN_DAY
+  };
+}
+
+function hasOverlappingSlot(items, startMinutes, endMinutes) {
+  return items.some(
+    (item) =>
+      Math.max(startMinutes, item.startMinutes) < Math.min(endMinutes, item.endMinutes)
+  );
+}
+
+function formatMinuteLabel(minutesValue) {
+  const minutes = clampMinutes(minutesValue, 0, MINUTES_IN_DAY);
+  const hour24 = Math.floor(minutes / 60);
+  const minute = minutes % 60;
+  const period = hour24 >= 12 ? 'PM' : 'AM';
+  const hour12 = hour24 % 12 || 12;
+  const minuteText = minute.toString().padStart(2, '0');
+  return `${hour12}:${minuteText} ${period}`;
+}
+
+function formatHour(hourValue) {
+  const hour = Number(hourValue);
+  const period = hour >= 12 ? 'PM' : 'AM';
+  const hour12 = hour % 12 || 12;
+  return `${hour12} ${period}`;
+}
+
 function parseDurationToMinutes(durationText) {
   if (!durationText || typeof durationText !== 'string') {
     return null;
@@ -956,6 +1606,46 @@ function formatDate(isoDate) {
     month: 'short',
     day: 'numeric',
     year: 'numeric'
+  });
+}
+
+function formatDistance(totalMeters) {
+  if (!Number.isFinite(totalMeters) || totalMeters <= 0) {
+    return 'n/a';
+  }
+
+  const miles = totalMeters / 1609.344;
+  if (miles >= 10) {
+    return `${miles.toFixed(0)} mi`;
+  }
+
+  return `${miles.toFixed(1)} mi`;
+}
+
+function formatDurationFromSeconds(totalSeconds) {
+  if (!Number.isFinite(totalSeconds) || totalSeconds <= 0) {
+    return 'n/a';
+  }
+
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.round((totalSeconds % 3600) / 60);
+
+  if (hours > 0) {
+    return `${hours}h ${minutes}m`;
+  }
+
+  return `${minutes}m`;
+}
+
+async function requestGoogleDirections(directionsService, request) {
+  return new Promise((resolve, reject) => {
+    directionsService.route(request, (response, statusValue) => {
+      if (statusValue === 'OK') {
+        resolve(response);
+      } else {
+        reject(new Error(`Directions request failed: ${statusValue}`));
+      }
+    });
   });
 }
 
