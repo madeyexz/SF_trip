@@ -155,6 +155,20 @@ export default function EventMapClient() {
     };
   }, [sources]);
 
+  const groupedSources = useMemo(() => {
+    const groups = {
+      event: [],
+      spot: []
+    };
+
+    for (const source of sources) {
+      const key = source?.sourceType === 'spot' ? 'spot' : 'event';
+      groups[key].push(source);
+    }
+
+    return groups;
+  }, [sources]);
+
   const uniqueDates = useMemo(
     () =>
       Array.from(
@@ -1734,98 +1748,139 @@ export default function EventMapClient() {
   );
 
   const renderSourcesManager = () => (
-    <section className="flex-1 min-h-0 overflow-y-auto p-6 max-sm:p-3.5 bg-bg">
-      <div className="w-full max-w-[980px] mx-auto">
-        <div className="mb-4">
-          <h2 className="m-0 text-xl font-bold">Global Sources</h2>
-          <p className="mt-1 mb-0 text-sm text-muted">
-            Active now: {sourceStats.activeEventSources} event sources, {sourceStats.activeSpotSources} spot sources.
-          </p>
+    <section className="sources-view">
+      <div className="sources-shell">
+        <div className="sources-hero">
+          <div className="sources-hero-text">
+            <h2 className="sources-hero-title">Sources</h2>
+            <p className="sources-hero-subtitle">
+              Manage your event and spot feeds. Sync to pull fresh data.
+            </p>
+          </div>
+          <div className="sources-stats">
+            <div className="sources-stat-card sources-stat-events">
+              <span className="sources-stat-value">{sourceStats.activeEventSources}</span>
+              <span className="sources-stat-label">Event feeds</span>
+            </div>
+            <div className="sources-stat-card sources-stat-spots">
+              <span className="sources-stat-value">{sourceStats.activeSpotSources}</span>
+              <span className="sources-stat-label">Spot feeds</span>
+            </div>
+            <div className="sources-stat-card">
+              <span className="sources-stat-value">{sources.length}</span>
+              <span className="sources-stat-label">Total</span>
+            </div>
+          </div>
         </div>
 
-        <Card className="p-4 mb-4">
-          <form className="grid gap-3 md:grid-cols-[120px_minmax(0,1fr)_220px_auto]" onSubmit={handleCreateSource}>
-            <Select value={newSourceType} onValueChange={setNewSourceType}>
-              <SelectTrigger>
-                <SelectValue placeholder="Type" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="event">Event</SelectItem>
-                <SelectItem value="spot">Spot</SelectItem>
-              </SelectContent>
-            </Select>
-            <input
-              className="min-h-9 rounded-md border border-border bg-card px-3 text-sm outline-none focus:border-accent"
-              placeholder="https://example.com/source"
-              value={newSourceUrl}
-              onChange={(event) => setNewSourceUrl(event.target.value)}
-            />
-            <input
-              className="min-h-9 rounded-md border border-border bg-card px-3 text-sm outline-none focus:border-accent"
-              placeholder="Label (optional)"
-              value={newSourceLabel}
-              onChange={(event) => setNewSourceLabel(event.target.value)}
-            />
-            <Button type="submit" size="sm" disabled={isSavingSource}>
-              {isSavingSource ? 'Adding…' : 'Add source'}
-            </Button>
-          </form>
-        </Card>
+        <form className="sources-create-bar" onSubmit={handleCreateSource}>
+          <Select value={newSourceType} onValueChange={setNewSourceType}>
+            <SelectTrigger className="sources-select-trigger">
+              <SelectValue placeholder="Type" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="event">Event</SelectItem>
+              <SelectItem value="spot">Spot</SelectItem>
+            </SelectContent>
+          </Select>
+          <input
+            className="sources-input"
+            placeholder="https://example.com/source"
+            value={newSourceUrl}
+            onChange={(event) => setNewSourceUrl(event.target.value)}
+          />
+          <input
+            className="sources-input sources-input-label"
+            placeholder="Label (optional)"
+            value={newSourceLabel}
+            onChange={(event) => setNewSourceLabel(event.target.value)}
+          />
+          <Button type="submit" size="sm" className="sources-submit" disabled={isSavingSource}>
+            {isSavingSource ? 'Adding...' : 'Add Source'}
+          </Button>
+        </form>
 
-        <div className="flex flex-col gap-2">
-          {sources.length === 0 ? (
-            <p className="my-3 text-muted text-sm text-center p-7 bg-bg-subtle rounded-[10px] border border-dashed border-border">
-              No saved sources yet.
-            </p>
-          ) : (
-            sources.map((source) => (
-              <Card className="p-3.5" key={source.id || `${source.sourceType}-${source.url}`}>
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <Badge variant="secondary">{source.sourceType}</Badge>
-                      <Badge variant="secondary">{source.status}</Badge>
+        <div className="sources-groups">
+          {[
+            { key: 'event', title: 'Event Sources', icon: 'calendar' },
+            { key: 'spot', title: 'Spot Sources', icon: 'pin' }
+          ].map((group) => (
+            <section className="sources-group" key={group.key}>
+              <div className="sources-group-header">
+                <h3 className="sources-group-title">
+                  <span className={`sources-group-icon sources-group-icon-${group.key}`} />
+                  {group.title}
+                </h3>
+                <Badge variant="secondary" className="sources-group-count">{groupedSources[group.key].length}</Badge>
+              </div>
+
+              {groupedSources[group.key].length === 0 ? (
+                <p className="sources-empty">No {group.key} sources added yet.</p>
+              ) : (
+                <div className="sources-list">
+                  {groupedSources[group.key].map((source) => (
+                    <div
+                      className={`sources-card ${source.sourceType === 'event' ? 'sources-card-event' : 'sources-card-spot'} ${source.status === 'paused' ? 'sources-card-paused' : ''}`}
+                      key={source.id || `${source.sourceType}-${source.url}`}
+                    >
+                      <div className="sources-card-top">
+                        <div className="sources-card-info">
+                          <h4 className="sources-card-title">{source.label || new URL(source.url).hostname}</h4>
+                          <a
+                            className="sources-card-url"
+                            href={source.url}
+                            target="_blank"
+                            rel="noreferrer"
+                            title={source.url}
+                          >
+                            {source.url}
+                          </a>
+                        </div>
+                        <Badge
+                          variant="secondary"
+                          className={`sources-status-badge ${source.status === 'active' ? 'sources-status-active' : 'sources-status-paused'}`}
+                        >
+                          <span className="sources-status-dot" />
+                          {source.status}
+                        </Badge>
+                      </div>
+                      <div className="sources-card-bottom">
+                        <span className="sources-card-meta">
+                          {source.lastSyncedAt
+                            ? `Synced ${new Date(source.lastSyncedAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}`
+                            : 'Never synced'}
+                        </span>
+                        {source.lastError ? (
+                          <span className="sources-card-error">{source.lastError}</span>
+                        ) : null}
+                        {source.readonly ? (
+                          <span className="sources-card-readonly">Read-only</span>
+                        ) : null}
+                        <div className="sources-card-actions">
+                          <button
+                            type="button"
+                            className="sources-action-btn"
+                            disabled={Boolean(source.readonly)}
+                            onClick={() => { void handleToggleSourceStatus(source); }}
+                          >
+                            {source.status === 'active' ? 'Pause' : 'Resume'}
+                          </button>
+                          <button
+                            type="button"
+                            className="sources-action-btn sources-action-delete"
+                            disabled={Boolean(source.readonly)}
+                            onClick={() => { void handleDeleteSource(source); }}
+                          >
+                            Remove
+                          </button>
+                        </div>
+                      </div>
                     </div>
-                    <h3 className="m-0 mt-1 text-sm font-semibold">{source.label || source.url}</h3>
-                    <p className="my-1 text-xs text-muted break-all">{source.url}</p>
-                    {source.lastSyncedAt ? (
-                      <p className="my-0 text-xs text-muted">Last synced: {new Date(source.lastSyncedAt).toLocaleString()}</p>
-                    ) : null}
-                    {source.lastError ? (
-                      <p className="my-0.5 text-xs text-rose-600">{source.lastError}</p>
-                    ) : null}
-                    {source.readonly ? (
-                      <p className="my-0.5 text-xs text-muted">Readonly fallback source (configure Convex to edit).</p>
-                    ) : null}
-                  </div>
-                  <div className="flex gap-2 shrink-0">
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="secondary"
-                      disabled={Boolean(source.readonly)}
-                      onClick={() => {
-                        void handleToggleSourceStatus(source);
-                      }}
-                    >
-                      {source.status === 'active' ? 'Pause' : 'Activate'}
-                    </Button>
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="secondary"
-                      disabled={Boolean(source.readonly)}
-                      onClick={() => {
-                        void handleDeleteSource(source);
-                      }}
-                    >
-                      Delete
-                    </Button>
-                  </div>
+                  ))}
                 </div>
-              </Card>
-            ))
-          )}
+              )}
+            </section>
+          ))}
         </div>
       </div>
     </section>
