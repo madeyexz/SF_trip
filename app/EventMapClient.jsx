@@ -13,7 +13,26 @@ import {
 } from '@/components/ui/select';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
-import { MapPin, RefreshCw, Navigation } from 'lucide-react';
+import {
+  Calendar,
+  Coffee,
+  House,
+  MapPin,
+  Martini,
+  Navigation,
+  PartyPopper,
+  RefreshCw,
+  ShoppingBag,
+  UtensilsCrossed
+} from 'lucide-react';
+import { __iconNode as calendarIconNode } from 'lucide-react/dist/esm/icons/calendar.js';
+import { __iconNode as coffeeIconNode } from 'lucide-react/dist/esm/icons/coffee.js';
+import { __iconNode as houseIconNode } from 'lucide-react/dist/esm/icons/house.js';
+import { __iconNode as mapPinIconNode } from 'lucide-react/dist/esm/icons/map-pin.js';
+import { __iconNode as martiniIconNode } from 'lucide-react/dist/esm/icons/martini.js';
+import { __iconNode as partyPopperIconNode } from 'lucide-react/dist/esm/icons/party-popper.js';
+import { __iconNode as shoppingBagIconNode } from 'lucide-react/dist/esm/icons/shopping-bag.js';
+import { __iconNode as utensilsCrossedIconNode } from 'lucide-react/dist/esm/icons/utensils-crossed.js';
 
 const TAG_COLORS = {
   eat: '#d97706',
@@ -21,6 +40,22 @@ const TAG_COLORS = {
   cafes: '#2563eb',
   'go out': '#db2777',
   shops: '#0f766e'
+};
+
+const TAG_ICON_COMPONENTS = {
+  eat: UtensilsCrossed,
+  bar: Martini,
+  cafes: Coffee,
+  'go out': PartyPopper,
+  shops: ShoppingBag
+};
+
+const TAG_ICON_NODES = {
+  eat: utensilsCrossedIconNode,
+  bar: martiniIconNode,
+  cafes: coffeeIconNode,
+  'go out': partyPopperIconNode,
+  shops: shoppingBagIconNode
 };
 
 export default function EventMapClient() {
@@ -227,7 +262,7 @@ export default function EventMapClient() {
       map: mapRef.current,
       position: latLng,
       title,
-      icon: createEmojiPinIcon('🏠', '#111827')
+      icon: createLucidePinIcon(houseIconNode, '#111827')
     });
   }, []);
 
@@ -346,7 +381,7 @@ export default function EventMapClient() {
             map: mapRef.current,
             position,
             title: event.name,
-            icon: createEmojiPinIcon('📅', '#ea580c')
+            icon: createLucidePinIcon(calendarIconNode, '#ea580c')
           });
 
           marker.addListener('click', () => {
@@ -384,8 +419,8 @@ export default function EventMapClient() {
             map: mapRef.current,
             position,
             title: place.name,
-            icon: createEmojiPinIcon(
-              getTagEmoji(placeWithPosition.tag),
+            icon: createLucidePinIcon(
+              getTagIconNode(placeWithPosition.tag),
               getTagColor(placeWithPosition.tag)
             )
           });
@@ -684,16 +719,20 @@ export default function EventMapClient() {
         <section className="map-panel">
           <div className="map-legend">
             <span className="legend-item">
-              <span className="legend-emoji">📅</span> Event
+              <Calendar className="legend-icon" size={14} strokeWidth={2} /> Event
             </span>
             <span className="legend-item">
-              <span className="legend-emoji">🏠</span> Your origin
+              <House className="legend-icon" size={14} strokeWidth={2} /> Your origin
             </span>
-            {Object.keys(TAG_COLORS).map((tag) => (
-              <span className="legend-item" key={tag}>
-                <span className="legend-emoji">{getTagEmoji(tag)}</span> {formatTag(tag)}
-              </span>
-            ))}
+            {Object.keys(TAG_COLORS).map((tag) => {
+              const TagIcon = getTagIconComponent(tag);
+
+              return (
+                <span className="legend-item" key={tag}>
+                  <TagIcon className="legend-icon" size={14} strokeWidth={2} /> {formatTag(tag)}
+                </span>
+              );
+            })}
           </div>
           <div id="map" ref={mapElementRef} />
         </section>
@@ -796,21 +835,23 @@ function getTagColor(tag) {
   return TAG_COLORS[normalizePlaceTag(tag)] || '#2563eb';
 }
 
-function getTagEmoji(tag) {
-  const normalized = normalizePlaceTag(tag);
-  if (normalized === 'eat') return '🍽️';
-  if (normalized === 'bar') return '🍸';
-  if (normalized === 'cafes') return '☕';
-  if (normalized === 'go out') return '🎉';
-  if (normalized === 'shops') return '🛍️';
-  return '📍';
+function getTagIconComponent(tag) {
+  return TAG_ICON_COMPONENTS[normalizePlaceTag(tag)] || MapPin;
 }
 
-function createEmojiPinIcon(emoji, color) {
+function getTagIconNode(tag) {
+  return TAG_ICON_NODES[normalizePlaceTag(tag)] || mapPinIconNode;
+}
+
+function createLucidePinIcon(iconNode, color) {
+  const iconSvg = renderLucideIconNode(iconNode);
   const svg = `
     <svg xmlns=\"http://www.w3.org/2000/svg\" width=\"38\" height=\"48\" viewBox=\"0 0 38 48\">
       <path d=\"M19 1C9.6 1 2 8.6 2 18c0 11.7 14.1 26.9 16.2 29.1a1.2 1.2 0 0 0 1.6 0C21.9 44.9 36 29.7 36 18 36 8.6 28.4 1 19 1z\" fill=\"${color}\" stroke=\"#ffffff\" stroke-width=\"2\" />
-      <text x=\"19\" y=\"22\" text-anchor=\"middle\" dominant-baseline=\"middle\" font-size=\"14\">${emoji}</text>
+      <circle cx=\"19\" cy=\"18\" r=\"10\" fill=\"rgba(255,255,255,0.16)\" />
+      <g transform=\"translate(7 6)\" fill=\"none\" stroke=\"#ffffff\" stroke-width=\"2.2\" stroke-linecap=\"round\" stroke-linejoin=\"round\">
+        ${iconSvg}
+      </g>
     </svg>
   `;
 
@@ -819,6 +860,27 @@ function createEmojiPinIcon(emoji, color) {
     scaledSize: new window.google.maps.Size(38, 48),
     anchor: new window.google.maps.Point(19, 47)
   };
+}
+
+function renderLucideIconNode(iconNode) {
+  if (!Array.isArray(iconNode)) {
+    return '';
+  }
+
+  return iconNode
+    .map(([tag, attrs]) => {
+      const attributes = Object.entries(attrs || {})
+        .filter(([key]) => key !== 'key')
+        .map(([key, value]) => `${toKebabCase(key)}="${escapeHtml(String(value))}"`)
+        .join(' ');
+
+      return `<${tag} ${attributes} />`;
+    })
+    .join('');
+}
+
+function toKebabCase(value) {
+  return String(value).replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`);
 }
 
 function normalizePlaceTag(tag) {
