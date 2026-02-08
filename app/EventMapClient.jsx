@@ -1748,34 +1748,34 @@ export default function EventMapClient() {
   );
 
   const renderSourcesManager = () => (
-    <section className="sources-view">
-      <div className="sources-shell">
-        <div className="sources-hero">
-          <div className="sources-hero-text">
-            <h2 className="sources-hero-title">Sources</h2>
-            <p className="sources-hero-subtitle">
-              Manage your event and spot feeds. Sync to pull fresh data.
-            </p>
+    <section className="flex-1 min-h-0 overflow-y-auto p-8 max-sm:p-4 bg-bg">
+      <div className="w-full max-w-[520px] mx-auto flex flex-col gap-5">
+        {/* Header + stats */}
+        <div className="flex items-center justify-between gap-4 max-lg:flex-col max-lg:items-start">
+          <div>
+            <h2 className="m-0 text-xl font-extrabold tracking-tight">Sources</h2>
+            <p className="mt-0.5 text-muted text-[0.82rem]">Manage your event and spot feeds. Sync to pull fresh data.</p>
           </div>
-          <div className="sources-stats">
-            <div className="sources-stat-card sources-stat-events">
-              <span className="sources-stat-value">{sourceStats.activeEventSources}</span>
-              <span className="sources-stat-label">Event feeds</span>
+          <div className="flex gap-1.5 max-sm:flex-wrap">
+            <div className="flex items-center gap-2 border border-border bg-card rounded-[10px] px-3.5 py-2" style={{ borderColor: 'rgba(59,108,245,0.25)' }}>
+              <strong className="text-lg font-extrabold leading-none">{sourceStats.activeEventSources}</strong>
+              <span className="text-muted text-[0.72rem] font-semibold leading-tight">Event feeds</span>
             </div>
-            <div className="sources-stat-card sources-stat-spots">
-              <span className="sources-stat-value">{sourceStats.activeSpotSources}</span>
-              <span className="sources-stat-label">Spot feeds</span>
+            <div className="flex items-center gap-2 border border-border bg-card rounded-[10px] px-3.5 py-2" style={{ borderColor: 'rgba(13,148,136,0.25)' }}>
+              <strong className="text-lg font-extrabold leading-none">{sourceStats.activeSpotSources}</strong>
+              <span className="text-muted text-[0.72rem] font-semibold leading-tight">Spot feeds</span>
             </div>
-            <div className="sources-stat-card">
-              <span className="sources-stat-value">{sources.length}</span>
-              <span className="sources-stat-label">Total</span>
+            <div className="flex items-center gap-2 border border-border bg-card rounded-[10px] px-3.5 py-2">
+              <strong className="text-lg font-extrabold leading-none">{sources.length}</strong>
+              <span className="text-muted text-[0.72rem] font-semibold leading-tight">Total</span>
             </div>
           </div>
         </div>
 
-        <form className="sources-create-bar" onSubmit={handleCreateSource}>
+        {/* Add source form */}
+        <form className="flex items-center gap-2 p-2.5 px-3 bg-card border border-border rounded-xl max-sm:flex-col" onSubmit={handleCreateSource}>
           <Select value={newSourceType} onValueChange={setNewSourceType}>
-            <SelectTrigger className="sources-select-trigger">
+            <SelectTrigger className="min-h-[36px] min-w-[100px] rounded-lg">
               <SelectValue placeholder="Type" />
             </SelectTrigger>
             <SelectContent>
@@ -1783,100 +1783,73 @@ export default function EventMapClient() {
               <SelectItem value="spot">Spot</SelectItem>
             </SelectContent>
           </Select>
-          <input
-            className="sources-input"
-            placeholder="https://example.com/source"
-            value={newSourceUrl}
-            onChange={(event) => setNewSourceUrl(event.target.value)}
-          />
-          <input
-            className="sources-input sources-input-label"
-            placeholder="Label (optional)"
-            value={newSourceLabel}
-            onChange={(event) => setNewSourceLabel(event.target.value)}
-          />
-          <Button type="submit" size="sm" className="sources-submit" disabled={isSavingSource}>
+          <input className="sources-input" placeholder="https://example.com/source" value={newSourceUrl} onChange={(event) => setNewSourceUrl(event.target.value)} />
+          <input className="sources-input max-w-[160px] max-sm:max-w-none" placeholder="Label (optional)" value={newSourceLabel} onChange={(event) => setNewSourceLabel(event.target.value)} />
+          <Button type="submit" size="sm" className="min-h-[36px] rounded-lg min-w-[100px] shrink-0 max-sm:w-full" disabled={isSavingSource}>
             {isSavingSource ? 'Adding...' : 'Add Source'}
           </Button>
         </form>
 
-        <div className="sources-groups">
+        {/* Source groups */}
+        <div className="flex flex-col gap-5">
           {[
-            { key: 'event', title: 'Event Sources', icon: 'calendar' },
-            { key: 'spot', title: 'Spot Sources', icon: 'pin' }
+            { key: 'event', title: 'Event Sources', dotColor: 'bg-accent' },
+            { key: 'spot', title: 'Spot Sources', dotColor: 'bg-teal-600' }
           ].map((group) => (
-            <section className="sources-group" key={group.key}>
-              <div className="sources-group-header">
-                <h3 className="sources-group-title">
-                  <span className={`sources-group-icon sources-group-icon-${group.key}`} />
+            <section className="flex flex-col" key={group.key}>
+              <div className="flex items-center justify-between gap-2 mb-2">
+                <h3 className="m-0 text-[0.78rem] font-bold uppercase tracking-wider text-muted flex items-center gap-1.5">
+                  <span className={`inline-block w-[7px] h-[7px] rounded-full ${group.dotColor}`} />
                   {group.title}
                 </h3>
-                <Badge variant="secondary" className="sources-group-count">{groupedSources[group.key].length}</Badge>
+                <Badge variant="secondary" className="text-[0.68rem] tabular-nums">{groupedSources[group.key].length}</Badge>
               </div>
 
               {groupedSources[group.key].length === 0 ? (
-                <p className="sources-empty">No {group.key} sources added yet.</p>
+                <p className="border border-dashed border-border rounded-[10px] p-5 text-center text-muted text-[0.82rem] bg-bg-subtle">No {group.key} sources added yet.</p>
               ) : (
-                <div className="sources-list">
-                  {groupedSources[group.key].map((source) => (
-                    <div
-                      className={`sources-card ${source.sourceType === 'event' ? 'sources-card-event' : 'sources-card-spot'} ${source.status === 'paused' ? 'sources-card-paused' : ''}`}
-                      key={source.id || `${source.sourceType}-${source.url}`}
-                    >
-                      <div className="sources-card-top">
-                        <div className="sources-card-info">
-                          <h4 className="sources-card-title">{source.label || new URL(source.url).hostname}</h4>
-                          <a
-                            className="sources-card-url"
-                            href={source.url}
-                            target="_blank"
-                            rel="noreferrer"
-                            title={source.url}
-                          >
-                            {source.url}
-                          </a>
+                <div className="flex flex-col gap-1.5">
+                  {groupedSources[group.key].map((source) => {
+                    const isEvent = source.sourceType === 'event';
+                    const isActive = source.status === 'active';
+                    const displayTitle = source.label || safeHostname(source.url);
+
+                    return (
+                      <div
+                        className={`rounded-[10px] border border-border bg-card transition-all duration-150 hover:border-border-hover hover:shadow-[0_1px_4px_rgba(12,18,34,0.05)] ${source.status === 'paused' ? 'opacity-60' : ''}`}
+                        style={{ borderLeft: `3px solid ${isEvent ? 'rgba(59,108,245,0.5)' : 'rgba(13,148,136,0.5)'}`, padding: '12px 14px' }}
+                        key={source.id || `${source.sourceType}-${source.url}`}
+                      >
+                        <div className="flex items-start justify-between gap-2.5">
+                          <div className="min-w-0 flex-1">
+                            <h4 className="m-0 text-[0.88rem] font-bold text-foreground leading-snug">{displayTitle}</h4>
+                            <a className="block mt-0.5 text-muted text-[0.74rem] no-underline truncate hover:text-accent hover:underline" href={source.url} target="_blank" rel="noreferrer" title={source.url}>{source.url}</a>
+                          </div>
+                          <span className={`shrink-0 inline-flex items-center gap-1.5 text-[0.68rem] font-semibold capitalize px-2 py-0.5 rounded-md ${isActive ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-amber-50 text-amber-800 border border-amber-200'}`}>
+                            <span className={`w-1.5 h-1.5 rounded-full ${isActive ? 'bg-emerald-500 shadow-[0_0_4px_rgba(16,185,129,0.5)]' : 'bg-amber-500'}`} />
+                            {source.status}
+                          </span>
                         </div>
-                        <Badge
-                          variant="secondary"
-                          className={`sources-status-badge ${source.status === 'active' ? 'sources-status-active' : 'sources-status-paused'}`}
-                        >
-                          <span className="sources-status-dot" />
-                          {source.status}
-                        </Badge>
-                      </div>
-                      <div className="sources-card-bottom">
-                        <span className="sources-card-meta">
-                          {source.lastSyncedAt
-                            ? `Synced ${new Date(source.lastSyncedAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}`
-                            : 'Never synced'}
-                        </span>
-                        {source.lastError ? (
-                          <span className="sources-card-error">{source.lastError}</span>
-                        ) : null}
-                        {source.readonly ? (
-                          <span className="sources-card-readonly">Read-only</span>
-                        ) : null}
-                        <div className="sources-card-actions">
-                          <button
-                            type="button"
-                            className="sources-action-btn"
-                            disabled={Boolean(source.readonly)}
-                            onClick={() => { void handleToggleSourceStatus(source); }}
-                          >
-                            {source.status === 'active' ? 'Pause' : 'Resume'}
-                          </button>
-                          <button
-                            type="button"
-                            className="sources-action-btn sources-action-delete"
-                            disabled={Boolean(source.readonly)}
-                            onClick={() => { void handleDeleteSource(source); }}
-                          >
-                            Remove
-                          </button>
+                        <div className="flex items-center gap-2 mt-2 flex-wrap">
+                          <span className="text-muted text-[0.72rem]">
+                            {source.lastSyncedAt
+                              ? `Synced ${new Date(source.lastSyncedAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}`
+                              : 'Never synced'}
+                          </span>
+                          {source.lastError ? <span className="text-rose-700 text-[0.72rem]">{source.lastError}</span> : null}
+                          {source.readonly ? <span className="text-muted text-[0.72rem] italic">Read-only</span> : null}
+                          <div className="flex gap-2 ml-auto">
+                            <button type="button" className="px-2.5 py-1 rounded-md border border-border bg-card text-foreground-secondary text-[0.72rem] font-semibold cursor-pointer transition-all duration-150 hover:bg-bg-subtle hover:border-border-hover disabled:opacity-40 disabled:cursor-not-allowed" disabled={Boolean(source.readonly)} onClick={() => { void handleToggleSourceStatus(source); }}>
+                              {isActive ? 'Pause' : 'Resume'}
+                            </button>
+                            <button type="button" className="px-2.5 py-1 rounded-md border border-rose-200 bg-rose-50 text-rose-600 text-[0.72rem] font-semibold cursor-pointer transition-all duration-150 hover:bg-rose-100 hover:border-rose-300 hover:text-rose-700 disabled:opacity-40 disabled:cursor-not-allowed" disabled={Boolean(source.readonly)} onClick={() => { void handleDeleteSource(source); }}>
+                              Remove
+                            </button>
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </section>
@@ -1997,6 +1970,14 @@ export default function EventMapClient() {
       )}
     </main>
   );
+}
+
+function safeHostname(url) {
+  try {
+    return new URL(url).hostname;
+  } catch {
+    return url;
+  }
 }
 
 function getTagColor(tag) {
