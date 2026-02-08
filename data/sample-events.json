@@ -1,0 +1,24 @@
+[
+  {
+    "id": "workos-pragmatic",
+    "name": "WorkOS AI Night w/ The Pragmatic Engineer",
+    "description": "Pizza, lightning demos, and a fireside chat with The Pragmatic Engineer.",
+    "eventUrl": "https://luma.com/workos-pragmatic",
+    "startDateTimeText": "Monday, February 9, 5:30 PM - 8:00 PM PST",
+    "startDateISO": "2026-02-09",
+    "locationText": "WorkOS, San Francisco, California",
+    "address": "660 Market St, San Francisco, CA 94104, USA",
+    "googleMapsUrl": "https://www.google.com/maps/search/?api=1&query=37.788385399999996%2C-122.4029183"
+  },
+  {
+    "id": "dumplingdatenight",
+    "name": "Dumpling Date Night",
+    "description": "A social event in San Francisco.",
+    "eventUrl": "https://luma.com/dumplingdatenight",
+    "startDateTimeText": "Saturday, February 7, 7:00 PM - 2:00 AM PST",
+    "startDateISO": "2026-02-07",
+    "locationText": "San Francisco, California",
+    "address": "",
+    "googleMapsUrl": "https://www.google.com/maps/search/?api=1&query=37.7725%2C-122.4125"
+  }
+]
