@@ -72,7 +72,6 @@ export default function EventMapClient() {
   const sidebarRef = useRef(null);
   const mapElementRef = useRef(null);
   const mapRef = useRef(null);
-  const geocoderRef = useRef(null);
   const distanceMatrixRef = useRef(null);
   const routePolylineRef = useRef(null);
   const infoWindowRef = useRef(null);
@@ -443,20 +442,34 @@ export default function EventMapClient() {
   }, []);
 
   const geocode = useCallback(async (address) => {
-    if (!geocoderRef.current || !address) {
+    if (!address || !window.google?.maps) {
       return null;
     }
 
-    return new Promise((resolve) => {
-      geocoderRef.current.geocode({ address }, (results, statusValue) => {
-        if (statusValue !== 'OK' || !results?.length) {
-          resolve(null);
-          return;
-        }
-
-        resolve(results[0].geometry.location);
+    try {
+      const response = await fetch('/api/geocode', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ address })
       });
-    });
+      const payload = await response.json().catch(() => null);
+
+      if (!response.ok) {
+        return null;
+      }
+
+      const lat = Number(payload?.lat);
+      const lng = Number(payload?.lng);
+      if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+        return null;
+      }
+
+      return new window.google.maps.LatLng(lat, lng);
+    } catch {
+      return null;
+    }
   }, []);
 
   const parseLatLngFromMapUrl = useCallback((url) => {
@@ -1073,7 +1086,6 @@ export default function EventMapClient() {
           fullscreenControl: false
         });
 
-        geocoderRef.current = new window.google.maps.Geocoder();
         distanceMatrixRef.current = new window.google.maps.DistanceMatrixService();
         infoWindowRef.current = new window.google.maps.InfoWindow();
 
@@ -1337,9 +1349,9 @@ export default function EventMapClient() {
     routeSummary || (selectedDate && dayPlanItems.length ? 'Waiting for routable stops...' : 'Add stops to draw route');
 
   const renderDayList = () => (
-    <div className="day-list">
+    <div className="flex flex-col gap-0.5 p-2 overflow-y-auto border-r border-border bg-bg-subtle scrollbar-thin day-list-responsive">
       {uniqueDates.length === 0 ? (
-        <p className="empty-state">No event dates</p>
+        <p className="my-3 text-muted text-sm text-center p-7 bg-bg-subtle rounded-[10px] border border-dashed border-border">No event dates</p>
       ) : (
         uniqueDates.map((dateISO) => {
           const isActive = dateISO === selectedDate;
@@ -1350,12 +1362,12 @@ export default function EventMapClient() {
             <button
               key={dateISO}
               type="button"
-              className={`day-list-item${isActive ? ' day-list-item-active' : ''}`}
+              className={`flex flex-col gap-px px-2.5 py-2 border rounded-lg text-left cursor-pointer transition-all duration-200 day-list-item-responsive ${isActive ? 'bg-accent-light border-accent-border shadow-[0_0_0_2px_var(--color-accent-glow)]' : 'bg-transparent border-transparent hover:bg-card hover:border-border'}`}
               onClick={() => { setSelectedDate(dateISO); setShowAllEvents(false); }}
             >
-              <span className="day-list-weekday">{formatDateWeekday(dateISO)}</span>
-              <span className="day-list-date">{formatDateDayMonth(dateISO)}</span>
-              <span className="day-list-meta">{eventCount} ev · {planCount} plan</span>
+              <span className="text-[0.65rem] font-bold text-muted uppercase tracking-wider">{formatDateWeekday(dateISO)}</span>
+              <span className="text-[0.84rem] font-bold text-foreground">{formatDateDayMonth(dateISO)}</span>
+              <span className="text-[0.65rem] text-foreground-secondary">{eventCount} ev · {planCount} plan</span>
             </button>
           );
         })
@@ -1364,13 +1376,13 @@ export default function EventMapClient() {
   );
 
   const renderPlannerItinerary = () => (
-    <div className="itinerary-col">
-      <div className="itinerary-header">
+    <div className="flex flex-col p-3 overflow-y-auto min-h-0 scrollbar-thin">
+      <div className="flex items-start justify-between gap-2 mb-2.5 flex-wrap">
         <div>
-          <h2>{selectedDate ? formatDate(selectedDate) : 'No date selected'}</h2>
-          <div className="itinerary-controls">
+          <h2 className="m-0 text-base font-bold tracking-tight">{selectedDate ? formatDate(selectedDate) : 'No date selected'}</h2>
+          <div className="flex gap-1.5 items-center mt-1">
             <Select value={travelMode} onValueChange={setTravelMode}>
-              <SelectTrigger id="travel-mode" className="itinerary-select">
+              <SelectTrigger id="travel-mode" className="min-h-[30px] min-w-[110px]">
                 <SelectValue placeholder="Travel mode" />
               </SelectTrigger>
               <SelectContent>
@@ -1381,16 +1393,10 @@ export default function EventMapClient() {
             </Select>
           </div>
         </div>
-        <div className="itinerary-actions">
-          <Button type="button" size="sm" variant="secondary" onClick={clearDayPlan} disabled={!selectedDate || dayPlanItems.length === 0}>
-            Clear
-          </Button>
-          <Button type="button" size="sm" variant="secondary" onClick={handleExportPlannerIcs} disabled={!selectedDate || dayPlanItems.length === 0}>
-            .ics
-          </Button>
-          <Button type="button" size="sm" variant="secondary" onClick={handleAddDayPlanToGoogleCalendar} disabled={!selectedDate || dayPlanItems.length === 0}>
-            GCal
-          </Button>
+        <div className="flex gap-1 shrink-0">
+          <Button type="button" size="sm" variant="secondary" onClick={clearDayPlan} disabled={!selectedDate || dayPlanItems.length === 0}>Clear</Button>
+          <Button type="button" size="sm" variant="secondary" onClick={handleExportPlannerIcs} disabled={!selectedDate || dayPlanItems.length === 0}>.ics</Button>
+          <Button type="button" size="sm" variant="secondary" onClick={handleAddDayPlanToGoogleCalendar} disabled={!selectedDate || dayPlanItems.length === 0}>GCal</Button>
         </div>
       </div>
 
@@ -1415,36 +1421,36 @@ export default function EventMapClient() {
 
               return (
                 <article className={itemClass} key={item.id} style={{ top: `${top}px`, height: `${height}px` }} onPointerDown={(event) => { startPlanDrag(event, item, 'move'); }}>
-                  <button type="button" className="planner-resize planner-resize-top" aria-label="Adjust start time" onPointerDown={(event) => { startPlanDrag(event, item, 'resize-start'); }} />
-                  <button type="button" className="planner-remove" aria-label="Remove from plan" onClick={(event) => { event.stopPropagation(); removePlanItem(item.id); }}>×</button>
-                  <div className="planner-item-time">{formatMinuteLabel(item.startMinutes)} - {formatMinuteLabel(item.endMinutes)}</div>
-                  <div className="planner-item-title">{item.title}</div>
-                  {item.locationText ? <div className="planner-item-location">{item.locationText}</div> : null}
-                  <button type="button" className="planner-resize planner-resize-bottom" aria-label="Adjust end time" onPointerDown={(event) => { startPlanDrag(event, item, 'resize-end'); }} />
+                  <button type="button" className="absolute left-0 right-0 top-0 h-2 border-none bg-transparent cursor-ns-resize" aria-label="Adjust start time" onPointerDown={(event) => { startPlanDrag(event, item, 'resize-start'); }} />
+                  <button type="button" className="absolute top-1 right-1.5 border-none bg-transparent text-slate-600 text-base leading-none cursor-pointer hover:text-slate-900" aria-label="Remove from plan" onClick={(event) => { event.stopPropagation(); removePlanItem(item.id); }}>×</button>
+                  <div className="text-[0.72rem] font-bold text-gray-800 tracking-wide">{formatMinuteLabel(item.startMinutes)} - {formatMinuteLabel(item.endMinutes)}</div>
+                  <div className="mt-0.5 text-[0.82rem] font-bold text-slate-900 leading-tight">{item.title}</div>
+                  {item.locationText ? <div className="mt-0.5 text-[0.72rem] text-slate-700 whitespace-nowrap overflow-hidden text-ellipsis">{item.locationText}</div> : null}
+                  <button type="button" className="absolute left-0 right-0 bottom-0 h-2 border-none bg-transparent cursor-ns-resize" aria-label="Adjust end time" onPointerDown={(event) => { startPlanDrag(event, item, 'resize-end'); }} />
                 </article>
               );
             })}
           </div>
         </div>
       ) : (
-        <p className="empty-state">Pick a date from the left to start planning.</p>
+        <p className="my-3 text-muted text-sm text-center p-7 bg-bg-subtle rounded-[10px] border border-dashed border-border">Pick a date from the left to start planning.</p>
       )}
 
-      <div className="planner-route-summary" role="status" aria-live="polite">
+      <div className="mt-2.5 flex items-center gap-1.5 flex-wrap p-2 border border-border rounded-[10px] bg-bg-subtle text-foreground-secondary text-[0.8rem]" role="status" aria-live="polite">
         <strong>Route:</strong> {routeSummaryText}
-        {isRouteUpdating ? <span className="route-update-indicator">Updating...</span> : null}
+        {isRouteUpdating ? <span className="inline-flex items-center ml-2 text-[0.78rem] font-semibold text-accent before:content-[''] before:w-1.5 before:h-1.5 before:rounded-full before:bg-current before:mr-1.5 before:animate-[statusPulse_1.1s_ease-in-out_infinite]">Updating...</span> : null}
       </div>
     </div>
   );
 
   const renderEventsItinerary = () => (
-    <div className="itinerary-col">
-      <div className="itinerary-header">
+    <div className="flex flex-col p-3 overflow-y-auto min-h-0 scrollbar-thin">
+      <div className="flex items-start justify-between gap-2 mb-2.5 flex-wrap">
         <div>
-          <h2>Events {selectedDate ? `· ${formatDateDayMonth(selectedDate)}` : ''}</h2>
-          <div className="itinerary-controls">
+          <h2 className="m-0 text-base font-bold tracking-tight">Events {selectedDate ? `· ${formatDateDayMonth(selectedDate)}` : ''}</h2>
+          <div className="flex gap-1.5 items-center mt-1">
             <ToggleGroup
-              className="tag-filter-list"
+              className="flex flex-nowrap overflow-x-auto gap-1.5 scrollbar-none"
               type="single"
               value={showAllEvents ? 'all' : 'day'}
               onValueChange={(value) => {
@@ -1452,32 +1458,32 @@ export default function EventMapClient() {
                 if (value === 'day') { setShowAllEvents(false); }
               }}
             >
-              <ToggleGroupItem className="tag-chip" value="day">Day</ToggleGroupItem>
-              <ToggleGroupItem className="tag-chip" value="all">All</ToggleGroupItem>
+              <ToggleGroupItem className="shrink-0 px-3 py-1 text-[0.8rem] font-medium rounded-full" value="day">Day</ToggleGroupItem>
+              <ToggleGroupItem className="shrink-0 px-3 py-1 text-[0.8rem] font-medium rounded-full" value="all">All</ToggleGroupItem>
             </ToggleGroup>
           </div>
         </div>
-        <div className="panel-stat-chips">
-          <span className="stat-chip">{visibleEvents.length} showing</span>
-          <span className="stat-chip">{travelReadyCount} travel</span>
+        <div className="flex gap-1.5">
+          <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-bg-subtle text-muted text-[0.7rem] font-semibold whitespace-nowrap">{visibleEvents.length} showing</span>
+          <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-bg-subtle text-muted text-[0.7rem] font-semibold whitespace-nowrap">{travelReadyCount} travel</span>
         </div>
       </div>
-      <div className="card-list">
+      <div className="flex flex-col gap-2">
         {visibleEvents.length === 0 ? (
-          <p className="empty-state">No events found for this filter.</p>
+          <p className="my-3 text-muted text-sm text-center p-7 bg-bg-subtle rounded-[10px] border border-dashed border-border">No events found for this filter.</p>
         ) : (
           visibleEvents.map((event) => {
             const location = event.address || event.locationText || 'Location not listed';
             const time = event.startDateTimeText || 'Time not listed';
             return (
-              <Card className="item-card" key={event.eventUrl}>
-                <h3>{event.name}</h3>
-                <p className="event-meta"><strong>Time:</strong> {time}</p>
-                <p className="event-meta"><strong>Location:</strong> {location}</p>
-                {event.travelDurationText ? <p className="event-meta"><strong>Travel:</strong> {event.travelDurationText}</p> : null}
-                <p className="event-meta">{truncate(event.description || '', 170)}</p>
+              <Card className="p-3.5 hover:border-accent-border hover:shadow-[0_0_0_3px_var(--color-accent-glow)]" key={event.eventUrl}>
+                <h3 className="m-0 mb-1.5 text-[0.92rem] font-semibold leading-snug">{event.name}</h3>
+                <p className="my-0.5 text-[0.82rem] text-foreground-secondary leading-relaxed"><strong>Time:</strong> {time}</p>
+                <p className="my-0.5 text-[0.82rem] text-foreground-secondary leading-relaxed"><strong>Location:</strong> {location}</p>
+                {event.travelDurationText ? <p className="my-0.5 text-[0.82rem] text-foreground-secondary leading-relaxed"><strong>Travel:</strong> {event.travelDurationText}</p> : null}
+                <p className="my-0.5 text-[0.82rem] text-foreground-secondary leading-relaxed">{truncate(event.description || '', 170)}</p>
                 <Button type="button" size="sm" variant="secondary" onClick={() => { addEventToDayPlan(event); }}>Add to day</Button>
-                <a className="event-link" href={event.eventUrl} target="_blank" rel="noreferrer">Open event</a>
+                <a className="inline-flex items-center gap-0.5 mt-1.5 text-accent no-underline font-semibold text-[0.82rem] hover:text-accent-hover hover:underline hover:underline-offset-2" href={event.eventUrl} target="_blank" rel="noreferrer">Open event</a>
               </Card>
             );
           })
@@ -1487,43 +1493,43 @@ export default function EventMapClient() {
   );
 
   const renderSpotsItinerary = () => (
-    <div className="itinerary-col">
-      <div className="itinerary-header">
+    <div className="flex flex-col p-3 overflow-y-auto min-h-0 scrollbar-thin">
+      <div className="flex items-start justify-between gap-2 mb-2.5 flex-wrap">
         <div>
-          <h2>Curated Spots</h2>
-          <div className="itinerary-controls">
+          <h2 className="m-0 text-base font-bold tracking-tight">Curated Spots</h2>
+          <div className="flex gap-1.5 items-center mt-1">
             <ToggleGroup
-              className="tag-filter-list"
+              className="flex flex-nowrap overflow-x-auto gap-1.5 scrollbar-none"
               type="single"
               value={placeTagFilter}
               onValueChange={(value) => { if (value) { setPlaceTagFilter(value); } }}
             >
               {placeTagOptions.map((tag) => (
-                <ToggleGroupItem key={tag} className="tag-chip" value={tag}>{formatTag(tag)}</ToggleGroupItem>
+                <ToggleGroupItem key={tag} className="shrink-0 px-3 py-1 text-[0.8rem] font-medium rounded-full" value={tag}>{formatTag(tag)}</ToggleGroupItem>
               ))}
             </ToggleGroup>
           </div>
         </div>
-        <span className="stat-chip">{visiblePlaces.length} places</span>
+        <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-bg-subtle text-muted text-[0.7rem] font-semibold whitespace-nowrap">{visiblePlaces.length} places</span>
       </div>
-      <div className="card-list">
+      <div className="flex flex-col gap-2">
         {visiblePlaces.length === 0 ? (
-          <p className="empty-state">No curated places in this category.</p>
+          <p className="my-3 text-muted text-sm text-center p-7 bg-bg-subtle rounded-[10px] border border-dashed border-border">No curated places in this category.</p>
         ) : (
           visiblePlaces.map((place) => (
-            <Card className="item-card" key={place.id || `${place.name}-${place.location}`}>
-              <div className="item-topline">
-                <h3>{place.name}</h3>
-                <Badge className="tag-pill" variant="secondary" style={{ backgroundColor: `${getTagColor(place.tag)}22`, color: getTagColor(place.tag) }}>{formatTag(place.tag)}</Badge>
+            <Card className="p-3.5 hover:border-accent-border hover:shadow-[0_0_0_3px_var(--color-accent-glow)]" key={place.id || `${place.name}-${place.location}`}>
+              <div className="flex gap-2 justify-between items-start">
+                <h3 className="m-0 mb-1.5 text-[0.92rem] font-semibold leading-snug">{place.name}</h3>
+                <Badge className="uppercase tracking-wider shrink-0" variant="secondary" style={{ backgroundColor: `${getTagColor(place.tag)}22`, color: getTagColor(place.tag) }}>{formatTag(place.tag)}</Badge>
               </div>
-              <p className="event-meta"><strong>Location:</strong> {place.location}</p>
-              {place.curatorComment ? <p className="event-meta"><strong>Curator note:</strong> {place.curatorComment}</p> : null}
-              {place.description ? <p className="event-meta">{truncate(place.description, 180)}</p> : null}
-              {place.details ? <p className="event-meta">{truncate(place.details, 220)}</p> : null}
+              <p className="my-0.5 text-[0.82rem] text-foreground-secondary leading-relaxed"><strong>Location:</strong> {place.location}</p>
+              {place.curatorComment ? <p className="my-0.5 text-[0.82rem] text-foreground-secondary leading-relaxed"><strong>Curator note:</strong> {place.curatorComment}</p> : null}
+              {place.description ? <p className="my-0.5 text-[0.82rem] text-foreground-secondary leading-relaxed">{truncate(place.description, 180)}</p> : null}
+              {place.details ? <p className="my-0.5 text-[0.82rem] text-foreground-secondary leading-relaxed">{truncate(place.details, 220)}</p> : null}
               <Button type="button" size="sm" variant="secondary" onClick={() => { addPlaceToDayPlan(place); }}>Add to day</Button>
-              <p className="event-meta links-row">
-                <a className="event-link" href={place.mapLink} target="_blank" rel="noreferrer">Open map</a>
-                <a className="event-link" href={place.cornerLink} target="_blank" rel="noreferrer">Corner page</a>
+              <p className="my-0.5 text-[0.82rem] text-foreground-secondary leading-relaxed flex flex-wrap gap-3">
+                <a className="inline-flex items-center gap-0.5 mt-1.5 text-accent no-underline font-semibold text-[0.82rem] hover:text-accent-hover hover:underline hover:underline-offset-2" href={place.mapLink} target="_blank" rel="noreferrer">Open map</a>
+                <a className="inline-flex items-center gap-0.5 mt-1.5 text-accent no-underline font-semibold text-[0.82rem] hover:text-accent-hover hover:underline hover:underline-offset-2" href={place.cornerLink} target="_blank" rel="noreferrer">Corner page</a>
               </p>
             </Card>
           ))
@@ -1533,10 +1539,10 @@ export default function EventMapClient() {
   );
 
   return (
-    <main className="app-shell">
-      <header className="topbar">
-        <h1>SF Trip Planner</h1>
-        <nav className="topbar-nav" aria-label="App navigator">
+    <main className="min-h-dvh h-dvh flex flex-col w-full overflow-hidden">
+      <header className="flex items-center gap-3 px-5 h-[52px] min-h-[52px] border-b border-border bg-card shadow-[0_1px_2px_rgba(12,18,34,0.04)] relative z-30 topbar-responsive">
+        <h1 className="m-0 text-lg font-extrabold tracking-tight shrink-0 bg-gradient-to-br from-foreground from-40% to-accent bg-clip-text text-transparent">SF Trip Planner</h1>
+        <nav className="flex items-center gap-0.5 mx-auto overflow-x-auto scrollbar-none topbar-nav-responsive" aria-label="App navigator">
           {[
             { id: 'map', icon: MapPin, label: 'Map' },
             { id: 'calendar', icon: Calendar, label: 'Calendar' },
@@ -1547,7 +1553,7 @@ export default function EventMapClient() {
             <button
               key={id}
               type="button"
-              className={`topbar-nav-item${activeView === id ? ' topbar-nav-item-active' : ''}`}
+              className={`inline-flex items-center gap-1 px-3.5 py-1.5 border-none rounded-full text-[0.82rem] font-medium cursor-pointer transition-all duration-200 whitespace-nowrap shrink-0 topbar-nav-item-responsive ${activeView === id ? 'bg-accent-light text-accent font-semibold' : 'bg-transparent text-muted hover:bg-bg-subtle hover:text-foreground'}`}
               onClick={() => { setActiveView(id); }}
             >
               <Icon size={14} />
@@ -1555,9 +1561,9 @@ export default function EventMapClient() {
             </button>
           ))}
         </nav>
-        <div className="topbar-actions">
+        <div className="flex gap-1.5 shrink-0 topbar-actions-responsive">
           <Button id="sync-button" type="button" size="sm" onClick={handleSync} disabled={isSyncing}>
-            <RefreshCw size={14} className={isSyncing ? 'spin-icon' : ''} />
+            <RefreshCw size={14} className={isSyncing ? 'animate-spin' : ''} />
             {isSyncing ? 'Syncing…' : 'Sync'}
           </Button>
           <Button variant="secondary" id="use-device-location" type="button" size="sm" onClick={handleDeviceLocation}>
@@ -1568,19 +1574,19 @@ export default function EventMapClient() {
       </header>
 
       {activeView === 'calendar' && (
-        <section className="view-calendar">
-          <div className="calendar-full">
-            <div className="calendar-panel-header">
+        <section className="flex-1 min-h-0 overflow-y-auto flex justify-center p-8 max-sm:p-3.5 bg-bg">
+          <div className="w-full max-w-[960px]">
+            <div className="grid grid-cols-[auto_1fr_auto] items-center gap-2 mb-4">
               <Button type="button" size="sm" variant="secondary" onClick={() => { shiftCalendarMonth(-1); }}>Prev</Button>
-              <h2>{formatMonthYear(calendarAnchorISO)}</h2>
+              <h2 className="text-center m-0 text-xl font-bold">{formatMonthYear(calendarAnchorISO)}</h2>
               <Button type="button" size="sm" variant="secondary" onClick={() => { shiftCalendarMonth(1); }}>Next</Button>
             </div>
-            <div className="calendar-weekdays">
+            <div className="grid grid-cols-7 gap-1.5 mb-1.5 text-muted text-[0.72rem] font-bold uppercase tracking-wider">
               {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((weekday) => (
-                <span key={weekday}>{weekday}</span>
+                <span key={weekday} className="text-center">{weekday}</span>
               ))}
             </div>
-            <div className="calendar-grid calendar-grid-full">
+            <div className="grid grid-cols-7 gap-2">
               {calendarDays.map((dayISO) => {
                 const isCurrentMonth = toMonthISO(dayISO) === toMonthISO(calendarAnchorISO);
                 const isSelected = dayISO === selectedDate;
@@ -1591,48 +1597,44 @@ export default function EventMapClient() {
                   <button
                     key={dayISO}
                     type="button"
-                    className={[
-                      'calendar-day calendar-day-full',
-                      isCurrentMonth ? '' : 'calendar-day-outside',
-                      isSelected ? 'calendar-day-selected' : ''
-                    ].filter(Boolean).join(' ')}
+                    className={`border border-border bg-card rounded-[10px] min-h-[90px] max-sm:min-h-[70px] p-2.5 text-left flex flex-col gap-px cursor-pointer transition-all duration-200 hover:border-accent-border hover:shadow-[0_0_0_3px_var(--color-accent-glow)] ${!isCurrentMonth ? 'opacity-50' : ''} ${isSelected ? 'cal-day-selected' : ''}`}
                     onClick={() => { setSelectedDate(dayISO); setShowAllEvents(false); setActiveView('dayroute'); }}
                   >
-                    <span className="calendar-day-num">{formatDayOfMonth(dayISO)}</span>
-                    <span className="calendar-day-meta">{eventCount} events</span>
-                    <span className="calendar-day-meta calendar-day-plan">{planCount} planned</span>
+                    <span className="text-[0.84rem] font-bold text-foreground">{formatDayOfMonth(dayISO)}</span>
+                    <span className="text-[0.68rem] text-foreground-secondary leading-tight">{eventCount} events</span>
+                    <span className="text-[0.68rem] text-teal-700 leading-tight">{planCount} planned</span>
                   </button>
                 );
               })}
             </div>
-            <p className="calendar-hint">Click a date to jump to its day route.</p>
+            <p className="mt-4 text-center text-muted text-[0.82rem]">Click a date to jump to its day route.</p>
           </div>
         </section>
       )}
 
       {showsMap && (
-        <section className={`layout${showsSidebar ? ' layout-with-sidebar' : ' layout-map-only'}`}>
-          <section className="map-panel" ref={mapPanelRef}>
-            <div className="map-legend">
-              <span className="legend-item"><Calendar className="legend-icon" size={14} strokeWidth={2} /> Event</span>
-              <span className="legend-item"><House className="legend-icon" size={14} strokeWidth={2} /> Origin</span>
+        <section className={`min-h-0 grid gap-0 flex-1 items-stretch layout-sidebar ${showsSidebar ? 'grid-cols-[minmax(0,1fr)_480px]' : 'grid-cols-1'}`}>
+          <section className="flex flex-col min-h-0 h-full" ref={mapPanelRef}>
+            <div className="flex flex-wrap gap-x-3 gap-y-1 bg-card border-b border-border px-4 py-1.5">
+              <span className="inline-flex items-center gap-1 text-[0.76rem] font-medium text-muted"><Calendar className="w-[18px] h-[18px]" size={14} strokeWidth={2} /> Event</span>
+              <span className="inline-flex items-center gap-1 text-[0.76rem] font-medium text-muted"><House className="w-[18px] h-[18px]" size={14} strokeWidth={2} /> Origin</span>
               {Object.keys(TAG_COLORS).map((tag) => {
                 const TagIcon = getTagIconComponent(tag);
-                return <span className="legend-item" key={tag}><TagIcon className="legend-icon" size={14} strokeWidth={2} /> {formatTag(tag)}</span>;
+                return <span className="inline-flex items-center gap-1 text-[0.76rem] font-medium text-muted" key={tag}><TagIcon className="w-[18px] h-[18px]" size={14} strokeWidth={2} /> {formatTag(tag)}</span>;
               })}
             </div>
-            <div className="map-container">
+            <div className="relative flex-1 min-h-0 map-container-responsive">
               <div id="map" ref={mapElementRef} />
-              <div className="map-status-overlay" role="status">
-                <span className={`status-dot${statusError ? ' status-dot-error' : ''}`} />
+              <div className="absolute bottom-3 left-3 flex items-center gap-1.5 px-3 py-1.5 bg-card-glass backdrop-blur-sm rounded-[10px] border border-border shadow-sm text-[0.78rem] text-foreground-secondary max-w-[calc(100%-24px)] z-10" role="status">
+                <span className={`w-[7px] h-[7px] rounded-full shrink-0 ${statusError ? 'bg-rose-500 shadow-[0_0_6px_rgba(244,63,94,0.4)]' : 'bg-emerald-400 shadow-[0_0_6px_rgba(52,211,153,0.4)] animate-[statusPulse_2.5s_ease-in-out_infinite]'}`} />
                 <span style={{ color: statusError ? '#e11d48' : undefined }}>{status}</span>
               </div>
             </div>
           </section>
 
           {showsSidebar && (
-            <aside className="sidebar" ref={sidebarRef}>
-              <div className="sidebar-two-col">
+            <aside className="border-l border-border bg-card h-full min-h-0 overflow-hidden sidebar-responsive" ref={sidebarRef}>
+              <div className="grid grid-cols-[140px_minmax(0,1fr)] h-full min-h-0 sidebar-grid-responsive">
                 {renderDayList()}
                 {activeView === 'dayroute' && renderPlannerItinerary()}
                 {activeView === 'events' && renderEventsItinerary()}
