@@ -63,7 +63,7 @@ export default function SourcesPage() {
 
   return (
     <section className="flex-1 min-h-0 overflow-y-auto p-8 max-sm:p-4 bg-bg">
-      <div className="w-full max-w-[860px] mx-auto flex flex-col gap-5">
+      <div className="w-full mx-auto flex flex-col gap-5">
         <div className="flex items-center justify-between gap-4">
           <div>
             <h2 className="m-0 text-xl font-extrabold tracking-tight">Sources</h2>

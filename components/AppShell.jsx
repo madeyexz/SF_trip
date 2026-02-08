@@ -2,6 +2,7 @@
 
 import { usePathname, useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
+import MapPanel from '@/components/MapPanel';
 import { useTrip } from '@/components/providers/TripProvider';
 import {
   Calendar, Coffee, MapPin, Navigation, PartyPopper, RefreshCw
@@ -16,12 +17,16 @@ const NAV_ITEMS = [
   { id: 'sources', href: '/sources', icon: RefreshCw, label: 'Sources' }
 ];
 
+const MAP_TABS = new Set(['map', 'dayroute', 'events', 'spots']);
+
 export default function AppShell({ children }) {
   const pathname = usePathname();
   const router = useRouter();
   const { isSyncing, handleSync, handleDeviceLocation } = useTrip();
 
   const activeId = NAV_ITEMS.find((n) => pathname.startsWith(n.href))?.id || 'dayroute';
+  const showMap = MAP_TABS.has(activeId);
+  const hasMapSidebar = activeId !== 'map' && showMap;
 
   return (
     <main className="min-h-dvh h-dvh flex flex-col w-full overflow-hidden">
@@ -51,7 +56,12 @@ export default function AppShell({ children }) {
           </Button>
         </div>
       </header>
-      {children}
+      <div className={`min-h-0 flex-1 grid items-stretch ${hasMapSidebar ? 'layout-sidebar grid-cols-[minmax(0,1fr)_480px]' : showMap ? 'grid-cols-1' : ''}`} style={showMap ? undefined : { display: 'contents' }}>
+        <div style={showMap ? undefined : { position: 'absolute', width: 0, height: 0, overflow: 'hidden', pointerEvents: 'none' }} aria-hidden={!showMap}>
+          <MapPanel />
+        </div>
+        {children}
+      </div>
     </main>
   );
 }
