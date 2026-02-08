@@ -98,14 +98,14 @@
 
 /* Ensure sidebar grid always stays two-column */
 .sidebar-grid-responsive {
-  grid-template-columns: 180px minmax(0, 1fr) !important;
+  grid-template-columns: 140px minmax(0, 1fr) minmax(0, 1fr) !important;
 }
 
 /* Responsive */
 @media (max-width: 1200px) {
   .layout-sidebar { grid-template-columns: 1fr !important; }
   .sidebar-responsive { height: auto; border-left: none; border-top: 1px solid var(--color-border); overflow: visible; }
-  .sidebar-grid-responsive { grid-template-columns: 160px minmax(0, 1fr) !important; height: auto; min-height: 60vh; }
+  .sidebar-grid-responsive { grid-template-columns: 140px minmax(0, 1fr) minmax(0, 1fr) !important; height: auto; min-height: 60vh; }
   .map-container-responsive { position: relative; height: 50vh; min-height: 50vh; }
 }
 
@@ -114,7 +114,7 @@
   .topbar-nav-responsive { gap: 0; }
   .topbar-nav-item-responsive { padding: 5px 8px; font-size: 0.75rem; gap: 3px; }
   .topbar-actions-responsive { display: none !important; }
-  .sidebar-grid-responsive { grid-template-columns: 120px minmax(0, 1fr) !important; height: auto; min-height: 50vh; }
+  .sidebar-grid-responsive { grid-template-columns: 1fr !important; height: auto; min-height: 50vh; }
   .day-list-responsive { flex-direction: column; overflow-y: auto; overflow-x: hidden; border-right: 1px solid var(--color-border); border-bottom: none; }
   .day-list-item-responsive { min-width: 112px; flex-shrink: 0; }
   .map-container-responsive { height: 40vh; min-height: 40vh; }

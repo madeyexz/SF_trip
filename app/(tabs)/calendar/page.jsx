@@ -40,7 +40,7 @@ export default function CalendarPage() {
                 key={dayISO}
                 type="button"
                 className={`border border-border bg-card rounded-[10px] min-h-[90px] max-sm:min-h-[70px] p-2.5 text-left flex flex-col gap-px cursor-pointer transition-all duration-200 hover:border-accent-border hover:shadow-[0_0_0_3px_var(--color-accent-glow)] ${!isCurrentMonth ? 'opacity-50' : ''} ${isSelected ? 'cal-day-selected' : ''}`}
-                onClick={() => { setSelectedDate(dayISO); setShowAllEvents(false); router.push('/dayplanning'); }}
+                onClick={() => { setSelectedDate(dayISO); setShowAllEvents(false); router.push('/planning'); }}
               >
                 <span className="text-[0.84rem] font-bold text-foreground">{formatDayOfMonth(dayISO)}</span>
                 <span className="text-[0.68rem] text-foreground-secondary leading-tight">{eventCount} events</span>

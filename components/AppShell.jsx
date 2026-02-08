@@ -5,26 +5,25 @@ import { Button } from '@/components/ui/button';
 import MapPanel from '@/components/MapPanel';
 import { useTrip } from '@/components/providers/TripProvider';
 import {
-  Calendar, Coffee, MapPin, Navigation, PartyPopper, RefreshCw
+  Calendar, Coffee, MapPin, Navigation, RefreshCw
 } from 'lucide-react';
 
 const NAV_ITEMS = [
   { id: 'map', href: '/map', icon: MapPin, label: 'Map' },
   { id: 'calendar', href: '/calendar', icon: Calendar, label: 'Calendar' },
-  { id: 'dayplanning', href: '/dayplanning', icon: Navigation, label: 'Day Planning' },
-  { id: 'events', href: '/events', icon: PartyPopper, label: 'Events' },
+  { id: 'planning', href: '/planning', icon: Navigation, label: 'Planning' },
   { id: 'spots', href: '/spots', icon: Coffee, label: 'Spots' },
   { id: 'sources', href: '/sources', icon: RefreshCw, label: 'Sources' }
 ];
 
-const MAP_TABS = new Set(['map', 'dayplanning', 'events', 'spots']);
+const MAP_TABS = new Set(['map', 'planning', 'spots']);
 
 export default function AppShell({ children }) {
   const pathname = usePathname();
   const router = useRouter();
   const { isSyncing, handleSync, handleDeviceLocation } = useTrip();
 
-  const activeId = NAV_ITEMS.find((n) => pathname.startsWith(n.href))?.id || 'dayplanning';
+  const activeId = NAV_ITEMS.find((n) => pathname.startsWith(n.href))?.id || 'planning';
   const showMap = MAP_TABS.has(activeId);
   const hasMapSidebar = activeId !== 'map' && showMap;
 
@@ -56,7 +55,7 @@ export default function AppShell({ children }) {
           </Button>
         </div>
       </header>
-      <div className={`min-h-0 flex-1 grid items-stretch ${hasMapSidebar ? 'layout-sidebar grid-cols-[minmax(0,1fr)_480px]' : showMap ? 'grid-cols-1' : ''}`} style={showMap ? undefined : { display: 'contents' }}>
+      <div className={`min-h-0 flex-1 grid items-stretch ${hasMapSidebar ? 'layout-sidebar grid-cols-[minmax(0,1fr)_640px]' : showMap ? 'grid-cols-1' : ''}`} style={showMap ? undefined : { display: 'contents' }}>
         <div style={showMap ? undefined : { position: 'absolute', width: 0, height: 0, overflow: 'hidden', pointerEvents: 'none' }} aria-hidden={!showMap}>
           <MapPanel />
         </div>
