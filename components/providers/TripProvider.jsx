@@ -720,7 +720,7 @@ export default function TripProvider({ children }) {
         if (!mounted) return;
 
         const errSuffix = ingestionErrors.length > 0 ? ` (${ingestionErrors.length} ingestion errors)` : '';
-        setStatusMessage(`Synced ${syncedEvents.length} events at ${new Date().toLocaleTimeString()}${errSuffix}.`, ingestionErrors.length > 0);
+        setStatusMessage(`Synced ${syncedEvents.length} events at ${new Date().toLocaleTimeString('en-US', { timeZone: 'America/Los_Angeles' })}${errSuffix}.`, ingestionErrors.length > 0);
       } catch (error) {
         console.error('Background sync failed; continuing with cached events.', error);
       } finally {
@@ -845,7 +845,7 @@ export default function TripProvider({ children }) {
       if (ingestionErrors.length > 0) console.error('Sync ingestion errors:', ingestionErrors);
       await loadSourcesFromServer();
       const errSuffix = ingestionErrors.length > 0 ? ` (${ingestionErrors.length} ingestion errors)` : '';
-      setStatusMessage(`Synced ${syncedEvents.length} events at ${new Date().toLocaleTimeString()}${errSuffix}.`, ingestionErrors.length > 0);
+      setStatusMessage(`Synced ${syncedEvents.length} events at ${new Date().toLocaleTimeString('en-US', { timeZone: 'America/Los_Angeles' })}${errSuffix}.`, ingestionErrors.length > 0);
     } catch (error) {
       setStatusMessage(error instanceof Error ? error.message : 'Sync failed', true);
     } finally {

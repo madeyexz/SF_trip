@@ -83,7 +83,7 @@ export default function ConfigPage() {
           </Badge>
         </div>
         <div className="flex items-center gap-1.5 mt-1.5 text-muted text-[0.7rem]">
-          <span>{source.lastSyncedAt ? `Synced ${new Date(source.lastSyncedAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}` : 'Never synced'}</span>
+          <span>{source.lastSyncedAt ? `Synced ${new Date(source.lastSyncedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', timeZone: 'America/Los_Angeles' })}` : 'Never synced'}</span>
           {source.lastError ? <span className="text-rose-600">· {source.lastError}</span> : null}
           {source.readonly ? <span className="italic">· Read-only</span> : null}
         </div>
