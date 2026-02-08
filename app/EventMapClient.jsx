@@ -103,6 +103,11 @@ export default function EventMapClient() {
   const [activePlanId, setActivePlanId] = useState('');
   const [routeSummary, setRouteSummary] = useState('');
   const [isRouteUpdating, setIsRouteUpdating] = useState(false);
+  const [sources, setSources] = useState([]);
+  const [newSourceType, setNewSourceType] = useState('event');
+  const [newSourceUrl, setNewSourceUrl] = useState('');
+  const [newSourceLabel, setNewSourceLabel] = useState('');
+  const [isSavingSource, setIsSavingSource] = useState(false);
 
   const placeTagOptions = useMemo(() => {
     const tags = new Set();
@@ -135,6 +140,20 @@ export default function EventMapClient() {
 
     return map;
   }, [visiblePlaces]);
+
+  const sourceStats = useMemo(() => {
+    const activeEventSources = sources.filter(
+      (source) => source?.sourceType === 'event' && source?.status === 'active'
+    ).length;
+    const activeSpotSources = sources.filter(
+      (source) => source?.sourceType === 'spot' && source?.status === 'active'
+    ).length;
+
+    return {
+      activeEventSources,
+      activeSpotSources
+    };
+  }, [sources]);
 
   const uniqueDates = useMemo(
     () =>
@@ -374,6 +393,16 @@ export default function EventMapClient() {
   const setStatusMessage = useCallback((message, isError = false) => {
     setStatus(message);
     setStatusError(isError);
+  }, []);
+
+  const loadSourcesFromServer = useCallback(async () => {
+    try {
+      const payload = await fetchJson('/api/sources');
+      const nextSources = Array.isArray(payload?.sources) ? payload.sources : [];
+      setSources(nextSources);
+    } catch (error) {
+      console.error('Failed to load sources.', error);
+    }
   }, []);
 
   const clearMapMarkers = useCallback(() => {
@@ -1086,9 +1115,10 @@ export default function EventMapClient() {
 
     async function bootstrap() {
       try {
-        const [config, eventsPayload] = await Promise.all([
+        const [config, eventsPayload, sourcesPayload] = await Promise.all([
           fetchJson('/api/config'),
-          fetchJson('/api/events')
+          fetchJson('/api/events'),
+          fetchJson('/api/sources').catch(() => ({ sources: [] }))
         ]);
 
         if (!mounted) {
@@ -1099,9 +1129,11 @@ export default function EventMapClient() {
 
         const loadedEvents = Array.isArray(eventsPayload.events) ? eventsPayload.events : [];
         const loadedPlaces = Array.isArray(eventsPayload.places) ? eventsPayload.places : [];
+        const loadedSources = Array.isArray(sourcesPayload?.sources) ? sourcesPayload.sources : [];
 
         setAllEvents(loadedEvents);
         setAllPlaces(loadedPlaces);
+        setSources(loadedSources);
 
         if (!config.mapsBrowserKey) {
           setStatusMessage('Missing GOOGLE_MAPS_BROWSER_KEY in .env. Map cannot load.', true);

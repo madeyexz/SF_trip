@@ -12,7 +12,10 @@ const eventValidator = v.object({
   address: v.string(),
   googleMapsUrl: v.string(),
   lat: v.optional(v.number()),
-  lng: v.optional(v.number())
+  lng: v.optional(v.number()),
+  sourceId: v.optional(v.string()),
+  sourceUrl: v.optional(v.string()),
+  confidence: v.optional(v.number())
 });
 
 export const listEvents = query({
@@ -21,6 +24,7 @@ export const listEvents = query({
     const events = await ctx.db.query('events').collect();
 
     return events
+      .filter((event) => !event.isDeleted)
       .map(({ _creationTime, _id, ...event }) => event)
       .sort((left, right) => {
         const leftValue = left.startDateISO || '9999-99-99';
@@ -106,28 +110,42 @@ export const upsertEvents = mutation({
   args: {
     events: v.array(eventValidator),
     syncedAt: v.string(),
-    calendars: v.array(v.string())
+    calendars: v.array(v.string()),
+    missedSyncThreshold: v.optional(v.number())
   },
   handler: async (ctx, args) => {
+    const missedSyncThreshold = Math.max(1, Number(args.missedSyncThreshold) || 2);
     const keepUrls = new Set(args.events.map((event) => event.eventUrl));
     const existingRows = await ctx.db.query('events').collect();
+    const existingByUrl = new Map(existingRows.map((row) => [row.eventUrl, row]));
 
     for (const row of existingRows) {
       if (!keepUrls.has(row.eventUrl)) {
-        await ctx.db.delete(row._id);
+        const nextMissedSyncCount = (Number(row.missedSyncCount) || 0) + 1;
+        const isDeleted = nextMissedSyncCount >= missedSyncThreshold;
+
+        await ctx.db.patch(row._id, {
+          missedSyncCount: nextMissedSyncCount,
+          isDeleted,
+          updatedAt: args.syncedAt
+        });
       }
     }
 
     for (const event of args.events) {
-      const existing = await ctx.db
-        .query('events')
-        .withIndex('by_event_url', (q) => q.eq('eventUrl', event.eventUrl))
-        .first();
+      const existing = existingByUrl.get(event.eventUrl);
+      const nextEvent = {
+        ...event,
+        missedSyncCount: 0,
+        isDeleted: false,
+        lastSeenAt: args.syncedAt,
+        updatedAt: args.syncedAt
+      };
 
       if (existing) {
-        await ctx.db.patch(existing._id, event);
+        await ctx.db.patch(existing._id, nextEvent);
       } else {
-        await ctx.db.insert('events', event);
+        await ctx.db.insert('events', nextEvent);
       }
     }
 
