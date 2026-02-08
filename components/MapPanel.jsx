@@ -1,30 +1,63 @@
 'use client';
 
-import { Calendar, House } from 'lucide-react';
+import { Calendar } from 'lucide-react';
 import { useTrip, TAG_COLORS, getTagIconComponent } from '@/components/providers/TripProvider';
 import { formatTag } from '@/lib/helpers';
 import StatusBar from '@/components/StatusBar';
 
+const EVENT_COLOR = '#ea580c';
+
+function FilterChip({ active, color, icon: Icon, label, onClick }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="inline-flex items-center gap-1.5 text-[0.76rem] font-medium rounded-full px-2.5 py-1 transition-all duration-150 cursor-pointer border"
+      style={
+        active
+          ? {
+              background: `${color}14`,
+              borderColor: `${color}50`,
+              color: color,
+              boxShadow: `0 0 0 2px ${color}18`,
+            }
+          : {
+              background: 'transparent',
+              borderColor: 'var(--color-border)',
+              color: 'var(--color-muted)',
+              opacity: 0.45,
+            }
+      }
+    >
+      <Icon className="w-[14px] h-[14px]" size={14} strokeWidth={2.2} />
+      <span className={active ? '' : 'line-through decoration-1'}>{label}</span>
+    </button>
+  );
+}
+
 export default function MapPanel() {
-  const { mapPanelRef, mapElementRef } = useTrip();
+  const { mapPanelRef, mapElementRef, hiddenCategories, toggleCategory } = useTrip();
 
   return (
     <section className="flex flex-col min-h-0 h-full" ref={mapPanelRef}>
-      <div className="flex flex-wrap gap-x-3 gap-y-1 bg-card border-b border-border px-4 py-1.5">
-        <span className="inline-flex items-center gap-1 text-[0.76rem] font-medium text-muted">
-          <Calendar className="w-[18px] h-[18px]" size={14} strokeWidth={2} /> Event
-        </span>
-        <span className="inline-flex items-center gap-1 text-[0.76rem] font-medium text-muted">
-          <House className="w-[18px] h-[18px]" size={14} strokeWidth={2} /> Origin
-        </span>
-        {Object.keys(TAG_COLORS).map((tag) => {
-          const TagIcon = getTagIconComponent(tag);
-          return (
-            <span className="inline-flex items-center gap-1 text-[0.76rem] font-medium text-muted" key={tag}>
-              <TagIcon className="w-[18px] h-[18px]" size={14} strokeWidth={2} /> {formatTag(tag)}
-            </span>
-          );
-        })}
+      <div className="flex flex-wrap items-center gap-1.5 bg-card border-b border-border px-4 py-1.5">
+        <FilterChip
+          active={!hiddenCategories.has('event')}
+          color={EVENT_COLOR}
+          icon={Calendar}
+          label="Event"
+          onClick={() => toggleCategory('event')}
+        />
+        {Object.keys(TAG_COLORS).map((tag) => (
+          <FilterChip
+            key={tag}
+            active={!hiddenCategories.has(tag)}
+            color={TAG_COLORS[tag]}
+            icon={getTagIconComponent(tag)}
+            label={formatTag(tag)}
+            onClick={() => toggleCategory(tag)}
+          />
+        ))}
       </div>
       <div className="relative flex-1 min-h-0 map-container-responsive">
         <div id="map" ref={mapElementRef} />

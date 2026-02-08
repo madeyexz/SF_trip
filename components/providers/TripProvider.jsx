@@ -108,6 +108,7 @@ export default function TripProvider({ children }) {
   const [baseLocationText, setBaseLocationText] = useState('');
   const [isSyncing, setIsSyncing] = useState(false);
   const [placeTagFilter, setPlaceTagFilter] = useState('all');
+  const [hiddenCategories, setHiddenCategories] = useState(new Set());
   const [calendarMonthISO, setCalendarMonthISO] = useState('');
   const [plannerByDate, setPlannerByDate] = useState({});
   const [activePlanId, setActivePlanId] = useState('');
@@ -698,15 +699,41 @@ export default function TripProvider({ children }) {
   // ---- Bootstrap ----
   useEffect(() => {
     let mounted = true;
+
+    async function runBackgroundSync() {
+      setIsSyncing(true);
+      try {
+        const response = await fetch('/api/sync', { method: 'POST' });
+        const payload = await response.json().catch(() => null);
+        if (!response.ok) throw new Error(payload?.error || 'Sync failed');
+        if (!mounted) return;
+
+        const syncedEvents = Array.isArray(payload?.events) ? payload.events : [];
+        setAllEvents(syncedEvents);
+        if (Array.isArray(payload?.places)) setAllPlaces(payload.places);
+
+        const ingestionErrors = Array.isArray(payload?.meta?.ingestionErrors) ? payload.meta.ingestionErrors : [];
+        if (ingestionErrors.length > 0) console.error('Sync ingestion errors:', ingestionErrors);
+
+        await loadSourcesFromServer();
+        if (!mounted) return;
+
+        const errSuffix = ingestionErrors.length > 0 ? ` (${ingestionErrors.length} ingestion errors)` : '';
+        setStatusMessage(`Synced ${syncedEvents.length} events at ${new Date().toLocaleTimeString()}${errSuffix}.`, ingestionErrors.length > 0);
+      } catch (error) {
+        console.error('Background sync failed; continuing with cached events.', error);
+      } finally {
+        if (mounted) setIsSyncing(false);
+      }
+    }
+
     async function bootstrap() {
       try {
-        let eventsPayload;
-        const [config, syncResult, sourcesPayload] = await Promise.all([
+        const [config, eventsPayload, sourcesPayload] = await Promise.all([
           fetchJson('/api/config'),
-          fetch('/api/sync', { method: 'POST' }).then((r) => r.json()).catch(() => null),
+          fetchJson('/api/events'),
           fetchJson('/api/sources').catch(() => ({ sources: [] }))
         ]);
-        eventsPayload = syncResult && !syncResult.error ? syncResult : await fetchJson('/api/events');
         if (!mounted) return;
         setTripStart(config.tripStart || '');
         setTripEnd(config.tripEnd || '');
@@ -717,6 +744,9 @@ export default function TripProvider({ children }) {
         setAllEvents(loadedEvents);
         setAllPlaces(loadedPlaces);
         setSources(loadedSources);
+
+        void runBackgroundSync();
+
         if (!config.mapsBrowserKey) { setStatusMessage('Missing GOOGLE_MAPS_BROWSER_KEY in .env. Map cannot load.', true); return; }
         await loadGoogleMapsScript(config.mapsBrowserKey);
         await window.google.maps.importLibrary('marker');
@@ -743,13 +773,15 @@ export default function TripProvider({ children }) {
     }
     void bootstrap();
     return () => { mounted = false; clearMapMarkers(); clearRoute(); if (baseMarkerRef.current) baseMarkerRef.current.map = null; };
-  }, [clearMapMarkers, clearRoute, geocode, setBaseMarker, setStatusMessage]);
+  }, [clearMapMarkers, clearRoute, geocode, loadSourcesFromServer, setBaseMarker, setStatusMessage]);
 
   // ---- Re-render on filter changes ----
   useEffect(() => {
     if (!mapsReady) return;
-    void renderCurrentSelection(allEvents, filteredPlaces, effectiveDateFilter, travelMode);
-  }, [allEvents, effectiveDateFilter, filteredPlaces, mapsReady, renderCurrentSelection, travelMode]);
+    const eventsToRender = hiddenCategories.has('event') ? [] : allEvents;
+    const placesToRender = filteredPlaces.filter((p) => !hiddenCategories.has(normalizePlaceTag(p.tag)));
+    void renderCurrentSelection(eventsToRender, placesToRender, effectiveDateFilter, travelMode);
+  }, [allEvents, effectiveDateFilter, filteredPlaces, hiddenCategories, mapsReady, renderCurrentSelection, travelMode]);
 
   // ---- Route drawing ----
   useEffect(() => {
@@ -946,6 +978,15 @@ export default function TripProvider({ children }) {
     }
   }, [setStatusMessage]);
 
+  const toggleCategory = useCallback((category) => {
+    setHiddenCategories((prev) => {
+      const next = new Set(prev);
+      if (next.has(category)) next.delete(category);
+      else next.add(category);
+      return next;
+    });
+  }, []);
+
   const shiftCalendarMonth = useCallback((offset) => {
     const shifted = addMonthsToMonthISO(calendarAnchorISO, offset);
     setCalendarMonthISO(shifted);
@@ -963,7 +1004,7 @@ export default function TripProvider({ children }) {
     allEvents, allPlaces, visibleEvents, visiblePlaces,
     selectedDate, setSelectedDate, showAllEvents, setShowAllEvents,
     travelMode, setTravelMode, baseLocationText,
-    isSyncing, placeTagFilter, setPlaceTagFilter,
+    isSyncing, placeTagFilter, setPlaceTagFilter, hiddenCategories, toggleCategory,
     calendarMonthISO, setCalendarMonthISO,
     plannerByDate, setPlannerByDate,
     activePlanId, setActivePlanId,
