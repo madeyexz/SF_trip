@@ -100,9 +100,6 @@
 .sidebar-grid-responsive {
   grid-template-columns: 140px minmax(0, 1fr) minmax(0, 1fr) !important;
 }
-.spots-grid-responsive {
-  grid-template-columns: 180px minmax(0, 1fr) !important;
-}
 
 /* Responsive */
 @media (max-width: 1200px) {
@@ -113,7 +110,6 @@
   .layout-sidebar > .map-panel-shell { min-height: 50vh; }
   .sidebar-responsive { height: auto; border-left: none; border-top: 1px solid var(--color-border); overflow: visible; }
   .sidebar-grid-responsive { grid-template-columns: 140px minmax(0, 1fr) minmax(0, 1fr) !important; height: auto; min-height: 60vh; }
-  .spots-grid-responsive { grid-template-columns: 180px minmax(0, 1fr) !important; }
   .map-container-responsive { position: relative; height: 50vh; min-height: 50vh; }
 }
 
@@ -127,7 +123,6 @@
   }
   .layout-sidebar > .map-panel-shell { min-height: 40vh; }
   .sidebar-grid-responsive { grid-template-columns: 1fr !important; height: auto; min-height: 50vh; }
-  .spots-grid-responsive { grid-template-columns: 1fr !important; }
   .day-list-responsive { flex-direction: column; overflow-y: auto; overflow-x: hidden; border-right: 1px solid var(--color-border); border-bottom: none; }
   .day-list-item-responsive { min-width: 112px; flex-shrink: 0; }
   .map-container-responsive { height: 40vh; min-height: 40vh; }
