@@ -6,12 +6,12 @@ import {
 } from '@/components/ui/select';
 import { useTrip } from '@/components/providers/TripProvider';
 import { formatDate, formatMinuteLabel, formatHour } from '@/lib/helpers';
-import { PLAN_HOUR_HEIGHT, PLAN_MINUTE_HEIGHT } from '@/lib/planner-helpers';
+import { PLAN_HOUR_HEIGHT, PLAN_MINUTE_HEIGHT, buildGoogleCalendarItemUrl } from '@/lib/planner-helpers';
 
 export default function PlannerItinerary() {
   const {
     selectedDate, travelMode, setTravelMode,
-    dayPlanItems, activePlanId,
+    dayPlanItems, activePlanId, baseLocationText,
     routeSummary, isRouteUpdating,
     clearDayPlan, startPlanDrag, removePlanItem,
     handleExportPlannerIcs, handleAddDayPlanToGoogleCalendar
@@ -67,7 +67,10 @@ export default function PlannerItinerary() {
               return (
                 <article className={itemClass} key={item.id} style={{ top: `${top}px`, height: `${height}px` }} onPointerDown={(e) => startPlanDrag(e, item, 'move')}>
                   <button type="button" className="absolute left-0 right-0 top-0 h-2 border-none bg-transparent cursor-ns-resize" aria-label="Adjust start time" onPointerDown={(e) => startPlanDrag(e, item, 'resize-start')} />
-                  <button type="button" className="absolute top-1 right-1.5 border-none bg-transparent text-slate-600 text-base leading-none cursor-pointer hover:text-slate-900" aria-label="Remove from plan" onClick={(e) => { e.stopPropagation(); removePlanItem(item.id); }}>x</button>
+                  <div className="absolute top-1 right-1.5 flex items-center gap-1.5">
+                    <button type="button" className="px-1.5 py-0.5 rounded border border-slate-300 bg-white text-slate-600 text-[0.65rem] font-semibold leading-tight cursor-pointer hover:bg-blue-50 hover:border-blue-400 hover:text-blue-600 transition-colors" aria-label="Add to Google Calendar" onClick={(e) => { e.stopPropagation(); const url = buildGoogleCalendarItemUrl({ dateISO: selectedDate, item, baseLocationText }); window.open(url, '_blank', 'noopener,noreferrer'); }} title="Add to Google Calendar">+ GCal</button>
+                    <button type="button" className="border-none bg-transparent text-slate-600 text-base leading-none cursor-pointer hover:text-slate-900" aria-label="Remove from plan" onClick={(e) => { e.stopPropagation(); removePlanItem(item.id); }}>x</button>
+                  </div>
                   <div className="text-[0.72rem] font-bold text-gray-800 tracking-wide">{formatMinuteLabel(item.startMinutes)} - {formatMinuteLabel(item.endMinutes)}</div>
                   <div className="mt-0.5 text-[0.82rem] font-bold text-slate-900 leading-tight break-words">{item.title}</div>
                   {item.locationText ? <div className="mt-0.5 text-[0.72rem] text-slate-700 leading-tight break-words">{item.locationText}</div> : null}
