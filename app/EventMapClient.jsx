@@ -1345,207 +1345,60 @@ export default function EventMapClient() {
   return (
     <main className="app-shell">
       <header className="topbar">
-        <div>
-          <h1>SF Trip Planner</h1>
-          <p className="subtitle">See what is happening, what is nearby, and how long it takes from your stay.</p>
-        </div>
+        <h1>SF Trip Planner</h1>
+        <nav className="topbar-nav" aria-label="App navigator">
+          <button
+            type="button"
+            className="topbar-nav-item"
+            onClick={goToMap}
+          >
+            <MapPin size={14} />
+            Map
+          </button>
+          <button
+            type="button"
+            className={`topbar-nav-item${activeMobilePanel === 'calendar' ? ' topbar-nav-item-active' : ''}`}
+            onClick={() => { goToSidebarTab('calendar'); }}
+          >
+            <Calendar size={14} />
+            Calendar
+          </button>
+          <button
+            type="button"
+            className={`topbar-nav-item${activeMobilePanel === 'planner' ? ' topbar-nav-item-active' : ''}`}
+            onClick={() => { goToSidebarTab('planner'); }}
+          >
+            <Navigation size={14} />
+            Day Route
+          </button>
+          <button
+            type="button"
+            className={`topbar-nav-item${activeMobilePanel === 'events' ? ' topbar-nav-item-active' : ''}`}
+            onClick={() => { goToSidebarTab('events'); }}
+          >
+            <PartyPopper size={14} />
+            Events
+          </button>
+          <button
+            type="button"
+            className={`topbar-nav-item${activeMobilePanel === 'places' ? ' topbar-nav-item-active' : ''}`}
+            onClick={() => { goToSidebarTab('places'); }}
+          >
+            <Coffee size={14} />
+            Spots
+          </button>
+        </nav>
         <div className="topbar-actions">
-          <Button id="sync-button" type="button" onClick={handleSync} disabled={isSyncing}>
-            <RefreshCw size={15} className={isSyncing ? 'spin-icon' : ''} />
-            {isSyncing ? 'Syncing…' : 'Sync Events'}
+          <Button id="sync-button" type="button" size="sm" onClick={handleSync} disabled={isSyncing}>
+            <RefreshCw size={14} className={isSyncing ? 'spin-icon' : ''} />
+            {isSyncing ? 'Syncing…' : 'Sync'}
           </Button>
-          <Button variant="secondary" id="use-device-location" type="button" onClick={handleDeviceLocation}>
-            <Navigation size={15} />
-            Use My Location
+          <Button variant="secondary" id="use-device-location" type="button" size="sm" onClick={handleDeviceLocation}>
+            <Navigation size={14} />
+            My Location
           </Button>
         </div>
       </header>
-
-      <nav className="site-header-nav" aria-label="App navigator">
-        <Button
-          type="button"
-          size="sm"
-          variant="secondary"
-          className="site-nav-button"
-          onClick={goToMap}
-        >
-          Map
-        </Button>
-        <Button
-          type="button"
-          size="sm"
-          variant="secondary"
-          className={`site-nav-button${activeMobilePanel === 'calendar' ? ' site-nav-button-active' : ''}`}
-          onClick={() => {
-            goToSidebarTab('calendar');
-          }}
-        >
-          Calendar
-        </Button>
-        <Button
-          type="button"
-          size="sm"
-          variant="secondary"
-          className={`site-nav-button${activeMobilePanel === 'planner' ? ' site-nav-button-active' : ''}`}
-          onClick={() => {
-            goToSidebarTab('planner');
-          }}
-        >
-          Day Route
-        </Button>
-        <Button
-          type="button"
-          size="sm"
-          variant="secondary"
-          className={`site-nav-button${activeMobilePanel === 'events' ? ' site-nav-button-active' : ''}`}
-          onClick={() => {
-            goToSidebarTab('events');
-          }}
-        >
-          Events
-        </Button>
-        <Button
-          type="button"
-          size="sm"
-          variant="secondary"
-          className={`site-nav-button${activeMobilePanel === 'places' ? ' site-nav-button-active' : ''}`}
-          onClick={() => {
-            goToSidebarTab('places');
-          }}
-        >
-          Spots
-        </Button>
-      </nav>
-
-      <section className="snapshot-grid">
-        <Card className="snapshot-card">
-          <p className="snapshot-label">Day</p>
-          <p className="snapshot-value">{dateLabel}</p>
-        </Card>
-        <Card className="snapshot-card">
-          <p className="snapshot-label">Events</p>
-          <p className="snapshot-value">{visibleEvents.length}</p>
-        </Card>
-        <Card className="snapshot-card">
-          <p className="snapshot-label">Curated Places</p>
-          <p className="snapshot-value">{visiblePlaces.length}</p>
-        </Card>
-        <Card className="snapshot-card">
-          <p className="snapshot-label">Closest Event</p>
-          <p className="snapshot-value">{nearestEvent ? nearestEvent.travelDurationText : 'n/a'}</p>
-          {nearestEvent ? <p className="snapshot-subtle">{nearestEvent.name}</p> : null}
-        </Card>
-      </section>
-
-      <section className="controls">
-        <div className="control-group">
-          <label htmlFor="travel-mode">Travel mode</label>
-          <Select value={travelMode} onValueChange={setTravelMode}>
-            <SelectTrigger id="travel-mode">
-              <SelectValue placeholder="Travel mode" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="DRIVING">Driving</SelectItem>
-              <SelectItem value="TRANSIT">Transit</SelectItem>
-              <SelectItem value="WALKING">Walking</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-
-        <div className="control-group slider-group">
-          <label htmlFor="date-slider">Planner date</label>
-          <div className="date-strip" role="tablist" aria-label="Planner dates">
-            {uniqueDates.length === 0 ? (
-              <span className="date-strip-empty">No event dates</span>
-            ) : (
-              uniqueDates.map((dateISO) => {
-                const isActive = dateISO === selectedDate;
-                const eventCount = eventsByDate.get(dateISO) || 0;
-
-                return (
-                  <button
-                    key={dateISO}
-                    type="button"
-                    className={`date-pill${isActive ? ' date-pill-active' : ''}`}
-                    onClick={() => {
-                      setSelectedDate(dateISO);
-                    }}
-                  >
-                    <span className="date-pill-weekday">{formatDateWeekday(dateISO)}</span>
-                    <span className="date-pill-day">{formatDateDayMonth(dateISO)}</span>
-                    <span className="date-pill-count">{eventCount} events</span>
-                  </button>
-                );
-              })
-            )}
-          </div>
-          <input
-            id="date-slider"
-            type="range"
-            min="0"
-            max={Math.max(0, uniqueDates.length - 1)}
-            step="1"
-            value={selectedDateIndex}
-            disabled={uniqueDates.length <= 1}
-            onChange={(event) => {
-              const index = Number(event.target.value);
-              setSelectedDate(uniqueDates[index] || uniqueDates[0] || '');
-            }}
-          />
-          <div id="date-label">{selectedDate ? `Planning ${dateLabel}` : dateLabel}</div>
-        </div>
-
-        <div className="control-group">
-          <label>Event view</label>
-          <ToggleGroup
-            className="tag-filter-list"
-            type="single"
-            value={showAllEvents ? 'all' : 'day'}
-            onValueChange={(value) => {
-              if (value === 'all') {
-                setShowAllEvents(true);
-              }
-
-              if (value === 'day') {
-                setShowAllEvents(false);
-              }
-            }}
-          >
-            <ToggleGroupItem className="tag-chip" value="day">Planner Day</ToggleGroupItem>
-            <ToggleGroupItem className="tag-chip" value="all">All Dates</ToggleGroupItem>
-          </ToggleGroup>
-        </div>
-
-        <div className="control-group tag-filter-group">
-          <label>Place category</label>
-          <ToggleGroup
-            className="tag-filter-list"
-            type="single"
-            value={placeTagFilter}
-            onValueChange={(value) => {
-              if (value) {
-                setPlaceTagFilter(value);
-              }
-            }}
-          >
-            {placeTagOptions.map((tag) => (
-              <ToggleGroupItem
-                key={tag}
-                className="tag-chip"
-                value={tag}
-              >
-                {formatTag(tag)}
-              </ToggleGroupItem>
-            ))}
-          </ToggleGroup>
-        </div>
-
-        <div className="status">
-          <span className={`status-dot${statusError ? ' status-dot-error' : ''}`} />
-          <span style={{ color: statusError ? '#e11d48' : undefined }}>{status}</span>
-          <span className="status-meta">Travel times ready for {travelReadyCount}/{visibleEvents.length} events.</span>
-        </div>
-      </section>
 
       <section className="layout">
         <section className="map-panel" ref={mapPanelRef}>
@@ -1566,20 +1419,22 @@ export default function EventMapClient() {
               );
             })}
           </div>
-          <div className="map-route-summary" role="status" aria-live="polite">
-            <strong>Route:</strong> {routeSummaryText}
-            {isRouteUpdating ? <span className="route-update-indicator">Updating route...</span> : null}
+          <div className="map-container">
+            <div id="map" ref={mapElementRef} />
+            <div className="map-status-overlay" role="status">
+              <span className={`status-dot${statusError ? ' status-dot-error' : ''}`} />
+              <span style={{ color: statusError ? '#e11d48' : undefined }}>{status}</span>
+            </div>
           </div>
-          <div id="map" ref={mapElementRef} />
         </section>
 
         <aside className="sidebar" ref={sidebarRef}>
           <Tabs className="sidebar-switch" value={activeMobilePanel} onValueChange={setActiveMobilePanel}>
             <TabsList>
-              <TabsTrigger value="calendar">Calendar View</TabsTrigger>
-              <TabsTrigger value="planner">Day Route Builder</TabsTrigger>
-              <TabsTrigger value="events">Event Plan</TabsTrigger>
-              <TabsTrigger value="places">Curated Spots</TabsTrigger>
+              <TabsTrigger value="calendar">Calendar</TabsTrigger>
+              <TabsTrigger value="planner">Day Route</TabsTrigger>
+              <TabsTrigger value="events">Events</TabsTrigger>
+              <TabsTrigger value="places">Spots</TabsTrigger>
             </TabsList>
           </Tabs>
 
@@ -1589,9 +1444,7 @@ export default function EventMapClient() {
                 type="button"
                 size="sm"
                 variant="secondary"
-                onClick={() => {
-                  shiftCalendarMonth(-1);
-                }}
+                onClick={() => { shiftCalendarMonth(-1); }}
               >
                 Prev
               </Button>
@@ -1600,9 +1453,7 @@ export default function EventMapClient() {
                 type="button"
                 size="sm"
                 variant="secondary"
-                onClick={() => {
-                  shiftCalendarMonth(1);
-                }}
+                onClick={() => { shiftCalendarMonth(1); }}
               >
                 Next
               </Button>
@@ -1657,7 +1508,7 @@ export default function EventMapClient() {
                 <p className="event-meta panel-subtitle">
                   {selectedDate
                     ? `Planning for ${formatDate(selectedDate)}`
-                    : 'Pick a date from the calendar strip to start planning.'}
+                    : 'Pick a date from the calendar to start planning.'}
                 </p>
               </div>
               <Button
@@ -1669,6 +1520,46 @@ export default function EventMapClient() {
               >
                 Clear
               </Button>
+            </div>
+
+            <div className="panel-inline-controls">
+              <div className="panel-control-row">
+                <label htmlFor="travel-mode">Travel</label>
+                <Select value={travelMode} onValueChange={setTravelMode}>
+                  <SelectTrigger id="travel-mode">
+                    <SelectValue placeholder="Travel mode" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="DRIVING">Driving</SelectItem>
+                    <SelectItem value="TRANSIT">Transit</SelectItem>
+                    <SelectItem value="WALKING">Walking</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            <div className="date-strip" role="tablist" aria-label="Planner dates">
+              {uniqueDates.length === 0 ? (
+                <span className="date-strip-empty">No event dates</span>
+              ) : (
+                uniqueDates.map((dateISO) => {
+                  const isActive = dateISO === selectedDate;
+                  const eventCount = eventsByDate.get(dateISO) || 0;
+
+                  return (
+                    <button
+                      key={dateISO}
+                      type="button"
+                      className={`date-pill${isActive ? ' date-pill-active' : ''}`}
+                      onClick={() => { setSelectedDate(dateISO); }}
+                    >
+                      <span className="date-pill-weekday">{formatDateWeekday(dateISO)}</span>
+                      <span className="date-pill-day">{formatDateDayMonth(dateISO)}</span>
+                      <span className="date-pill-count">{eventCount} ev</span>
+                    </button>
+                  );
+                })
+              )}
             </div>
 
             {selectedDate ? (
@@ -1698,26 +1589,19 @@ export default function EventMapClient() {
                         className={itemClass}
                         key={item.id}
                         style={{ top: `${top}px`, height: `${height}px` }}
-                        onPointerDown={(event) => {
-                          startPlanDrag(event, item, 'move');
-                        }}
+                        onPointerDown={(event) => { startPlanDrag(event, item, 'move'); }}
                       >
                         <button
                           type="button"
                           className="planner-resize planner-resize-top"
                           aria-label="Adjust start time"
-                          onPointerDown={(event) => {
-                            startPlanDrag(event, item, 'resize-start');
-                          }}
+                          onPointerDown={(event) => { startPlanDrag(event, item, 'resize-start'); }}
                         />
                         <button
                           type="button"
                           className="planner-remove"
                           aria-label="Remove from plan"
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            removePlanItem(item.id);
-                          }}
+                          onClick={(event) => { event.stopPropagation(); removePlanItem(item.id); }}
                         >
                           ×
                         </button>
@@ -1728,9 +1612,7 @@ export default function EventMapClient() {
                           type="button"
                           className="planner-resize planner-resize-bottom"
                           aria-label="Adjust end time"
-                          onPointerDown={(event) => {
-                            startPlanDrag(event, item, 'resize-end');
-                          }}
+                          onPointerDown={(event) => { startPlanDrag(event, item, 'resize-end'); }}
                         />
                       </article>
                     );
@@ -1738,14 +1620,13 @@ export default function EventMapClient() {
                 </div>
               </div>
             ) : (
-              <p className="empty-state">Pick a date in the planner controls to start your day plan.</p>
+              <p className="empty-state">Pick a date to start your day plan.</p>
             )}
 
-            <p className="event-meta planner-route-summary">
-              <strong>Route:</strong>{' '}
-              {routeSummaryText}
-              {isRouteUpdating ? <span className="route-update-indicator">Updating route...</span> : null}
-            </p>
+            <div className="planner-route-summary" role="status" aria-live="polite">
+              <strong>Route:</strong> {routeSummaryText}
+              {isRouteUpdating ? <span className="route-update-indicator">Updating...</span> : null}
+            </div>
             <div className="planner-export-actions">
               <Button
                 type="button"
@@ -1763,13 +1644,38 @@ export default function EventMapClient() {
                 onClick={handleAddDayPlanToGoogleCalendar}
                 disabled={!selectedDate || dayPlanItems.length === 0}
               >
-                Add Stops to Google Calendar
+                Google Calendar
               </Button>
             </div>
           </section>
 
           <section className={`panel ${activeMobilePanel !== 'events' ? 'panel-hidden' : ''}`}>
-            <h2>Event Plan</h2>
+            <div className="panel-section-header">
+              <h2>Events</h2>
+              <div className="panel-stat-chips">
+                <span className="stat-chip">{visibleEvents.length} showing</span>
+                <span className="stat-chip">{travelReadyCount} with travel</span>
+              </div>
+            </div>
+
+            <div className="panel-inline-controls">
+              <div className="panel-control-row">
+                <label>View</label>
+                <ToggleGroup
+                  className="tag-filter-list"
+                  type="single"
+                  value={showAllEvents ? 'all' : 'day'}
+                  onValueChange={(value) => {
+                    if (value === 'all') { setShowAllEvents(true); }
+                    if (value === 'day') { setShowAllEvents(false); }
+                  }}
+                >
+                  <ToggleGroupItem className="tag-chip" value="day">Planner Day</ToggleGroupItem>
+                  <ToggleGroupItem className="tag-chip" value="all">All Dates</ToggleGroupItem>
+                </ToggleGroup>
+              </div>
+            </div>
+
             <p className="event-meta panel-subtitle">
               <strong>Origin:</strong> {baseLocationText || 'Not set'}
             </p>
@@ -1800,9 +1706,7 @@ export default function EventMapClient() {
                         type="button"
                         size="sm"
                         variant="secondary"
-                        onClick={() => {
-                          addEventToDayPlan(event);
-                        }}
+                        onClick={() => { addEventToDayPlan(event); }}
                       >
                         Add to day
                       </Button>
@@ -1817,8 +1721,29 @@ export default function EventMapClient() {
           </section>
 
           <section className={`panel ${activeMobilePanel !== 'places' ? 'panel-hidden' : ''}`}>
-            <h2>Curated Spots</h2>
-            <p className="event-meta panel-subtitle">One-time traveler list with curator notes.</p>
+            <div className="panel-section-header">
+              <h2>Curated Spots</h2>
+              <span className="stat-chip">{visiblePlaces.length} places</span>
+            </div>
+
+            <div className="panel-inline-controls">
+              <div className="panel-control-row">
+                <label>Category</label>
+                <ToggleGroup
+                  className="tag-filter-list"
+                  type="single"
+                  value={placeTagFilter}
+                  onValueChange={(value) => { if (value) { setPlaceTagFilter(value); } }}
+                >
+                  {placeTagOptions.map((tag) => (
+                    <ToggleGroupItem key={tag} className="tag-chip" value={tag}>
+                      {formatTag(tag)}
+                    </ToggleGroupItem>
+                  ))}
+                </ToggleGroup>
+              </div>
+            </div>
+
             <div className="card-list">
               {visiblePlaces.length === 0 ? (
                 <p className="empty-state">No curated places in this category.</p>
@@ -1849,9 +1774,7 @@ export default function EventMapClient() {
                       type="button"
                       size="sm"
                       variant="secondary"
-                      onClick={() => {
-                        addPlaceToDayPlan(place);
-                      }}
+                      onClick={() => { addPlaceToDayPlan(place); }}
                     >
                       Add to day
                     </Button>
