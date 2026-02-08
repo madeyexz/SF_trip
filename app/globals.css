@@ -29,7 +29,7 @@
 
 body {
   margin: 0;
-  font-family: 'Inter', 'SF Pro Display', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-family: var(--font-inter, 'Inter'), -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   font-size: 14px;
   line-height: 1.6;
   color: var(--text);
@@ -726,6 +726,15 @@ input[type='range']::-moz-range-thumb {
   background: #f8fafc;
   border-radius: var(--radius-sm);
   border: 1px dashed var(--border);
+}
+
+/* ── Utility animations ──────────────────────────────── */
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.spin-icon {
+  animation: spin 1s linear infinite;
 }
 
 /* ── Responsive ───────────────────────────────────────── */

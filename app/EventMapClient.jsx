@@ -13,6 +13,7 @@ import {
 } from '@/components/ui/select';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
+import { MapPin, RefreshCw, Navigation } from 'lucide-react';
 
 const TAG_COLORS = {
   eat: '#d97706',
@@ -586,11 +587,13 @@ export default function EventMapClient() {
           <p className="subtitle">See what is happening, what is nearby, and how long it takes from your stay.</p>
         </div>
         <div className="topbar-actions">
-          <Button className="btn btn-primary" id="sync-button" type="button" onClick={handleSync} disabled={isSyncing}>
-            {isSyncing ? 'Syncing...' : 'Sync Events'}
+          <Button id="sync-button" type="button" onClick={handleSync} disabled={isSyncing}>
+            <RefreshCw size={15} className={isSyncing ? 'spin-icon' : ''} />
+            {isSyncing ? 'Syncing…' : 'Sync Events'}
           </Button>
-          <Button className="btn" variant="secondary" id="use-device-location" type="button" onClick={handleDeviceLocation}>
-            Use My Device Location
+          <Button variant="secondary" id="use-device-location" type="button" onClick={handleDeviceLocation}>
+            <Navigation size={15} />
+            Use My Location
           </Button>
         </div>
       </header>
@@ -710,7 +713,7 @@ export default function EventMapClient() {
             </p>
             <div className="card-list">
               {visibleEvents.length === 0 ? (
-                <p className="empty-state">No events for this date.</p>
+                <p className="empty-state">No events found for this date filter.</p>
               ) : (
                 visibleEvents.map((event) => {
                   const location = event.address || event.locationText || 'Location not listed';
@@ -746,7 +749,7 @@ export default function EventMapClient() {
             <p className="event-meta panel-subtitle">One-time traveler list with curator notes.</p>
             <div className="card-list">
               {visiblePlaces.length === 0 ? (
-                <p className="empty-state">No places in this category.</p>
+                <p className="empty-state">No curated places in this category.</p>
               ) : (
                 visiblePlaces.map((place) => (
                   <Card className="item-card" key={place.id || `${place.name}-${place.location}`}>
