@@ -56,7 +56,7 @@ export function daysFromNow(isoDate) {
   const target = new Date(`${key}T00:00:00`);
   const today = new Date();
   today.setHours(0, 0, 0, 0);
-  return Math.round((target - today) / (1000 * 60 * 60 * 24));
+  return Math.round((target.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
 }
 
 export function formatSourceLabel(sourceUrl) {
@@ -203,7 +203,7 @@ export function safeHostname(url) {
   try { return new URL(url).hostname; } catch { return url; }
 }
 
-export async function fetchJson(url, options) {
+export async function fetchJson(url, options = undefined) {
   const response = await fetch(url, options);
   const payload = await response.json();
   if (!response.ok) throw new Error(payload.error || `Request failed: ${response.status}`);

@@ -168,7 +168,7 @@ export async function requestPlannedRoute({ origin, destination, waypoints, trav
 
 export function loadGoogleMapsScript(apiKey) {
   if (window.google?.maps) return Promise.resolve();
-  return new Promise((resolve, reject) => {
+  return new Promise<void>((resolve, reject) => {
     const callbackName = `initGoogleMaps_${Math.random().toString(36).slice(2)}`;
     window[callbackName] = () => { delete window[callbackName]; resolve(); };
     const script = document.createElement('script');

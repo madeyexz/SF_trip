@@ -69,7 +69,7 @@ export async function POST(request) {
     });
   }
 
-  const routesRequestBody = {
+  const routesRequestBody: any = {
     origin: toRoutesApiLocation(origin),
     destination: toRoutesApiLocation(destination),
     intermediates: waypoints.map(toRoutesApiLocation),
