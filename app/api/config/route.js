@@ -1,4 +1,5 @@
 import { loadBaseLocation, saveBaseLocation, getCalendarUrls, loadTripConfig, saveTripConfig } from '@/lib/events';
+import { requireAdminSession } from '@/lib/admin-auth';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -20,6 +21,11 @@ export async function GET() {
 }
 
 export async function POST(request) {
+  const deniedResponse = requireAdminSession(request);
+  if (deniedResponse) {
+    return deniedResponse;
+  }
+
   try {
     const body = await request.json();
     const tripStart = typeof body.tripStart === 'string' ? body.tripStart.trim() : '';

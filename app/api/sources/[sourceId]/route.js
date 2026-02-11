@@ -1,8 +1,14 @@
 import { deleteSourcePayload, syncSingleSource, updateSourcePayload } from '@/lib/events';
+import { requireAdminSession } from '@/lib/admin-auth';
 
 export const runtime = 'nodejs';
 
 export async function PATCH(request, { params }) {
+  const deniedResponse = requireAdminSession(request);
+  if (deniedResponse) {
+    return deniedResponse;
+  }
+
   const { sourceId } = await params;
   let body = null;
 
@@ -31,6 +37,11 @@ export async function PATCH(request, { params }) {
 }
 
 export async function POST(_request, { params }) {
+  const deniedResponse = requireAdminSession(_request);
+  if (deniedResponse) {
+    return deniedResponse;
+  }
+
   const { sourceId } = await params;
 
   try {
@@ -47,6 +58,11 @@ export async function POST(_request, { params }) {
 }
 
 export async function DELETE(_request, { params }) {
+  const deniedResponse = requireAdminSession(_request);
+  if (deniedResponse) {
+    return deniedResponse;
+  }
+
   const { sourceId } = await params;
 
   try {

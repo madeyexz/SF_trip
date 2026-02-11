@@ -1,10 +1,16 @@
 import { syncEvents } from '@/lib/events';
+import { requireAdminSession } from '@/lib/admin-auth';
 
 export const runtime = 'nodejs';
 
 let syncInFlight = null;
 
-export async function POST() {
+export async function POST(request) {
+  const deniedResponse = requireAdminSession(request);
+  if (deniedResponse) {
+    return deniedResponse;
+  }
+
   try {
     if (!syncInFlight) {
       syncInFlight = syncEvents().finally(() => {

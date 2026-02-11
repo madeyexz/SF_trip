@@ -1,8 +1,6 @@
 import { mutation, query } from './_generated/server';
 import { v } from 'convex/values';
 
-const PLANNER_STATE_KEY = 'default';
-
 const planItemValidator = v.object({
   id: v.string(),
   kind: v.union(v.literal('event'), v.literal('place')),
@@ -18,11 +16,13 @@ const planItemValidator = v.object({
 const plannerByDateValidator = v.record(v.string(), v.array(planItemValidator));
 
 export const getPlannerState = query({
-  args: {},
-  handler: async (ctx) => {
+  args: {
+    roomId: v.string()
+  },
+  handler: async (ctx, args) => {
     const row = await ctx.db
       .query('plannerState')
-      .withIndex('by_key', (q) => q.eq('key', PLANNER_STATE_KEY))
+      .withIndex('by_key', (q) => q.eq('key', args.roomId))
       .first();
 
     if (!row) {
@@ -41,17 +41,18 @@ export const getPlannerState = query({
 
 export const replacePlannerState = mutation({
   args: {
+    roomId: v.string(),
     plannerByDate: plannerByDateValidator,
     updatedAt: v.string()
   },
   handler: async (ctx, args) => {
     const existing = await ctx.db
       .query('plannerState')
-      .withIndex('by_key', (q) => q.eq('key', PLANNER_STATE_KEY))
+      .withIndex('by_key', (q) => q.eq('key', args.roomId))
       .first();
 
     const nextValue = {
-      key: PLANNER_STATE_KEY,
+      key: args.roomId,
       plannerByDate: args.plannerByDate,
       updatedAt: args.updatedAt
     };

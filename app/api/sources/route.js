@@ -1,4 +1,5 @@
 import { createSourcePayload, loadSourcesPayload } from '@/lib/events';
+import { requireAdminSession } from '@/lib/admin-auth';
 
 export const runtime = 'nodejs';
 
@@ -8,6 +9,11 @@ export async function GET() {
 }
 
 export async function POST(request) {
+  const deniedResponse = requireAdminSession(request);
+  if (deniedResponse) {
+    return deniedResponse;
+  }
+
   let body = null;
 
   try {

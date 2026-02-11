@@ -12,6 +12,14 @@ import {
 import { useTrip } from '@/components/providers/TripProvider';
 import { safeHostname } from '@/lib/helpers';
 
+function normalizePlannerRoomId(value) {
+  const nextValue = String(value || '').trim().toLowerCase().replace(/[^a-z0-9_-]/g, '');
+  if (nextValue.length < 2 || nextValue.length > 64) {
+    return '';
+  }
+  return nextValue;
+}
+
 export default function ConfigPage() {
   const {
     groupedSources,
@@ -19,20 +27,85 @@ export default function ConfigPage() {
     newSourceLabel, setNewSourceLabel, isSavingSource, syncingSourceId,
     handleCreateSource, handleToggleSourceStatus, handleDeleteSource, handleSyncSource,
     tripStart, tripEnd, handleSaveTripDates,
-    baseLocationText, handleSaveBaseLocation
+    baseLocationText, handleSaveBaseLocation,
+    authConfigured, isAdminAuthenticated, handleAdminLogin, handleAdminLogout,
+    plannerMode, sharedPlannerRoomId, applyPlannerSettings, setStatusMessage
   } = useTrip();
 
+  const canManageGlobal = authConfigured && isAdminAuthenticated;
+  const [adminPassword, setAdminPassword] = useState('');
+  const [authSaveState, setAuthSaveState] = useState('idle');
+  const [localPlannerMode, setLocalPlannerMode] = useState(plannerMode);
+  const [localSharedRoomId, setLocalSharedRoomId] = useState(sharedPlannerRoomId);
+  const [plannerSaveState, setPlannerSaveState] = useState('idle');
   const [localTripStart, setLocalTripStart] = useState(tripStart);
   const [localTripEnd, setLocalTripEnd] = useState(tripEnd);
   const [dateSaveState, setDateSaveState] = useState('idle');
   const [localBaseLocation, setLocalBaseLocation] = useState(baseLocationText);
   const [locationSaveState, setLocationSaveState] = useState('idle');
+  const authTimerRef = useRef(null);
+  const plannerTimerRef = useRef(null);
   const saveTimerRef = useRef(null);
   const locationTimerRef = useRef(null);
 
+  useEffect(() => { setLocalPlannerMode(plannerMode); }, [plannerMode]);
+  useEffect(() => { setLocalSharedRoomId(sharedPlannerRoomId); }, [sharedPlannerRoomId]);
   useEffect(() => { setLocalTripStart(tripStart); }, [tripStart]);
   useEffect(() => { setLocalTripEnd(tripEnd); }, [tripEnd]);
   useEffect(() => { setLocalBaseLocation(baseLocationText); }, [baseLocationText]);
+
+  const onUnlockAdmin = async (e) => {
+    e.preventDefault();
+    if (!authConfigured) {
+      setStatusMessage('Server admin password is not configured. Set APP_ADMIN_PASSWORD first.', true);
+      return;
+    }
+    if (!adminPassword.trim()) {
+      setStatusMessage('Password is required.', true);
+      return;
+    }
+
+    setAuthSaveState('saving');
+    try {
+      await handleAdminLogin(adminPassword);
+      setAdminPassword('');
+      setAuthSaveState('saved');
+      clearTimeout(authTimerRef.current);
+      authTimerRef.current = setTimeout(() => setAuthSaveState('idle'), 2000);
+    } catch {
+      setAuthSaveState('idle');
+    }
+  };
+
+  const onLockAdmin = async () => {
+    setAuthSaveState('saving');
+    await handleAdminLogout();
+    setAuthSaveState('idle');
+  };
+
+  const onSavePlannerSettings = (e) => {
+    e.preventDefault();
+    const normalizedRoomId = normalizePlannerRoomId(localSharedRoomId);
+    if (localPlannerMode === 'shared') {
+      if (!canManageGlobal) {
+        setStatusMessage('Unlock admin mode before using shared planner mode.', true);
+        return;
+      }
+      if (!normalizedRoomId) {
+        setStatusMessage('Shared mode requires a room ID (2-64 chars: a-z, 0-9, _ or -).', true);
+        return;
+      }
+    }
+
+    applyPlannerSettings({
+      mode: localPlannerMode,
+      roomId: localPlannerMode === 'shared' ? normalizedRoomId : ''
+    });
+
+    setPlannerSaveState('saved');
+    clearTimeout(plannerTimerRef.current);
+    plannerTimerRef.current = setTimeout(() => setPlannerSaveState('idle'), 2000);
+  };
 
   const onSaveDates = async (e) => {
     e.preventDefault();
@@ -65,6 +138,7 @@ export default function ConfigPage() {
     const isActive = source.status === 'active';
     const isSyncingThis = syncingSourceId === source.id;
     const displayTitle = source.label || safeHostname(source.url);
+    const isReadonly = Boolean(source.readonly) || !canManageGlobal;
 
     return (
       <Card
@@ -88,13 +162,13 @@ export default function ConfigPage() {
           {source.readonly ? <span className="italic">· Read-only</span> : null}
         </div>
         <div className="flex gap-1.5 mt-2">
-          <Button type="button" size="sm" variant="default" className="text-[0.7rem] min-h-[26px] px-2 py-0.5" disabled={isSyncingThis || Boolean(source.readonly)} onClick={() => { void handleSyncSource(source); }}>
+          <Button type="button" size="sm" variant="default" className="text-[0.7rem] min-h-[26px] px-2 py-0.5" disabled={isSyncingThis || isReadonly} onClick={() => { void handleSyncSource(source); }}>
             {isSyncingThis ? <><RefreshCw size={10} className="animate-spin" />Syncing...</> : 'Sync'}
           </Button>
-          <Button type="button" size="sm" variant="secondary" className="text-[0.7rem] min-h-[26px] px-2 py-0.5" disabled={Boolean(source.readonly)} onClick={() => { void handleToggleSourceStatus(source); }}>
+          <Button type="button" size="sm" variant="secondary" className="text-[0.7rem] min-h-[26px] px-2 py-0.5" disabled={isReadonly} onClick={() => { void handleToggleSourceStatus(source); }}>
             {isActive ? 'Pause' : 'Resume'}
           </Button>
-          <Button type="button" size="sm" variant="secondary" className="text-[0.7rem] min-h-[26px] px-2 py-0.5 border-rose-200 bg-rose-50 text-rose-600 hover:bg-rose-100 hover:border-rose-300 hover:text-rose-700" disabled={Boolean(source.readonly)} onClick={() => { void handleDeleteSource(source); }}>
+          <Button type="button" size="sm" variant="secondary" className="text-[0.7rem] min-h-[26px] px-2 py-0.5 border-rose-200 bg-rose-50 text-rose-600 hover:bg-rose-100 hover:border-rose-300 hover:text-rose-700" disabled={isReadonly} onClick={() => { void handleDeleteSource(source); }}>
             Remove
           </Button>
         </div>
@@ -107,6 +181,54 @@ export default function ConfigPage() {
       <div className="w-full mx-auto flex flex-col gap-5">
         <div className="flex items-center justify-between gap-4">
           <div>
+            <h2 className="m-0 text-xl font-extrabold tracking-tight">Access</h2>
+            <p className="mt-0.5 text-muted text-[0.82rem]">Unlock admin mode to run sync and manage shared settings.</p>
+          </div>
+          <Badge variant={canManageGlobal ? 'default' : 'secondary'} className={canManageGlobal ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-800'}>
+            {canManageGlobal ? 'Unlocked' : authConfigured ? 'Locked' : 'Not configured'}
+          </Badge>
+        </div>
+        <Card className="p-3">
+          <form className="flex items-center gap-2 max-sm:flex-col" onSubmit={onUnlockAdmin}>
+            <Input type="password" value={adminPassword} onChange={(e) => setAdminPassword(e.target.value)} placeholder={authConfigured ? 'Enter admin password' : 'APP_ADMIN_PASSWORD missing on server'} disabled={!authConfigured || canManageGlobal} className="max-sm:max-w-none" />
+            {canManageGlobal ? (
+              <Button type="button" size="sm" className="min-h-[36px] rounded-lg min-w-[110px] shrink-0" onClick={() => { void onLockAdmin(); }} disabled={authSaveState === 'saving'}>
+                {authSaveState === 'saving' ? 'Locking...' : 'Lock'}
+              </Button>
+            ) : (
+              <Button type="submit" size="sm" className="min-h-[36px] rounded-lg min-w-[110px] shrink-0" disabled={!authConfigured || authSaveState === 'saving'}>
+                {authSaveState === 'saving' ? 'Unlocking...' : authSaveState === 'saved' ? <><Check size={14} />Unlocked</> : 'Unlock'}
+              </Button>
+            )}
+          </form>
+        </Card>
+
+        <div className="flex items-center justify-between gap-4">
+          <div>
+            <h2 className="m-0 text-xl font-extrabold tracking-tight">Planning Mode</h2>
+            <p className="mt-0.5 text-muted text-[0.82rem]">Local mode keeps plans in this browser. Shared mode syncs by room ID.</p>
+          </div>
+        </div>
+        <Card className="p-3">
+          <form className="flex items-center gap-2 max-sm:flex-col" onSubmit={onSavePlannerSettings}>
+            <Select value={localPlannerMode} onValueChange={setLocalPlannerMode}>
+              <SelectTrigger className="min-h-[36px] w-[160px] shrink-0 rounded-lg">
+                <SelectValue placeholder="Planning mode" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="local">Local</SelectItem>
+                <SelectItem value="shared">Shared (2 people)</SelectItem>
+              </SelectContent>
+            </Select>
+            <Input type="text" value={localSharedRoomId} onChange={(e) => setLocalSharedRoomId(e.target.value)} placeholder="Room ID (for shared mode)" disabled={localPlannerMode !== 'shared'} className="max-sm:max-w-none" />
+            <Button type="submit" size="sm" className="min-h-[36px] rounded-lg min-w-[100px] shrink-0" disabled={plannerSaveState === 'saving'}>
+              {plannerSaveState === 'saving' ? 'Saving...' : plannerSaveState === 'saved' ? <><Check size={14} />Saved</> : 'Save'}
+            </Button>
+          </form>
+        </Card>
+
+        <div className="flex items-center justify-between gap-4">
+          <div>
             <h2 className="m-0 text-xl font-extrabold tracking-tight">Trip Config</h2>
             <p className="mt-0.5 text-muted text-[0.82rem]">Set your trip date range to populate the day planner.</p>
           </div>
@@ -117,7 +239,7 @@ export default function ConfigPage() {
             <Input type="date" value={localTripStart} onChange={(e) => setLocalTripStart(e.target.value)} className="max-w-[180px] max-sm:max-w-none" />
             <label className="text-sm font-medium text-foreground-secondary shrink-0">End</label>
             <Input type="date" value={localTripEnd} onChange={(e) => setLocalTripEnd(e.target.value)} className="max-w-[180px] max-sm:max-w-none" />
-            <Button type="submit" size="sm" className="min-h-[36px] rounded-lg min-w-[80px] shrink-0" disabled={dateSaveState === 'saving'}>
+            <Button type="submit" size="sm" className="min-h-[36px] rounded-lg min-w-[80px] shrink-0" disabled={!canManageGlobal || dateSaveState === 'saving'}>
               {dateSaveState === 'saving' ? 'Saving...' : dateSaveState === 'saved' ? <><Check size={14} />Saved</> : 'Save'}
             </Button>
           </form>
@@ -133,7 +255,7 @@ export default function ConfigPage() {
           <form className="flex items-center gap-2 max-sm:flex-col" onSubmit={onSaveLocation}>
             <label className="text-sm font-medium text-foreground-secondary shrink-0">Address</label>
             <Input type="text" value={localBaseLocation} onChange={(e) => setLocalBaseLocation(e.target.value)} placeholder="e.g. 1100 California St, San Francisco, CA 94108, United States" className="max-sm:max-w-none" />
-            <Button type="submit" size="sm" className="min-h-[36px] rounded-lg min-w-[80px] shrink-0" disabled={locationSaveState === 'saving'}>
+            <Button type="submit" size="sm" className="min-h-[36px] rounded-lg min-w-[80px] shrink-0" disabled={!canManageGlobal || locationSaveState === 'saving'}>
               {locationSaveState === 'saving' ? 'Saving...' : locationSaveState === 'saved' ? <><Check size={14} />Saved</> : 'Save'}
             </Button>
           </form>
@@ -158,7 +280,7 @@ export default function ConfigPage() {
           </Select>
           <Input placeholder="https://example.com/source" value={newSourceUrl} onChange={(e) => setNewSourceUrl(e.target.value)} />
           <Input className="max-w-[160px] max-sm:max-w-none" placeholder="Label (optional)" value={newSourceLabel} onChange={(e) => setNewSourceLabel(e.target.value)} />
-          <Button type="submit" size="sm" className="min-h-[36px] rounded-lg min-w-[100px] shrink-0 max-sm:w-full" disabled={isSavingSource}>
+          <Button type="submit" size="sm" className="min-h-[36px] rounded-lg min-w-[100px] shrink-0 max-sm:w-full" disabled={!canManageGlobal || isSavingSource}>
             {isSavingSource ? 'Adding...' : 'Add Source'}
           </Button>
         </form>

@@ -33,6 +33,8 @@ cp .env.example .env
 - `GOOGLE_MAPS_ROUTES_KEY` (server key used by `/api/route` to draw day routes)
 - `GOOGLE_MAPS_GEOCODING_KEY` (optional server key used by `/api/sync` for pre-geocoding; falls back to server/browser key)
 - `CONVEX_URL` (optional, enables Convex read/write persistence)
+- `APP_ADMIN_PASSWORD` (required to unlock protected actions in Config, including sync and shared planner mode)
+- `APP_SESSION_SECRET` (optional session signing secret; defaults to `APP_ADMIN_PASSWORD`)
 - `RSS_INITIAL_ITEMS` (optional, number of newsletter posts to process on first sync; default `1`)
 - `RSS_MAX_ITEMS_PER_SYNC` (optional, cap on new newsletter posts processed per sync; default `3`)
 
@@ -66,9 +68,13 @@ pnpm start
   - `https://luma.com/cerebralvalley_`
 - `/api/sync` also polls `https://rss.beehiiv.com/feeds/9B98D9gG4C.xml` and only parses unseen/updated newsletter items using RSS `guid` (or link) + item update version (`atom:updated` / `atom:published` / `pubDate`).
 - Open **Sources** tab to add/pause/delete global event and spot source URLs.
+- Open **Config** tab and unlock admin mode before running sync or editing global data.
 - Use the **Date filter** slider to switch days.
 - Use **Travel mode** to switch driving/transit/walking.
 - Click **Use My Device Location** to use live GPS instead of the location in `docs/my_location.md`.
+- In **Config → Planning Mode**, choose:
+  - **Local**: planner stays in current browser localStorage only
+  - **Shared**: planner syncs to Convex by room ID (requires unlocked admin mode)
 - In **Day Route Builder**, use **Download .ics** to export planner stops as iCalendar events.
 - In **Day Route Builder**, use **Add Stops to Google Calendar** to open one prefilled Google Calendar draft per stop.
 
@@ -103,8 +109,8 @@ pnpm convex:deploy
 ```
 
 After this, `/api/events` reads from Convex first. `/api/sync` writes to both Convex and local cache.
-Global source management is available at `/api/sources` (requires `CONVEX_URL`).
-Planner day routes are also persisted in Convex via `/api/planner` when `CONVEX_URL` is configured.
+Global source management is available at `/api/sources` (requires `CONVEX_URL` + unlocked admin mode).
+Planner day routes are persisted in Convex via `/api/planner` only for shared room mode.
 
 ## Notes
 
@@ -115,6 +121,7 @@ Planner day routes are also persisted in Convex via `/api/planner` when `CONVEX_
 - With Convex configured, events are persisted in Convex and survive redeploys.
 - With Convex configured, geocode cache is persisted in Convex (`geocodeCache` table).
 - With Convex configured, planner day routes (create/update/delete per date) are persisted in Convex.
+- Planner shared mode is keyed by room ID so two people can collaborate without sharing a single global planner row.
 - With Convex configured, generated map routes are additionally cached in Convex and reused across sessions/deploys.
 - If no cache exists, it falls back to `data/sample-events.json`.
 - Static curated places are stored one-time in `data/static-places.json` and are not part of event sync.

@@ -70,6 +70,18 @@ function getTagIconNode(tag) {
 
 export { TAG_COLORS };
 
+const PLANNER_MODE_STORAGE_KEY = 'sf-trip-planner-mode-v1';
+const SHARED_ROOM_STORAGE_KEY = 'sf-trip-shared-room-v1';
+const PLANNER_MODES = new Set(['local', 'shared']);
+
+function normalizePlannerRoomId(value) {
+  const nextValue = String(value || '').trim().toLowerCase().replace(/[^a-z0-9_-]/g, '');
+  if (nextValue.length < 2 || nextValue.length > 64) {
+    return '';
+  }
+  return nextValue;
+}
+
 const TripContext = createContext(null);
 
 export function useTrip() {
@@ -94,6 +106,7 @@ export default function TripProvider({ children }) {
   const travelTimeCacheRef = useRef(new Map());
   const plannedRouteCacheRef = useRef(new Map());
   const plannerHydratedRef = useRef(false);
+  const plannerPreferencesHydratedRef = useRef(false);
 
   const [status, setStatus] = useState('Loading trip map...');
   const [statusError, setStatusError] = useState(false);
@@ -123,6 +136,10 @@ export default function TripProvider({ children }) {
   const [syncingSourceId, setSyncingSourceId] = useState('');
   const [tripStart, setTripStart] = useState('');
   const [tripEnd, setTripEnd] = useState('');
+  const [plannerMode, setPlannerMode] = useState('local');
+  const [sharedPlannerRoomId, setSharedPlannerRoomId] = useState('');
+  const [authConfigured, setAuthConfigured] = useState(false);
+  const [isAdminAuthenticated, setIsAdminAuthenticated] = useState(false);
 
   const placeTagOptions = useMemo(() => {
     const tags = new Set();
@@ -154,6 +171,13 @@ export default function TripProvider({ children }) {
     }
     return groups;
   }, [sources]);
+
+  const plannerStorageKey = useMemo(() => {
+    if (plannerMode === 'shared' && sharedPlannerRoomId) {
+      return `${PLAN_STORAGE_KEY}:shared:${sharedPlannerRoomId}`;
+    }
+    return PLAN_STORAGE_KEY;
+  }, [plannerMode, sharedPlannerRoomId]);
 
   const uniqueDates = useMemo(() => {
     if (tripStart && tripEnd) {
@@ -228,10 +252,33 @@ export default function TripProvider({ children }) {
 
   // ---- Planner persistence ----
   useEffect(() => {
+    try {
+      const modeRaw = window.localStorage.getItem(PLANNER_MODE_STORAGE_KEY);
+      const roomRaw = window.localStorage.getItem(SHARED_ROOM_STORAGE_KEY);
+      const nextMode = PLANNER_MODES.has(modeRaw) ? modeRaw : 'local';
+      const nextRoomId = normalizePlannerRoomId(roomRaw);
+      setPlannerMode(nextMode);
+      setSharedPlannerRoomId(nextRoomId);
+    } catch { /* ignore */ }
+    plannerPreferencesHydratedRef.current = true;
+  }, []);
+
+  useEffect(() => {
+    if (!plannerPreferencesHydratedRef.current) {
+      return;
+    }
+    try {
+      window.localStorage.setItem(PLANNER_MODE_STORAGE_KEY, plannerMode);
+      window.localStorage.setItem(SHARED_ROOM_STORAGE_KEY, sharedPlannerRoomId);
+    } catch { /* ignore */ }
+  }, [plannerMode, sharedPlannerRoomId]);
+
+  useEffect(() => {
     let mounted = true;
     let localPlanner = {};
+    plannerHydratedRef.current = false;
     try {
-      const raw = window.localStorage.getItem(PLAN_STORAGE_KEY);
+      const raw = window.localStorage.getItem(plannerStorageKey);
       if (raw) {
         const parsed = JSON.parse(raw);
         if (parsed && typeof parsed === 'object') {
@@ -241,33 +288,50 @@ export default function TripProvider({ children }) {
       }
     } catch { /* ignore */ }
 
-    async function loadPlannerFromServer() {
+    async function loadSharedPlannerFromServer() {
+      if (plannerMode !== 'shared' || !sharedPlannerRoomId || !isAdminAuthenticated) {
+        if (mounted) {
+          plannerHydratedRef.current = true;
+        }
+        return;
+      }
+
       try {
-        const payload = await fetchJson('/api/planner');
+        const payload = await fetchJson(`/api/planner?roomId=${encodeURIComponent(sharedPlannerRoomId)}`);
         if (!mounted) return;
         const remotePlanner = sanitizePlannerByDate(payload?.plannerByDate || {});
         if (hasPlannerEntries(remotePlanner) || !hasPlannerEntries(localPlanner)) {
           setPlannerByDate(remotePlanner);
         }
       } catch (error) {
+        if (error instanceof Error && error.message.toLowerCase().includes('admin password required')) {
+          setIsAdminAuthenticated(false);
+        }
         console.error('Planner load failed; continuing with local planner cache.', error);
       } finally {
         if (mounted) plannerHydratedRef.current = true;
       }
     }
-    void loadPlannerFromServer();
+    void loadSharedPlannerFromServer();
     return () => { mounted = false; plannerHydratedRef.current = true; };
-  }, []);
+  }, [isAdminAuthenticated, plannerMode, plannerStorageKey, sharedPlannerRoomId]);
 
-  const savePlannerToServer = useCallback(async (nextPlannerByDate) => {
+  const savePlannerToServer = useCallback(async (nextPlannerByDate, roomId) => {
+    if (!roomId) {
+      return;
+    }
+
     try {
-      const response = await fetch('/api/planner', {
+      const response = await fetch(`/api/planner?roomId=${encodeURIComponent(roomId)}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ plannerByDate: compactPlannerByDate(nextPlannerByDate) })
+        body: JSON.stringify({ roomId, plannerByDate: compactPlannerByDate(nextPlannerByDate) })
       });
       if (!response.ok) {
         const payload = await response.json().catch(() => null);
+        if (response.status === 401) {
+          setIsAdminAuthenticated(false);
+        }
         throw new Error(payload?.error || `Planner save failed: ${response.status}`);
       }
     } catch (error) {
@@ -277,11 +341,21 @@ export default function TripProvider({ children }) {
 
   useEffect(() => {
     const compactPlanner = compactPlannerByDate(plannerByDate);
-    try { window.localStorage.setItem(PLAN_STORAGE_KEY, JSON.stringify(compactPlanner)); } catch { /* ignore */ }
+    try { window.localStorage.setItem(plannerStorageKey, JSON.stringify(compactPlanner)); } catch { /* ignore */ }
     if (!plannerHydratedRef.current) return;
-    const timeoutId = window.setTimeout(() => { void savePlannerToServer(compactPlanner); }, 450);
+    if (plannerMode !== 'shared' || !sharedPlannerRoomId || !isAdminAuthenticated) return;
+    const timeoutId = window.setTimeout(() => {
+      void savePlannerToServer(compactPlanner, sharedPlannerRoomId);
+    }, 450);
     return () => { window.clearTimeout(timeoutId); };
-  }, [plannerByDate, savePlannerToServer]);
+  }, [
+    isAdminAuthenticated,
+    plannerByDate,
+    plannerMode,
+    plannerStorageKey,
+    savePlannerToServer,
+    sharedPlannerRoomId
+  ]);
 
   // ---- Geocode cache ----
   useEffect(() => {
@@ -309,6 +383,72 @@ export default function TripProvider({ children }) {
   const setStatusMessage = useCallback((message, isError = false) => {
     setStatus(message);
     setStatusError(isError);
+  }, []);
+
+  const requireAdminClient = useCallback(() => {
+    if (authConfigured && isAdminAuthenticated) {
+      return true;
+    }
+
+    if (!authConfigured) {
+      setStatusMessage('Server admin password is not configured. Set APP_ADMIN_PASSWORD first.', true);
+      return false;
+    }
+
+    setStatusMessage('Unlock admin mode in Config before running this action.', true);
+    return false;
+  }, [authConfigured, isAdminAuthenticated, setStatusMessage]);
+
+  const refreshAuthSession = useCallback(async () => {
+    try {
+      const payload = await fetchJson('/api/auth/session');
+      const nextConfigured = Boolean(payload?.authConfigured);
+      const nextAuthenticated = nextConfigured && Boolean(payload?.authenticated);
+      setAuthConfigured(nextConfigured);
+      setIsAdminAuthenticated(nextAuthenticated);
+      return payload;
+    } catch {
+      setAuthConfigured(false);
+      setIsAdminAuthenticated(false);
+      return null;
+    }
+  }, []);
+
+  const handleAdminLogin = useCallback(async (password) => {
+    const response = await fetch('/api/auth/session', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ password: String(password || '') })
+    });
+    const payload = await response.json().catch(() => null);
+    if (!response.ok) {
+      const message = payload?.error || `Login failed: ${response.status}`;
+      setStatusMessage(message, true);
+      throw new Error(message);
+    }
+
+    setAuthConfigured(Boolean(payload?.authConfigured));
+    setIsAdminAuthenticated(Boolean(payload?.authenticated));
+    setStatusMessage('Admin mode unlocked.');
+    return true;
+  }, [setStatusMessage]);
+
+  const handleAdminLogout = useCallback(async () => {
+    try {
+      await fetch('/api/auth/session', {
+        method: 'DELETE'
+      });
+    } finally {
+      setIsAdminAuthenticated(false);
+      setStatusMessage('Admin mode locked.');
+    }
+  }, [setStatusMessage]);
+
+  const applyPlannerSettings = useCallback(({ mode, roomId }) => {
+    const nextMode = PLANNER_MODES.has(mode) ? mode : 'local';
+    const nextRoomId = normalizePlannerRoomId(roomId);
+    setPlannerMode(nextMode);
+    setSharedPlannerRoomId(nextRoomId);
   }, []);
 
   const loadSourcesFromServer = useCallback(async () => {
@@ -731,12 +871,15 @@ export default function TripProvider({ children }) {
 
     async function bootstrap() {
       try {
-        const [config, eventsPayload, sourcesPayload] = await Promise.all([
+        const [config, eventsPayload, sourcesPayload, authPayload] = await Promise.all([
           fetchJson('/api/config'),
           fetchJson('/api/events'),
-          fetchJson('/api/sources').catch(() => ({ sources: [] }))
+          fetchJson('/api/sources').catch(() => ({ sources: [] })),
+          fetchJson('/api/auth/session').catch(() => ({ authConfigured: false, authenticated: false }))
         ]);
         if (!mounted) return;
+        setAuthConfigured(Boolean(authPayload?.authConfigured));
+        setIsAdminAuthenticated(Boolean(authPayload?.authConfigured) && Boolean(authPayload?.authenticated));
         setTripStart(config.tripStart || '');
         setTripEnd(config.tripEnd || '');
         setBaseLocationText(config.baseLocation || '');
@@ -747,7 +890,9 @@ export default function TripProvider({ children }) {
         setAllPlaces(loadedPlaces);
         setSources(loadedSources);
 
-        void runBackgroundSync();
+        if (authPayload?.authConfigured && authPayload?.authenticated) {
+          void runBackgroundSync();
+        }
 
         if (!config.mapsBrowserKey) { setStatusMessage('Missing GOOGLE_MAPS_BROWSER_KEY in .env. Map cannot load.', true); return; }
         await loadGoogleMapsScript(config.mapsBrowserKey);
@@ -768,7 +913,11 @@ export default function TripProvider({ children }) {
         if (geocodedBase) setBaseMarker(geocodedBase, `Base location: ${config.baseLocation}`);
         setMapsReady(true);
         const sampleNote = eventsPayload?.meta?.sampleData ? ' Showing sample data until you sync.' : '';
-        setStatusMessage(`Loaded ${loadedEvents.length} events and ${loadedPlaces.length} curated places.${sampleNote}`);
+        const authNote =
+          authPayload?.authConfigured && !authPayload?.authenticated
+            ? ' Unlock admin mode in Config to run sync or edit shared data.'
+            : '';
+        setStatusMessage(`Loaded ${loadedEvents.length} events and ${loadedPlaces.length} curated places.${sampleNote}${authNote}`);
       } catch (error) {
         setStatusMessage(error instanceof Error ? error.message : 'Failed to initialize app.', true);
       }
@@ -833,12 +982,21 @@ export default function TripProvider({ children }) {
 
   // ---- Handlers ----
   const handleSync = useCallback(async () => {
+    if (!requireAdminClient()) {
+      return;
+    }
+
     setIsSyncing(true);
     setStatusMessage('Syncing latest events...');
     try {
       const response = await fetch('/api/sync', { method: 'POST' });
       const payload = await response.json();
-      if (!response.ok) throw new Error(payload.error || 'Sync failed');
+      if (!response.ok) {
+        if (response.status === 401) {
+          setIsAdminAuthenticated(false);
+        }
+        throw new Error(payload.error || 'Sync failed');
+      }
       const syncedEvents = Array.isArray(payload.events) ? payload.events : [];
       setAllEvents(syncedEvents);
       if (Array.isArray(payload.places)) setAllPlaces(payload.places);
@@ -852,7 +1010,7 @@ export default function TripProvider({ children }) {
     } finally {
       setIsSyncing(false);
     }
-  }, [loadSourcesFromServer, setStatusMessage]);
+  }, [loadSourcesFromServer, requireAdminClient, setStatusMessage]);
 
   const handleDeviceLocation = useCallback(() => {
     if (!navigator.geolocation || !window.google?.maps) { setStatusMessage('Geolocation is not supported in this browser.', true); return; }
@@ -870,6 +1028,10 @@ export default function TripProvider({ children }) {
 
   const handleCreateSource = useCallback(async (event) => {
     event.preventDefault();
+    if (!requireAdminClient()) {
+      return;
+    }
+
     const url = newSourceUrl.trim();
     const label = newSourceLabel.trim();
     if (!url) { setStatusMessage('Source URL is required.', true); return; }
@@ -881,7 +1043,12 @@ export default function TripProvider({ children }) {
         body: JSON.stringify({ sourceType: newSourceType, url, label })
       });
       const payload = await response.json();
-      if (!response.ok) throw new Error(payload?.error || 'Failed to add source.');
+      if (!response.ok) {
+        if (response.status === 401) {
+          setIsAdminAuthenticated(false);
+        }
+        throw new Error(payload?.error || 'Failed to add source.');
+      }
       await loadSourcesFromServer();
       setNewSourceUrl('');
       setNewSourceLabel('');
@@ -891,9 +1058,13 @@ export default function TripProvider({ children }) {
     } finally {
       setIsSavingSource(false);
     }
-  }, [loadSourcesFromServer, newSourceLabel, newSourceType, newSourceUrl, setStatusMessage]);
+  }, [loadSourcesFromServer, newSourceLabel, newSourceType, newSourceUrl, requireAdminClient, setStatusMessage]);
 
   const handleToggleSourceStatus = useCallback(async (source) => {
+    if (!requireAdminClient()) {
+      return;
+    }
+
     const nextStatus = source?.status === 'active' ? 'paused' : 'active';
     try {
       const response = await fetch(`/api/sources/${encodeURIComponent(source.id)}`, {
@@ -902,33 +1073,56 @@ export default function TripProvider({ children }) {
         body: JSON.stringify({ status: nextStatus })
       });
       const payload = await response.json();
-      if (!response.ok) throw new Error(payload?.error || 'Failed to update source.');
+      if (!response.ok) {
+        if (response.status === 401) {
+          setIsAdminAuthenticated(false);
+        }
+        throw new Error(payload?.error || 'Failed to update source.');
+      }
       await loadSourcesFromServer();
       setStatusMessage(`Source ${nextStatus === 'active' ? 'activated' : 'paused'}.`);
     } catch (error) {
       setStatusMessage(error instanceof Error ? error.message : 'Failed to update source.', true);
     }
-  }, [loadSourcesFromServer, setStatusMessage]);
+  }, [loadSourcesFromServer, requireAdminClient, setStatusMessage]);
 
   const handleDeleteSource = useCallback(async (source) => {
+    if (!requireAdminClient()) {
+      return;
+    }
+
     try {
       const response = await fetch(`/api/sources/${encodeURIComponent(source.id)}`, { method: 'DELETE' });
       const payload = await response.json();
-      if (!response.ok) throw new Error(payload?.error || 'Failed to delete source.');
+      if (!response.ok) {
+        if (response.status === 401) {
+          setIsAdminAuthenticated(false);
+        }
+        throw new Error(payload?.error || 'Failed to delete source.');
+      }
       await loadSourcesFromServer();
       setStatusMessage('Source deleted.');
     } catch (error) {
       setStatusMessage(error instanceof Error ? error.message : 'Failed to delete source.', true);
     }
-  }, [loadSourcesFromServer, setStatusMessage]);
+  }, [loadSourcesFromServer, requireAdminClient, setStatusMessage]);
 
   const handleSyncSource = useCallback(async (source) => {
+    if (!requireAdminClient()) {
+      return;
+    }
+
     setSyncingSourceId(source.id);
     setStatusMessage(`Syncing "${source.label || source.url}"...`);
     try {
       const response = await fetch(`/api/sources/${encodeURIComponent(source.id)}`, { method: 'POST' });
       const payload = await response.json();
-      if (!response.ok) throw new Error(payload?.error || 'Failed to sync source.');
+      if (!response.ok) {
+        if (response.status === 401) {
+          setIsAdminAuthenticated(false);
+        }
+        throw new Error(payload?.error || 'Failed to sync source.');
+      }
       await loadSourcesFromServer();
       const count = payload.events ?? payload.spots ?? 0;
       setStatusMessage(`Synced ${count} items from "${source.label || source.url}".`);
@@ -937,7 +1131,7 @@ export default function TripProvider({ children }) {
     } finally {
       setSyncingSourceId('');
     }
-  }, [loadSourcesFromServer, setStatusMessage]);
+  }, [loadSourcesFromServer, requireAdminClient, setStatusMessage]);
 
   const handleExportPlannerIcs = useCallback(() => {
     if (!selectedDate || dayPlanItems.length === 0) { setStatusMessage('Add planner stops before exporting iCal.', true); return; }
@@ -965,6 +1159,10 @@ export default function TripProvider({ children }) {
   }, [baseLocationText, dayPlanItems, selectedDate, setStatusMessage]);
 
   const handleSaveTripDates = useCallback(async (start, end) => {
+    if (!requireAdminClient()) {
+      throw new Error('Admin mode is required.');
+    }
+
     try {
       await fetchJson('/api/config', {
         method: 'POST',
@@ -978,9 +1176,13 @@ export default function TripProvider({ children }) {
       setStatusMessage(`Failed to save trip dates: ${message}`, true);
       throw err;
     }
-  }, [setStatusMessage]);
+  }, [requireAdminClient, setStatusMessage]);
 
   const handleSaveBaseLocation = useCallback(async (text) => {
+    if (!requireAdminClient()) {
+      throw new Error('Admin mode is required.');
+    }
+
     await fetchJson('/api/config', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -992,7 +1194,7 @@ export default function TripProvider({ children }) {
       if (geocodedBase) setBaseMarker(geocodedBase, `Base location: ${text}`);
     }
     setBaseLocationVersion((v) => v + 1);
-  }, [tripStart, tripEnd, mapsReady, geocode, setBaseMarker]);
+  }, [tripStart, tripEnd, mapsReady, geocode, requireAdminClient, setBaseMarker]);
 
   const toggleCategory = useCallback((category) => {
     setHiddenCategories((prev) => {
@@ -1025,6 +1227,8 @@ export default function TripProvider({ children }) {
     plannerByDate, setPlannerByDate,
     activePlanId, setActivePlanId,
     routeSummary, isRouteUpdating,
+    authConfigured, isAdminAuthenticated,
+    plannerMode, sharedPlannerRoomId,
     sources, groupedSources,
     newSourceType, setNewSourceType, newSourceUrl, setNewSourceUrl,
     newSourceLabel, setNewSourceLabel, isSavingSource, syncingSourceId,
@@ -1036,6 +1240,8 @@ export default function TripProvider({ children }) {
     dayPlanItems, plannedRouteStops, travelReadyCount,
     // Handlers
     setStatusMessage,
+    refreshAuthSession, handleAdminLogin, handleAdminLogout,
+    applyPlannerSettings,
     handleSync, handleDeviceLocation,
     handleCreateSource, handleToggleSourceStatus, handleDeleteSource, handleSyncSource,
     handleSaveTripDates, handleSaveBaseLocation,
