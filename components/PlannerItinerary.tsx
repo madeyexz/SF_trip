@@ -129,7 +129,7 @@ export default function PlannerItinerary() {
                   <article className={itemClass} key={item.id} style={{ top: `${top}px`, height: `${height}px`, width: `${widthPct}%`, left: `${leftPct}%` }} onPointerDown={(e) => startPlanDrag(e, item, 'move')}>
                     <button type="button" className="absolute left-0 right-0 top-0 h-2 border-none bg-transparent cursor-ns-resize" aria-label="Adjust start time" onPointerDown={(e) => startPlanDrag(e, item, 'resize-start')} />
                     <div className="absolute top-1 right-1.5 flex items-center gap-1.5">
-                      {hasCollision ? <AlertTriangle size={12} className="text-amber-500" title="Time conflict" /> : null}
+                      {hasCollision ? <AlertTriangle size={12} className="text-amber-500" aria-label="Time conflict" /> : null}
                       <button type="button" className="px-1.5 py-0.5 rounded border border-slate-300 bg-white text-slate-600 text-[0.65rem] font-semibold leading-tight cursor-pointer hover:bg-blue-50 hover:border-blue-400 hover:text-blue-600 transition-colors" aria-label="Add to Google Calendar" onClick={(e) => { e.stopPropagation(); const url = buildGoogleCalendarItemUrl({ dateISO: selectedDate, item, baseLocationText }); window.open(url, '_blank', 'noopener,noreferrer'); }} title="Add to Google Calendar">+ GCal</button>
                       <button type="button" className="border-none bg-transparent text-slate-600 text-base leading-none cursor-pointer hover:text-slate-900" aria-label="Remove from plan" onClick={(e) => { e.stopPropagation(); removePlanItem(item.id); }}>x</button>
                     </div>

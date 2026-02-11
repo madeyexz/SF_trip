@@ -1,6 +1,7 @@
 'use client';
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import type { ReactNode } from 'react';
 import { MapPin } from 'lucide-react';
 import { __iconNode as calendarIconNode } from 'lucide-react/dist/esm/icons/calendar.js';
 import { __iconNode as coffeeIconNode } from 'lucide-react/dist/esm/icons/coffee.js';
@@ -82,7 +83,7 @@ function normalizePlannerRoomId(value) {
   return nextValue;
 }
 
-const TripContext = createContext(null);
+const TripContext = createContext<any>(null);
 
 export function useTrip() {
   const ctx = useContext(TripContext);
@@ -90,45 +91,45 @@ export function useTrip() {
   return ctx;
 }
 
-export default function TripProvider({ children }) {
-  const mapPanelRef = useRef(null);
-  const sidebarRef = useRef(null);
-  const mapElementRef = useRef(null);
-  const mapRef = useRef(null);
-  const distanceMatrixRef = useRef(null);
-  const routePolylineRef = useRef(null);
-  const infoWindowRef = useRef(null);
-  const baseMarkerRef = useRef(null);
-  const baseLatLngRef = useRef(null);
-  const markersRef = useRef([]);
-  const positionCacheRef = useRef(new Map());
-  const geocodeStoreRef = useRef(new Map());
-  const travelTimeCacheRef = useRef(new Map());
-  const plannedRouteCacheRef = useRef(new Map());
+export default function TripProvider({ children }: { children: ReactNode }) {
+  const mapPanelRef = useRef<any>(null);
+  const sidebarRef = useRef<any>(null);
+  const mapElementRef = useRef<any>(null);
+  const mapRef = useRef<any>(null);
+  const distanceMatrixRef = useRef<any>(null);
+  const routePolylineRef = useRef<any>(null);
+  const infoWindowRef = useRef<any>(null);
+  const baseMarkerRef = useRef<any>(null);
+  const baseLatLngRef = useRef<any>(null);
+  const markersRef = useRef<any[]>([]);
+  const positionCacheRef = useRef<Map<string, any>>(new Map());
+  const geocodeStoreRef = useRef<Map<string, any>>(new Map());
+  const travelTimeCacheRef = useRef<Map<string, any>>(new Map());
+  const plannedRouteCacheRef = useRef<Map<string, any>>(new Map());
   const plannerHydratedRef = useRef(false);
   const plannerPreferencesHydratedRef = useRef(false);
 
   const [status, setStatus] = useState('Loading trip map...');
   const [statusError, setStatusError] = useState(false);
   const [mapsReady, setMapsReady] = useState(false);
-  const [allEvents, setAllEvents] = useState([]);
-  const [allPlaces, setAllPlaces] = useState([]);
-  const [visibleEvents, setVisibleEvents] = useState([]);
-  const [visiblePlaces, setVisiblePlaces] = useState([]);
+  const [allEvents, setAllEvents] = useState<any[]>([]);
+  const [allPlaces, setAllPlaces] = useState<any[]>([]);
+  const [visibleEvents, setVisibleEvents] = useState<any[]>([]);
+  const [visiblePlaces, setVisiblePlaces] = useState<any[]>([]);
   const [selectedDate, setSelectedDate] = useState('');
   const [showAllEvents, setShowAllEvents] = useState(true);
   const [travelMode, setTravelMode] = useState('WALKING');
   const [baseLocationText, setBaseLocationText] = useState('');
   const [isSyncing, setIsSyncing] = useState(false);
   const [placeTagFilter, setPlaceTagFilter] = useState('all');
-  const [hiddenCategories, setHiddenCategories] = useState(new Set());
+  const [hiddenCategories, setHiddenCategories] = useState<Set<string>>(new Set());
   const [calendarMonthISO, setCalendarMonthISO] = useState('');
-  const [plannerByDate, setPlannerByDate] = useState({});
+  const [plannerByDate, setPlannerByDate] = useState<Record<string, any[]>>({});
   const [activePlanId, setActivePlanId] = useState('');
   const [routeSummary, setRouteSummary] = useState('');
   const [isRouteUpdating, setIsRouteUpdating] = useState(false);
   const [baseLocationVersion, setBaseLocationVersion] = useState(0);
-  const [sources, setSources] = useState([]);
+  const [sources, setSources] = useState<any[]>([]);
   const [newSourceType, setNewSourceType] = useState('event');
   const [newSourceUrl, setNewSourceUrl] = useState('');
   const [newSourceLabel, setNewSourceLabel] = useState('');
@@ -142,7 +143,7 @@ export default function TripProvider({ children }) {
   const [isAdminAuthenticated, setIsAdminAuthenticated] = useState(false);
 
   const placeTagOptions = useMemo(() => {
-    const tags = new Set();
+    const tags = new Set<string>();
     for (const place of allPlaces) tags.add(normalizePlaceTag(place.tag));
     return ['all', ...Array.from(tags).sort((l, r) => l.localeCompare(r))];
   }, [allPlaces]);
@@ -183,7 +184,7 @@ export default function TripProvider({ children }) {
     if (tripStart && tripEnd) {
       return buildISODateRange(tripStart, tripEnd);
     }
-    const dateSet = new Set();
+    const dateSet = new Set<string>();
     for (const e of allEvents) {
       const d = normalizeDateKey(e.startDateISO);
       if (d) dateSet.add(d);
@@ -299,7 +300,7 @@ export default function TripProvider({ children }) {
       try {
         const payload = await fetchJson(`/api/planner?roomId=${encodeURIComponent(sharedPlannerRoomId)}`);
         if (!mounted) return;
-        const remotePlanner = sanitizePlannerByDate(payload?.plannerByDate || {});
+        const remotePlanner = sanitizePlannerByDate(payload?.plannerByDate || {}) as Record<string, any[]>;
         if (hasPlannerEntries(remotePlanner) || !hasPlannerEntries(localPlanner)) {
           setPlannerByDate(remotePlanner);
         }
@@ -362,9 +363,9 @@ export default function TripProvider({ children }) {
     try {
       const raw = window.localStorage.getItem(GEOCODE_CACHE_STORAGE_KEY);
       if (!raw) return;
-      const parsed = JSON.parse(raw);
+      const parsed = JSON.parse(raw) as Record<string, any>;
       if (!parsed || typeof parsed !== 'object') return;
-      const cache = new Map();
+      const cache = new Map<string, { lat: number; lng: number }>();
       for (const [k, v] of Object.entries(parsed)) {
         const lat = Number(v?.lat);
         const lng = Number(v?.lng);
@@ -549,9 +550,9 @@ export default function TripProvider({ children }) {
     [geocode, parseLatLngFromMapUrl, saveGeocodeCache]
   );
 
-  const distanceMatrixRequest = useCallback(async (request) => {
+  const distanceMatrixRequest = useCallback(async (request: any): Promise<any> => {
     if (!distanceMatrixRef.current) return null;
-    return new Promise((resolve, reject) => {
+    return new Promise<any>((resolve, reject) => {
       distanceMatrixRef.current.getDistanceMatrix(request, (response, sv) => {
         if (sv !== 'OK') { reject(new Error(`Distance matrix error: ${sv}`)); return; }
         resolve(response);
@@ -666,7 +667,7 @@ export default function TripProvider({ children }) {
     window.addEventListener('pointerup', onUp);
   }, [selectedDate]);
 
-  const calculateTravelTimes = useCallback(async (evtsWithPositions, activeTravelMode) => {
+  const calculateTravelTimes = useCallback(async (evtsWithPositions: any[], activeTravelMode: string) => {
     if (!baseLatLngRef.current || !distanceMatrixRef.current) return evtsWithPositions;
     const withLocation = evtsWithPositions.filter((e) => e._position);
     if (!withLocation.length) return evtsWithPositions;
@@ -674,8 +675,8 @@ export default function TripProvider({ children }) {
     const baseKey = toCoordinateKey(baseLatLngRef.current);
     if (!travelModeValue || !baseKey) return evtsWithPositions;
 
-    const enriched = new Map(evtsWithPositions.map((e) => [e.eventUrl, { ...e }]));
-    const missing = [];
+    const enriched = new Map<string, any>(evtsWithPositions.map((e) => [e.eventUrl, { ...e }]));
+    const missing: any[] = [];
     for (const e of withLocation) {
       const dk = toCoordinateKey(e._position);
       if (!dk) { missing.push(e); continue; }
