@@ -37,7 +37,13 @@ export const saveTripConfig = mutation({
       .withIndex('by_key', (q) => q.eq('key', TRIP_CONFIG_KEY))
       .first();
 
-    const nextValue: Record<string, string> = {
+    const nextValue: {
+      key: string;
+      tripStart: string;
+      tripEnd: string;
+      updatedAt: string;
+      baseLocation?: string;
+    } = {
       key: TRIP_CONFIG_KEY,
       tripStart: args.tripStart,
       tripEnd: args.tripEnd,
