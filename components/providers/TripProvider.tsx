@@ -52,10 +52,11 @@ const CRIME_IDLE_DEBOUNCE_MS = 450;
 const CRIME_MIN_REQUEST_INTERVAL_MS = 20 * 1000;
 const CRIME_HEATMAP_GRADIENT = [
   'rgba(0, 0, 0, 0)',
-  'rgba(34, 197, 94, 0.28)',
-  'rgba(245, 158, 11, 0.45)',
-  'rgba(239, 68, 68, 0.62)',
-  'rgba(153, 27, 27, 0.82)'
+  'rgba(74, 222, 128, 0.36)',
+  'rgba(250, 204, 21, 0.58)',
+  'rgba(249, 115, 22, 0.76)',
+  'rgba(244, 63, 94, 0.88)',
+  'rgba(127, 29, 29, 0.98)'
 ];
 
 function getCrimeCategoryWeight(category) {
@@ -176,6 +177,12 @@ export default function TripProvider({ children }: { children: ReactNode }) {
 
   const [status, setStatus] = useState('Loading trip map...');
   const [statusError, setStatusError] = useState(false);
+  const [crimeLayerMeta, setCrimeLayerMeta] = useState({
+    loading: false,
+    count: 0,
+    generatedAt: '',
+    error: ''
+  });
   const [mapsReady, setMapsReady] = useState(false);
   const [allEvents, setAllEvents] = useState<any[]>([]);
   const [allPlaces, setAllPlaces] = useState<any[]>([]);
@@ -555,6 +562,7 @@ export default function TripProvider({ children }: { children: ReactNode }) {
     }
     lastCrimeQueryRef.current = requestPath;
     lastCrimeFetchAtRef.current = now;
+    setCrimeLayerMeta((prev) => ({ ...prev, loading: true, error: '' }));
 
     try {
       const response = await fetch(requestPath);
@@ -579,16 +587,29 @@ export default function TripProvider({ children }: { children: ReactNode }) {
           data: weightedPoints,
           dissipating: true,
           radius: getCrimeHeatmapRadiusForZoom(mapRef.current?.getZoom?.()),
-          opacity: 0.68,
+          opacity: 0.82,
+          maxIntensity: 7.5,
           gradient: CRIME_HEATMAP_GRADIENT
         });
       } else {
         crimeHeatmapRef.current.setData(weightedPoints);
         crimeHeatmapRef.current.set('radius', getCrimeHeatmapRadiusForZoom(mapRef.current?.getZoom?.()));
+        crimeHeatmapRef.current.set('maxIntensity', 7.5);
       }
       crimeHeatmapRef.current.setMap(hiddenCategoriesRef.current.has('crime') ? null : mapRef.current);
+      setCrimeLayerMeta({
+        loading: false,
+        count: weightedPoints.length,
+        generatedAt: String(payload?.generatedAt || new Date().toISOString()),
+        error: ''
+      });
     } catch (error) {
       console.error('Crime heatmap refresh failed.', error);
+      setCrimeLayerMeta((prev) => ({
+        ...prev,
+        loading: false,
+        error: error instanceof Error ? error.message : 'Failed to refresh crime layer.'
+      }));
     }
   }, [mapsReady]);
 
@@ -1485,6 +1506,7 @@ export default function TripProvider({ children }: { children: ReactNode }) {
     mapPanelRef, sidebarRef, mapElementRef, mapRef,
     // State
     status, statusError, mapsReady,
+    crimeLayerMeta,
     allEvents, allPlaces, visibleEvents, visiblePlaces,
     selectedDate, setSelectedDate, showAllEvents, setShowAllEvents,
     travelMode, setTravelMode, baseLocationText, setBaseLocationText,

@@ -9,6 +9,18 @@ const EVENT_COLOR = '#ea580c';
 const HOME_COLOR = '#111827';
 const CRIME_COLOR = '#be123c';
 
+function formatCrimeUpdatedAt(isoTimestamp) {
+  if (!isoTimestamp) return 'waiting for first update';
+  const parsed = new Date(isoTimestamp);
+  if (Number.isNaN(parsed.getTime())) return 'waiting for first update';
+  const deltaMinutes = Math.max(0, Math.round((Date.now() - parsed.getTime()) / 60000));
+  if (deltaMinutes < 1) return 'updated just now';
+  if (deltaMinutes < 60) return `updated ${deltaMinutes}m ago`;
+  const h = Math.floor(deltaMinutes / 60);
+  const m = deltaMinutes % 60;
+  return `updated ${h}h ${m}m ago`;
+}
+
 function FilterChip({ active, color, icon: Icon, label, onClick }) {
   return (
     <button
@@ -38,7 +50,13 @@ function FilterChip({ active, color, icon: Icon, label, onClick }) {
 }
 
 export default function MapPanel() {
-  const { mapPanelRef, mapElementRef, hiddenCategories, toggleCategory } = useTrip();
+  const { mapPanelRef, mapElementRef, hiddenCategories, toggleCategory, crimeLayerMeta } = useTrip();
+  const isCrimeVisible = !hiddenCategories.has('crime');
+  const crimeStatusText = crimeLayerMeta.loading
+    ? 'Updating live crime feed...'
+    : crimeLayerMeta.error
+      ? `Update failed: ${crimeLayerMeta.error}`
+      : `${crimeLayerMeta.count.toLocaleString()} incidents in last 72h · ${formatCrimeUpdatedAt(crimeLayerMeta.generatedAt)}`;
 
   return (
     <section className="flex flex-col min-h-0 h-full" ref={mapPanelRef}>
@@ -61,7 +79,7 @@ export default function MapPanel() {
           active={!hiddenCategories.has('crime')}
           color={CRIME_COLOR}
           icon={Siren}
-          label="Crime Live"
+          label={isCrimeVisible ? 'Crime Live • ON' : 'Crime Live'}
           onClick={() => toggleCategory('crime')}
         />
         {Object.keys(TAG_COLORS).map((tag) => (
@@ -77,6 +95,28 @@ export default function MapPanel() {
       </div>
       <div className="relative flex-1 min-h-0 map-container-responsive">
         <div id="map" ref={mapElementRef} />
+        {isCrimeVisible ? (
+          <div className="absolute top-3 right-3 z-20 w-[260px] rounded-xl border border-rose-300/70 bg-white/92 backdrop-blur-sm px-3 py-2.5 shadow-[0_10px_32px_rgba(190,24,93,0.22)]">
+            <div className="flex items-center justify-between gap-2">
+              <div className="inline-flex items-center gap-1.5 text-[0.74rem] font-semibold text-rose-700">
+                <span className="relative flex h-2.5 w-2.5">
+                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-rose-500 opacity-70" />
+                  <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-rose-600" />
+                </span>
+                CRIME DENSITY LIVE
+              </div>
+              <span className="rounded-full bg-rose-100 px-1.5 py-0.5 text-[0.65rem] font-semibold text-rose-700">ON</span>
+            </div>
+            <div className="mt-2 h-2 w-full rounded-full bg-gradient-to-r from-emerald-400 via-yellow-400 via-orange-500 to-rose-900" />
+            <div className="mt-1 flex items-center justify-between text-[0.62rem] font-medium text-foreground-secondary">
+              <span>Lower</span>
+              <span>Higher</span>
+            </div>
+            <p className={`mt-1.5 text-[0.68rem] leading-tight ${crimeLayerMeta.error ? 'text-rose-700 font-semibold' : 'text-foreground-secondary'}`}>
+              {crimeStatusText}
+            </p>
+          </div>
+        ) : null}
         <StatusBar />
       </div>
     </section>
