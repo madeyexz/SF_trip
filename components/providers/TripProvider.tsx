@@ -52,10 +52,11 @@ const CRIME_IDLE_DEBOUNCE_MS = 450;
 const CRIME_MIN_REQUEST_INTERVAL_MS = 20 * 1000;
 const CRIME_HEATMAP_GRADIENT = [
   'rgba(0, 0, 0, 0)',
-  'rgba(250, 204, 21, 0.16)',
-  'rgba(249, 115, 22, 0.38)',
-  'rgba(244, 63, 94, 0.62)',
-  'rgba(190, 24, 93, 0.82)',
+  'rgba(254, 202, 202, 0.06)',
+  'rgba(248, 113, 113, 0.22)',
+  'rgba(239, 68, 68, 0.45)',
+  'rgba(225, 29, 72, 0.68)',
+  'rgba(159, 18, 57, 0.86)',
   'rgba(127, 29, 29, 0.96)'
 ];
 
@@ -74,7 +75,7 @@ function getCrimeCategoryWeight(category) {
 
 function getCrimeHeatmapRadiusForZoom(zoom) {
   const zoomLevel = Number.isFinite(zoom) ? Number(zoom) : 12;
-  return Math.max(18, Math.min(36, Math.round(50 - zoomLevel * 2)));
+  return Math.max(16, Math.min(34, Math.round(46 - zoomLevel * 1.9)));
 }
 
 function buildCrimeBoundsQuery(map) {
@@ -569,7 +570,7 @@ export default function TripProvider({ children }: { children: ReactNode }) {
         if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
         return {
           location: new window.google.maps.LatLng(lat, lng),
-          weight: getCrimeCategoryWeight(incident?.incidentCategory)
+          weight: getCrimeCategoryWeight(incident?.incidentCategory) * 1.45
         };
       })
       .filter(Boolean);
@@ -579,14 +580,14 @@ export default function TripProvider({ children }: { children: ReactNode }) {
         data: weightedPoints,
         dissipating: true,
         radius: getCrimeHeatmapRadiusForZoom(mapRef.current?.getZoom?.()),
-        opacity: 0.78,
-        maxIntensity: 4.5,
+        opacity: 0.84,
+        maxIntensity: 3.3,
         gradient: CRIME_HEATMAP_GRADIENT
       });
     } else {
       crimeHeatmapRef.current.setData(weightedPoints);
       crimeHeatmapRef.current.set('radius', getCrimeHeatmapRadiusForZoom(mapRef.current?.getZoom?.()));
-      crimeHeatmapRef.current.set('maxIntensity', 4.5);
+      crimeHeatmapRef.current.set('maxIntensity', 3.3);
     }
     crimeHeatmapRef.current.setMap(hiddenCategoriesRef.current.has('crime') ? null : mapRef.current);
 
