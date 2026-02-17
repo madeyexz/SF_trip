@@ -132,6 +132,7 @@ export default function TripProvider({ children }: { children: ReactNode }) {
   const [isSyncing, setIsSyncing] = useState(false);
   const [placeTagFilter, setPlaceTagFilter] = useState('all');
   const [hiddenCategories, setHiddenCategories] = useState<Set<string>>(new Set());
+  const hiddenCategoriesRef = useRef<Set<string>>(new Set());
   const [calendarMonthISO, setCalendarMonthISO] = useState('');
   const [plannerByDate, setPlannerByDate] = useState<Record<string, any[]>>({});
   const [activePlanId, setActivePlanId] = useState('');
@@ -181,6 +182,10 @@ export default function TripProvider({ children }: { children: ReactNode }) {
     }
     return groups;
   }, [sources]);
+
+  useEffect(() => {
+    hiddenCategoriesRef.current = hiddenCategories;
+  }, [hiddenCategories]);
 
   const plannerStorageKey = useMemo(() => {
     if (plannerMode === 'shared' && sharedPlannerRoomId) {
@@ -588,10 +593,15 @@ export default function TripProvider({ children }: { children: ReactNode }) {
     baseLatLngRef.current = latLng;
     if (baseMarkerRef.current) baseMarkerRef.current.map = null;
     baseMarkerRef.current = new window.google.maps.marker.AdvancedMarkerElement({
-      map: mapRef.current, position: latLng, title,
+      map: hiddenCategoriesRef.current.has('home') ? null : mapRef.current, position: latLng, title,
       content: createLucidePinIcon(houseIconNode, '#111827')
     });
   }, []);
+
+  useEffect(() => {
+    if (!baseMarkerRef.current) return;
+    baseMarkerRef.current.map = hiddenCategories.has('home') ? null : mapRef.current;
+  }, [hiddenCategories]);
 
   const addEventToDayPlan = useCallback((event) => {
     if (!selectedDate) { setStatusMessage('Select a specific date before adding events to your day plan.', true); return; }

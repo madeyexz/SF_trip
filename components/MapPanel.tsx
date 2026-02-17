@@ -1,11 +1,12 @@
 'use client';
 
-import { Calendar } from 'lucide-react';
+import { Calendar, House } from 'lucide-react';
 import { useTrip, TAG_COLORS, getTagIconComponent } from '@/components/providers/TripProvider';
 import { formatTag } from '@/lib/helpers';
 import StatusBar from '@/components/StatusBar';
 
 const EVENT_COLOR = '#ea580c';
+const HOME_COLOR = '#111827';
 
 function FilterChip({ active, color, icon: Icon, label, onClick }) {
   return (
@@ -47,6 +48,13 @@ export default function MapPanel() {
           icon={Calendar}
           label="Event"
           onClick={() => toggleCategory('event')}
+        />
+        <FilterChip
+          active={!hiddenCategories.has('home')}
+          color={HOME_COLOR}
+          icon={House}
+          label="Home"
+          onClick={() => toggleCategory('home')}
         />
         {Object.keys(TAG_COLORS).map((tag) => (
           <FilterChip
