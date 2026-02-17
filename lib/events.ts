@@ -269,7 +269,10 @@ export async function loadEventsPayload() {
   const calendars = sourceCalendars.length > 0 ? sourceCalendars : fallbackCalendars;
   const spotsPayload = await loadSpotsFromConvex();
   const placesFromConvex = Array.isArray(spotsPayload?.spots) ? spotsPayload.spots : [];
-  const places = placesFromConvex.length > 0 ? placesFromConvex : fallbackPlaces;
+  const places = mergeStaticRegionPlaces(
+    placesFromConvex.length > 0 ? placesFromConvex : fallbackPlaces,
+    fallbackPlaces
+  );
   const convexPayload = await loadEventsFromConvex(calendars);
 
   if (convexPayload) {
@@ -286,7 +289,9 @@ export async function loadEventsPayload() {
   try {
     const raw = await readFile(EVENTS_CACHE_FILE, 'utf-8');
     const payload = JSON.parse(raw);
-    const cachedPlaces = Array.isArray(payload?.places) ? payload.places.map(normalizePlaceCoordinates) : [];
+    const cachedPlaces = Array.isArray(payload?.places)
+      ? mergeStaticRegionPlaces(payload.places.map(normalizePlaceCoordinates), fallbackPlaces)
+      : [];
     return {
       ...payload,
       places: cachedPlaces.length > 0 ? cachedPlaces : places
@@ -451,10 +456,11 @@ export async function syncEvents() {
   const spotSyncResult = await syncSpotsFromSources({
     spotSources: sourceSnapshot.spotSources
   });
-  const fallbackPlaces =
-    spotSyncResult.places.length > 0
-      ? spotSyncResult.places
-      : await ensureStaticPlacesCoordinates(await loadStaticPlaces());
+  const staticPlaces = await ensureStaticPlacesCoordinates(await loadStaticPlaces());
+  const fallbackPlaces = mergeStaticRegionPlaces(
+    spotSyncResult.places.length > 0 ? spotSyncResult.places : staticPlaces,
+    staticPlaces
+  );
   const allErrors = [...eventSyncResult.errors, ...spotSyncResult.errors];
 
   const payload = {
@@ -1769,6 +1775,53 @@ function normalizePlaceCoordinates(place) {
 
   const { lat: _, lng: __, ...rest } = place || {};
   return rest;
+}
+
+function mergeStaticRegionPlaces(basePlaces, staticPlaces) {
+  const merged = new Map();
+  const normalizedBase = Array.isArray(basePlaces) ? basePlaces.map(normalizePlaceCoordinates) : [];
+  const regionPlaces = Array.isArray(staticPlaces)
+    ? staticPlaces.filter(isRegionOverlayPlace).map(normalizePlaceCoordinates)
+    : [];
+
+  for (const place of normalizedBase) {
+    merged.set(buildPlaceMergeKey(place), place);
+  }
+
+  for (const regionPlace of regionPlaces) {
+    const key = buildPlaceMergeKey(regionPlace);
+    const existing = merged.get(key);
+    if (!existing) {
+      merged.set(key, regionPlace);
+      continue;
+    }
+    merged.set(key, {
+      ...existing,
+      ...regionPlace,
+      lat: isFiniteCoordinate(regionPlace?.lat) ? regionPlace.lat : existing.lat,
+      lng: isFiniteCoordinate(regionPlace?.lng) ? regionPlace.lng : existing.lng,
+      boundary: Array.isArray(regionPlace?.boundary) ? regionPlace.boundary : existing.boundary
+    });
+  }
+
+  return Array.from(merged.values());
+}
+
+function isRegionOverlayPlace(place) {
+  const tag = cleanText(place?.tag).toLowerCase();
+  return (tag === 'avoid' || tag === 'safe') && Array.isArray(place?.boundary) && place.boundary.length >= 3;
+}
+
+function buildPlaceMergeKey(place) {
+  const id = cleanText(place?.id).toLowerCase();
+  if (id) {
+    return `id:${id}`;
+  }
+  return [
+    cleanText(place?.name).toLowerCase(),
+    cleanText(place?.location).toLowerCase(),
+    cleanText(place?.tag).toLowerCase()
+  ].join('|');
 }
 
 function parseLatLngFromMapUrl(url) {
