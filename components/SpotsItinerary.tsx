@@ -1,11 +1,12 @@
 'use client';
 
+import { ShieldCheck, TriangleAlert } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { useTrip, getTagColor } from '@/components/providers/TripProvider';
-import { formatDateDayMonth, formatTag, truncate } from '@/lib/helpers';
+import { formatDateDayMonth, formatTag, normalizePlaceTag, truncate } from '@/lib/helpers';
 
 export default function SpotsItinerary() {
   const {
@@ -47,10 +48,23 @@ export default function SpotsItinerary() {
               {place.curatorComment ? <p className="my-0.5 text-[0.82rem] text-foreground-secondary leading-relaxed"><strong>Curator note:</strong> {place.curatorComment}</p> : null}
               {place.description ? <p className="my-0.5 text-[0.82rem] text-foreground-secondary leading-relaxed">{truncate(place.description, 180)}</p> : null}
               {place.details ? <p className="my-0.5 text-[0.82rem] text-foreground-secondary leading-relaxed">{truncate(place.details, 220)}</p> : null}
-              <Button type="button" size="sm" variant="secondary" onClick={() => addPlaceToDayPlan(place)}>Add to day</Button>
+              {normalizePlaceTag(place.tag) === 'avoid' ? (
+                <div className="my-1.5 flex flex-col gap-1">
+                  <p className="my-0 flex items-center gap-1.5 text-[0.82rem] font-semibold text-red-600"><TriangleAlert className="w-4 h-4 shrink-0" />{place.risk === 'extreme' ? 'DO NOT VISIT' : place.risk === 'high' ? 'High risk — stay away' : 'Exercise caution'}</p>
+                  {place.crimeTypes ? <p className="my-0 text-[0.78rem] text-red-500 font-medium pl-[22px]">{place.crimeTypes}</p> : null}
+                </div>
+              ) : normalizePlaceTag(place.tag) === 'safe' ? (
+                <div className="my-1.5 flex flex-col gap-1">
+                  <p className="my-0 flex items-center gap-1.5 text-[0.82rem] font-semibold text-green-700"><ShieldCheck className="w-4 h-4 shrink-0" />Safer area</p>
+                  <p className="my-0 text-[0.78rem] text-green-700 font-medium pl-[22px]">{place.safetyLabel || place.safetyHighlights || 'Lower violent-crime profile than city average.'}</p>
+                  {place.crimeTypes ? <p className="my-0 text-[0.76rem] text-green-700/80 pl-[22px]">Watch for: {place.crimeTypes}</p> : null}
+                </div>
+              ) : (
+                <Button type="button" size="sm" variant="secondary" onClick={() => addPlaceToDayPlan(place)}>Add to day</Button>
+              )}
               <p className="my-0.5 text-[0.82rem] text-foreground-secondary leading-relaxed flex flex-wrap gap-3">
                 <a className="inline-flex items-center gap-0.5 mt-1.5 text-accent no-underline font-semibold text-[0.82rem] hover:text-accent-hover hover:underline hover:underline-offset-2" href={place.mapLink} target="_blank" rel="noreferrer">Open map</a>
-                <a className="inline-flex items-center gap-0.5 mt-1.5 text-accent no-underline font-semibold text-[0.82rem] hover:text-accent-hover hover:underline hover:underline-offset-2" href={place.cornerLink} target="_blank" rel="noreferrer">Corner page</a>
+                {place.cornerLink ? <a className="inline-flex items-center gap-0.5 mt-1.5 text-accent no-underline font-semibold text-[0.82rem] hover:text-accent-hover hover:underline hover:underline-offset-2" href={place.cornerLink} target="_blank" rel="noreferrer">Corner page</a> : null}
               </p>
             </Card>
           ))

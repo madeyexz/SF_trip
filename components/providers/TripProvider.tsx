@@ -9,10 +9,12 @@ import { __iconNode as houseIconNode } from 'lucide-react/dist/esm/icons/house.j
 import { __iconNode as mapPinIconNode } from 'lucide-react/dist/esm/icons/map-pin.js';
 import { __iconNode as martiniIconNode } from 'lucide-react/dist/esm/icons/martini.js';
 import { __iconNode as partyPopperIconNode } from 'lucide-react/dist/esm/icons/party-popper.js';
+import { __iconNode as shieldCheckIconNode } from 'lucide-react/dist/esm/icons/shield-check.js';
 import { __iconNode as shoppingBagIconNode } from 'lucide-react/dist/esm/icons/shopping-bag.js';
+import { __iconNode as triangleAlertIconNode } from 'lucide-react/dist/esm/icons/triangle-alert.js';
 import { __iconNode as utensilsCrossedIconNode } from 'lucide-react/dist/esm/icons/utensils-crossed.js';
 import {
-  Coffee, Martini, PartyPopper, ShoppingBag, UtensilsCrossed
+  Coffee, Martini, PartyPopper, ShieldCheck, ShoppingBag, TriangleAlert, UtensilsCrossed
 } from 'lucide-react';
 
 import {
@@ -38,7 +40,9 @@ const TAG_COLORS = {
   bar: '#7c3aed',
   cafes: '#2563eb',
   'go out': '#db2777',
-  shops: '#0f766e'
+  shops: '#0f766e',
+  avoid: '#dc2626',
+  safe: '#16a34a'
 };
 
 const TAG_ICON_COMPONENTS = {
@@ -46,7 +50,9 @@ const TAG_ICON_COMPONENTS = {
   bar: Martini,
   cafes: Coffee,
   'go out': PartyPopper,
-  shops: ShoppingBag
+  shops: ShoppingBag,
+  avoid: TriangleAlert,
+  safe: ShieldCheck
 };
 
 const TAG_ICON_NODES = {
@@ -54,7 +60,9 @@ const TAG_ICON_NODES = {
   bar: martiniIconNode,
   cafes: coffeeIconNode,
   'go out': partyPopperIconNode,
-  shops: shoppingBagIconNode
+  shops: shoppingBagIconNode,
+  avoid: triangleAlertIconNode,
+  safe: shieldCheckIconNode
 };
 
 export function getTagColor(tag) {
@@ -102,6 +110,7 @@ export default function TripProvider({ children }: { children: ReactNode }) {
   const baseMarkerRef = useRef<any>(null);
   const baseLatLngRef = useRef<any>(null);
   const markersRef = useRef<any[]>([]);
+  const regionPolygonsRef = useRef<any[]>([]);
   const positionCacheRef = useRef<Map<string, any>>(new Map());
   const geocodeStoreRef = useRef<Map<string, any>>(new Map());
   const travelTimeCacheRef = useRef<Map<string, any>>(new Map());
@@ -464,6 +473,8 @@ export default function TripProvider({ children }: { children: ReactNode }) {
   const clearMapMarkers = useCallback(() => {
     for (const m of markersRef.current) m.map = null;
     markersRef.current = [];
+    for (const p of regionPolygonsRef.current) p.setMap(null);
+    regionPolygonsRef.current = [];
   }, []);
 
   const clearRoute = useCallback(() => {
@@ -599,6 +610,12 @@ export default function TripProvider({ children }: { children: ReactNode }) {
   }, [selectedDate, setStatusMessage]);
 
   const addPlaceToDayPlan = useCallback((place) => {
+    const tag = normalizePlaceTag(place.tag);
+    if (tag === 'avoid') { setStatusMessage('This area is flagged as unsafe and cannot be added to your day plan.', true); return; }
+    if (tag === 'safe' && Array.isArray(place.boundary) && place.boundary.length >= 3) {
+      setStatusMessage('Safety overlay regions are informational and cannot be added to your day plan.', true);
+      return;
+    }
     if (!selectedDate) { setStatusMessage('Select a specific date before adding places to your day plan.', true); return; }
     setPlannerByDate((prev) => {
       const current = Array.isArray(prev[selectedDate]) ? prev[selectedDate] : [];
@@ -728,7 +745,27 @@ export default function TripProvider({ children }: { children: ReactNode }) {
 
   const buildPlaceInfoWindowHtml = useCallback((place, plannerAction) => {
     const displayTag = formatTag(normalizePlaceTag(place.tag));
-    return `<div style="max-width:340px"><h3 style="margin:0 0 6px;font-size:16px">${escapeHtml(place.name)}</h3><p style="margin:4px 0"><strong>Tag:</strong> ${escapeHtml(displayTag)}</p><p style="margin:4px 0"><strong>Location:</strong> ${escapeHtml(place.location || 'Unknown')}</p>${place.curatorComment ? `<p style="margin:4px 0"><strong>Curator:</strong> ${escapeHtml(place.curatorComment)}</p>` : ''}${place.description ? `<p style="margin:4px 0">${escapeHtml(place.description)}</p>` : ''}${place.details ? `<p style="margin:4px 0">${escapeHtml(place.details)}</p>` : ''}${buildInfoWindowAddButton(plannerAction)}<div style="display:flex;gap:10px;flex-wrap:wrap"><a href="${escapeHtml(place.mapLink)}" target="_blank" rel="noreferrer">Open map</a><a href="${escapeHtml(place.cornerLink)}" target="_blank" rel="noreferrer">Corner page</a></div></div>`;
+    const placeTag = normalizePlaceTag(place.tag);
+    const isAvoid = placeTag === 'avoid';
+    const isSafe = placeTag === 'safe';
+    const risk = place.risk || 'medium';
+    const isExtreme = risk === 'extreme';
+    const isHigh = risk === 'high';
+    const avoidBannerBg = isExtreme ? '#7f1d1d' : isHigh ? '#991b1b' : '#fef2f2';
+    const avoidBannerColor = isExtreme || isHigh ? '#fff' : '#991b1b';
+    const avoidBannerBorder = isExtreme ? '#450a0a' : isHigh ? '#7f1d1d' : '#fca5a5';
+    const avoidBannerText = isExtreme ? 'DO NOT VISIT: extremely dangerous area' : isHigh ? 'High-risk area: avoid if possible' : risk === 'medium-high' ? 'Medium-high risk: be cautious' : 'Exercise caution in this area';
+    const avoidCrimeTypeLine = place.crimeTypes ? `<div style="margin-top:4px;font-size:12px;font-weight:500;opacity:0.9">Common crimes: ${escapeHtml(place.crimeTypes)}</div>` : '';
+    const safeHighlightsLine = place.safetyHighlights ? `<div style="margin-top:4px;font-size:12px;font-weight:500;opacity:0.9">${escapeHtml(place.safetyHighlights)}</div>` : '<div style="margin-top:4px;font-size:12px;font-weight:500;opacity:0.9">Generally lower violent-crime profile than city average.</div>';
+    const safeCrimeTypeLine = place.crimeTypes ? `<div style="margin-top:4px;font-size:12px;font-weight:500;opacity:0.9">Still watch for: ${escapeHtml(place.crimeTypes)}</div>` : '';
+    const safeBanner = isSafe
+      ? `<div style="background:#ecfdf3;border:1px solid #86efac;border-radius:6px;padding:8px 10px;margin-bottom:8px;color:#166534;font-size:13px;font-weight:600">Safer area${safeHighlightsLine}${safeCrimeTypeLine}</div>`
+      : '';
+    const avoidBanner = isAvoid
+      ? `<div style="background:${avoidBannerBg};border:1px solid ${avoidBannerBorder};border-radius:6px;padding:8px 10px;margin-bottom:8px;color:${avoidBannerColor};font-size:13px;font-weight:600">${avoidBannerText}${avoidCrimeTypeLine}</div>`
+      : '';
+    const addButton = isAvoid || isSafe ? '' : buildInfoWindowAddButton(plannerAction);
+    return `<div style="max-width:340px">${avoidBanner}${safeBanner}<h3 style="margin:0 0 6px;font-size:16px">${escapeHtml(place.name)}</h3><p style="margin:4px 0"><strong>Tag:</strong> ${escapeHtml(displayTag)}</p><p style="margin:4px 0"><strong>Location:</strong> ${escapeHtml(place.location || 'Unknown')}</p>${place.curatorComment ? `<p style="margin:4px 0"><strong>Curator:</strong> ${escapeHtml(place.curatorComment)}</p>` : ''}${place.description ? `<p style="margin:4px 0">${escapeHtml(place.description)}</p>` : ''}${place.details ? `<p style="margin:4px 0">${escapeHtml(place.details)}</p>` : ''}${addButton}<div style="display:flex;gap:10px;flex-wrap:wrap"><a href="${escapeHtml(place.mapLink)}" target="_blank" rel="noreferrer">Open map</a>${place.cornerLink ? `<a href="${escapeHtml(place.cornerLink)}" target="_blank" rel="noreferrer">Corner page</a>` : ''}</div></div>`;
   }, []);
 
   const renderCurrentSelection = useCallback(
@@ -789,7 +826,67 @@ export default function TripProvider({ children }: { children: ReactNode }) {
           fallbackLocation: place.location, lat: place.lat, lng: place.lng
         });
         const pwp = { ...place, _position: position, tag: normalizePlaceTag(place.tag) };
-        if (position) {
+        const hasBoundary = Array.isArray(place.boundary) && place.boundary.length >= 3;
+        const isRegion = hasBoundary && (pwp.tag === 'avoid' || pwp.tag === 'safe');
+        if (isRegion) {
+          const regionStyle = (() => {
+            if (pwp.tag === 'avoid') {
+              const risk = place.risk || 'medium';
+              if (risk === 'extreme') return { fill: '#7f1d1d', fillOpacity: 0.38, strokeOpacity: 0.85, strokeWeight: 3 };
+              if (risk === 'high') return { fill: '#991b1b', fillOpacity: 0.25, strokeOpacity: 0.7, strokeWeight: 2.5 };
+              if (risk === 'medium-high') return { fill: '#dc2626', fillOpacity: 0.18, strokeOpacity: 0.55, strokeWeight: 2 };
+              return { fill: '#ef4444', fillOpacity: 0.10, strokeOpacity: 0.4, strokeWeight: 1.5 };
+            }
+            const safetyLevel = place.safetyLevel || 'high';
+            if (safetyLevel === 'very-high') return { fill: '#15803d', fillOpacity: 0.24, strokeOpacity: 0.78, strokeWeight: 2.5 };
+            if (safetyLevel === 'high') return { fill: '#16a34a', fillOpacity: 0.17, strokeOpacity: 0.62, strokeWeight: 2 };
+            return { fill: '#22c55e', fillOpacity: 0.13, strokeOpacity: 0.5, strokeWeight: 1.8 };
+          })();
+          const polygon = new window.google.maps.Polygon({
+            map: mapRef.current,
+            paths: place.boundary,
+            fillColor: regionStyle.fill,
+            fillOpacity: regionStyle.fillOpacity,
+            strokeColor: regionStyle.fill,
+            strokeOpacity: regionStyle.strokeOpacity,
+            strokeWeight: regionStyle.strokeWeight,
+            zIndex: pwp.tag === 'avoid' ? 30 : 20
+          });
+          polygon.addListener('click', (event: any) => {
+            if (!infoWindowRef.current) return;
+            const plannerAction = { id: '', label: '', enabled: false };
+            infoWindowRef.current.setContent(buildPlaceInfoWindowHtml(pwp, plannerAction));
+            infoWindowRef.current.setPosition(event.latLng || position);
+            infoWindowRef.current.open(mapRef.current);
+          });
+          regionPolygonsRef.current.push(polygon);
+          if (position) {
+            const detailText = pwp.tag === 'avoid'
+              ? place.crimeTypes || ''
+              : place.safetyLabel || place.safetyHighlights || 'Lower violent-crime profile';
+            const labelEl = document.createElement('div');
+            const isAvoidTag = pwp.tag === 'avoid';
+            const risk = place.risk || 'medium';
+            const isExtreme = risk === 'extreme';
+            const isHighRisk = risk === 'high';
+            const bgColor = isAvoidTag
+              ? (isExtreme ? 'rgba(127,29,29,0.92)' : isHighRisk ? 'rgba(153,27,27,0.88)' : 'rgba(254,242,242,0.88)')
+              : 'rgba(220,252,231,0.92)';
+            const textColor = isAvoidTag
+              ? (isExtreme || isHighRisk ? '#fff' : '#991b1b')
+              : '#166534';
+            const borderColor = isAvoidTag
+              ? (isExtreme ? '#450a0a' : isHighRisk ? '#7f1d1d' : '#fca5a5')
+              : '#4ade80';
+            const labelPrefix = isAvoidTag ? '⚠' : '✓';
+            labelEl.style.cssText = `font-size:11px;font-weight:700;color:${textColor};background:${bgColor};padding:3px 7px;border-radius:4px;border:1px solid ${borderColor};white-space:nowrap;pointer-events:none;text-align:center;line-height:1.4;`;
+            labelEl.innerHTML = `${labelPrefix} ${escapeHtml(place.name)}${detailText ? `<br><span style="font-size:10px;font-weight:500;opacity:0.9">${escapeHtml(detailText)}</span>` : ''}`;
+            const labelMarker = new window.google.maps.marker.AdvancedMarkerElement({
+              map: mapRef.current, position, content: labelEl, gmpClickable: false, zIndex: isAvoidTag ? 40 : 25
+            });
+            markersRef.current.push(labelMarker);
+          }
+        } else if (position) {
           const marker = new window.google.maps.marker.AdvancedMarkerElement({
             map: mapRef.current, position, title: place.name,
             content: createLucidePinIcon(getTagIconNode(pwp.tag), getTagColor(pwp.tag)),

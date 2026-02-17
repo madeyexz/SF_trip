@@ -16,14 +16,14 @@ const MINUTES_IN_DAY = 24 * 60;
 const MIN_PLAN_BLOCK_MINUTES = 30;
 const MISSED_SYNC_THRESHOLD = 2;
 const DEFAULT_CORNER_LIST_URL = 'https://www.corner.inc/list/e65af393-70dd-46d5-948a-d774f472d2ee';
-const DEFAULT_BEEHIIV_RSS_URL = 'https://rss.beehiiv.com/feeds/9B98D9gG4C.xml';
+// const DEFAULT_BEEHIIV_RSS_URL = 'https://rss.beehiiv.com/feeds/9B98D9gG4C.xml';
 const FIRECRAWL_BASE_URL = 'https://api.firecrawl.dev';
 const DEFAULT_RSS_INITIAL_ITEMS = 1;
 const DEFAULT_RSS_MAX_ITEMS_PER_SYNC = 3;
 const DEFAULT_RSS_STATE_MAX_ITEMS = 500;
 const SOURCE_TYPES = new Set(['event', 'spot']);
 const SOURCE_STATUSES = new Set(['active', 'paused']);
-const SPOT_TAGS = ['eat', 'bar', 'cafes', 'go out', 'shops'];
+const SPOT_TAGS = ['eat', 'bar', 'cafes', 'go out', 'shops', 'avoid', 'safe'];
 
 let geocodeCacheMapPromise = null;
 let routeCacheMapPromise = null;
@@ -31,8 +31,9 @@ let routeCacheMapPromise = null;
 export function getCalendarUrls() {
   return [
     'https://api2.luma.com/ics/get?entity=calendar&id=cal-kC1rltFkxqfbHcB',
-    'https://api2.luma.com/ics/get?entity=discover&id=discplace-BDj7GNbGlsF7Cka',
-    DEFAULT_BEEHIIV_RSS_URL
+    'https://api2.luma.com/ics/get?entity=discover&id=discplace-BDj7GNbGlsF7Cka'
+    // Firecrawl/RSS disabled: intentionally not auto-including Beehiiv RSS fallback.
+    // DEFAULT_BEEHIIV_RSS_URL
   ];
 }
 
@@ -147,7 +148,8 @@ export async function loadSourcesPayload() {
     })
   );
   const fallbackSources = [...fallbackEventSources, ...fallbackSpotSources];
-  const requiredEventSources = [makeFallbackSource('event', DEFAULT_BEEHIIV_RSS_URL)];
+  // Firecrawl/RSS disabled: do not force Beehiiv as a required event source.
+  // const requiredEventSources = [makeFallbackSource('event', DEFAULT_BEEHIIV_RSS_URL)];
 
   if (Array.isArray(sources) && sources.length > 0) {
     const hasEventSources = sources.some((source) => source.sourceType === 'event');
@@ -159,13 +161,13 @@ export async function loadSourcesPayload() {
     ];
 
     return {
-      sources: appendMissingEventSources(withFallbacks, requiredEventSources),
+      sources: withFallbacks,
       source: 'convex'
     };
   }
 
   return {
-    sources: appendMissingEventSources(fallbackSources, requiredEventSources),
+    sources: fallbackSources,
     source: 'fallback'
   };
 }
@@ -753,28 +755,30 @@ function makeFallbackSource(sourceType, url) {
   };
 }
 
-function appendMissingEventSources(sources, requiredEventSources) {
-  const nextSources = Array.isArray(sources) ? [...sources] : [];
-  const required = Array.isArray(requiredEventSources) ? requiredEventSources : [];
+// Firecrawl/RSS disabled: keeping helper commented for reference.
+// function appendMissingEventSources(sources, requiredEventSources) {
+//   const nextSources = Array.isArray(sources) ? [...sources] : [];
+//   const required = Array.isArray(requiredEventSources) ? requiredEventSources : [];
+//
+//   for (const requiredSource of required) {
+//     const alreadyExists = nextSources.some(
+//       (source) =>
+//         source?.sourceType === 'event' &&
+//         urlsEqual(source.url, requiredSource.url)
+//     );
+//
+//     if (!alreadyExists) {
+//       nextSources.push(requiredSource);
+//     }
+//   }
+//
+//   return nextSources;
+// }
 
-  for (const requiredSource of required) {
-    const alreadyExists = nextSources.some(
-      (source) =>
-        source?.sourceType === 'event' &&
-        urlsEqual(source.url, requiredSource.url)
-    );
-
-    if (!alreadyExists) {
-      nextSources.push(requiredSource);
-    }
-  }
-
-  return nextSources;
-}
-
-function urlsEqual(left, right) {
-  return normalizeComparableUrl(left) === normalizeComparableUrl(right);
-}
+// Firecrawl/RSS disabled: helper currently unused.
+// function urlsEqual(left, right) {
+//   return normalizeComparableUrl(left) === normalizeComparableUrl(right);
+// }
 
 function normalizeComparableUrl(value) {
   const text = cleanText(value).toLowerCase();
@@ -962,10 +966,11 @@ async function getSourceSnapshotForSync() {
     eventSourcesFromConvex.length > 0
       ? eventSourcesFromConvex
       : eventFallbackUrls.map((url) => makeFallbackSource('event', url));
-  const eventSourcesWithRequired = appendMissingEventSources(
-    eventSources,
-    [makeFallbackSource('event', DEFAULT_BEEHIIV_RSS_URL)]
-  );
+  // Firecrawl/RSS disabled: do not force Beehiiv as a required sync source.
+  // const eventSourcesWithRequired = appendMissingEventSources(
+  //   eventSources,
+  //   [makeFallbackSource('event', DEFAULT_BEEHIIV_RSS_URL)]
+  // );
   const spotSources =
     spotSourcesFromConvex.length > 0
       ? spotSourcesFromConvex
@@ -973,7 +978,7 @@ async function getSourceSnapshotForSync() {
           .map((url) => makeFallbackSource('spot', url));
 
   return {
-    eventSources: eventSourcesWithRequired,
+    eventSources,
     spotSources
   };
 }
@@ -1081,6 +1086,18 @@ async function syncSpotsFromSources({ spotSources }) {
 async function syncEventsFromRssSource({ source, rssState = {} }) {
   const errors = [];
   const nextRssState = { ...rssState };
+  const firecrawlEnabled = cleanText(process.env.ENABLE_FIRECRAWL).toLowerCase() === 'true';
+
+  // Firecrawl/RSS disabled by default.
+  // Set ENABLE_FIRECRAWL=true to re-enable this pipeline.
+  if (!firecrawlEnabled) {
+    return {
+      events: [],
+      errors,
+      rssState: trimRssSeenState(nextRssState)
+    };
+  }
+
   const firecrawlApiKey = cleanText(process.env.FIRECRAWL_API_KEY);
 
   if (!firecrawlApiKey) {
