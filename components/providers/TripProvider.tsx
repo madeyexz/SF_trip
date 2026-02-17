@@ -51,11 +51,12 @@ const CRIME_REFRESH_INTERVAL_MS = 2 * 60 * 1000;
 const CRIME_IDLE_DEBOUNCE_MS = 450;
 const CRIME_MIN_REQUEST_INTERVAL_MS = 20 * 1000;
 const CRIME_HEATMAP_GRADIENT = [
-  'rgba(250, 204, 21, 0.28)',
-  'rgba(249, 115, 22, 0.52)',
-  'rgba(244, 63, 94, 0.72)',
-  'rgba(190, 24, 93, 0.88)',
-  'rgba(127, 29, 29, 0.98)'
+  'rgba(0, 0, 0, 0)',
+  'rgba(250, 204, 21, 0.16)',
+  'rgba(249, 115, 22, 0.38)',
+  'rgba(244, 63, 94, 0.62)',
+  'rgba(190, 24, 93, 0.82)',
+  'rgba(127, 29, 29, 0.96)'
 ];
 
 function getCrimeCategoryWeight(category) {
@@ -73,7 +74,7 @@ function getCrimeCategoryWeight(category) {
 
 function getCrimeHeatmapRadiusForZoom(zoom) {
   const zoomLevel = Number.isFinite(zoom) ? Number(zoom) : 12;
-  return Math.max(22, Math.min(48, Math.round(62 - zoomLevel * 2.2)));
+  return Math.max(18, Math.min(36, Math.round(50 - zoomLevel * 2)));
 }
 
 function buildCrimeBoundsQuery(map) {
@@ -578,14 +579,14 @@ export default function TripProvider({ children }: { children: ReactNode }) {
         data: weightedPoints,
         dissipating: true,
         radius: getCrimeHeatmapRadiusForZoom(mapRef.current?.getZoom?.()),
-        opacity: 0.9,
-        maxIntensity: 2.2,
+        opacity: 0.78,
+        maxIntensity: 4.5,
         gradient: CRIME_HEATMAP_GRADIENT
       });
     } else {
       crimeHeatmapRef.current.setData(weightedPoints);
       crimeHeatmapRef.current.set('radius', getCrimeHeatmapRadiusForZoom(mapRef.current?.getZoom?.()));
-      crimeHeatmapRef.current.set('maxIntensity', 2.2);
+      crimeHeatmapRef.current.set('maxIntensity', 4.5);
     }
     crimeHeatmapRef.current.setMap(hiddenCategoriesRef.current.has('crime') ? null : mapRef.current);
 
