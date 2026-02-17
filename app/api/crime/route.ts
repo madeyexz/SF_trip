@@ -54,11 +54,10 @@ function parseCrimeBounds(searchParams: URLSearchParams): CrimeBounds | null {
   };
 }
 
-function buildIncidentWhereClause(hours: number, bounds: CrimeBounds | null) {
-  const sinceISO = new Date(Date.now() - hours * 60 * 60 * 1000).toISOString();
+function buildIncidentWhereClause(sinceDateISO: string, bounds: CrimeBounds | null) {
   const excluded = EXCLUDED_CATEGORIES.map(sqlStringLiteral).join(', ');
   const clauses = [
-    `incident_datetime >= ${sqlStringLiteral(sinceISO)}`,
+    `incident_date >= ${sqlStringLiteral(sinceDateISO)}`,
     'latitude IS NOT NULL',
     'longitude IS NOT NULL',
     `incident_category NOT IN (${excluded})`
@@ -70,14 +69,16 @@ function buildIncidentWhereClause(hours: number, bounds: CrimeBounds | null) {
   return clauses.join(' AND ');
 }
 
-function normalizeIncident(row: any) {
+function normalizeIncident(row: any, sinceComparableISO: string) {
   const lat = Number(row?.latitude);
   const lng = Number(row?.longitude);
   if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+  const incidentDatetime = String(row?.incident_datetime || '');
+  if (incidentDatetime && incidentDatetime < sinceComparableISO) return null;
   return {
     lat,
     lng,
-    incidentDatetime: String(row?.incident_datetime || ''),
+    incidentDatetime,
     incidentCategory: String(row?.incident_category || ''),
     incidentSubcategory: String(row?.incident_subcategory || ''),
     neighborhood: String(row?.analysis_neighborhood || '')
@@ -89,7 +90,10 @@ export async function GET(request: Request) {
   const hours = clampInteger(url.searchParams.get('hours'), DEFAULT_HOURS, 1, MAX_HOURS);
   const limit = clampInteger(url.searchParams.get('limit'), DEFAULT_LIMIT, 200, MAX_LIMIT);
   const bounds = parseCrimeBounds(url.searchParams);
-  const whereClause = buildIncidentWhereClause(hours, bounds);
+  const sinceISO = new Date(Date.now() - hours * 60 * 60 * 1000).toISOString();
+  const sinceComparableISO = sinceISO.replace('Z', '');
+  const sinceDateISO = `${sinceISO.slice(0, 10)}T00:00:00.000`;
+  const whereClause = buildIncidentWhereClause(sinceDateISO, bounds);
 
   const queryUrl = new URL(DATASET_URL);
   queryUrl.searchParams.set(
@@ -123,7 +127,7 @@ export async function GET(request: Request) {
 
   const rows = await upstream.json().catch(() => []);
   const incidents = Array.isArray(rows)
-    ? rows.map(normalizeIncident).filter(Boolean)
+    ? rows.map((row: any) => normalizeIncident(row, sinceComparableISO)).filter(Boolean)
     : [];
 
   return Response.json(
