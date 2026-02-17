@@ -117,9 +117,9 @@ export default function MapPanel() {
             </div>
             <div className="mt-1.5 flex items-center gap-1">
               {[
-                { id: 'low', label: '弱' },
-                { id: 'medium', label: '中' },
-                { id: 'high', label: '強' },
+                { id: 'low', label: 'Low' },
+                { id: 'medium', label: 'Medium' },
+                { id: 'high', label: 'High' },
               ].map((level) => (
                 <button
                   key={level.id}
