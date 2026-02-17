@@ -56,6 +56,8 @@ export default function MapPanel() {
     hiddenCategories,
     toggleCategory,
     crimeLayerMeta,
+    crimeHeatmapStrength,
+    setCrimeHeatmapStrength,
   } = useTrip();
   const isCrimeVisible = !hiddenCategories.has('crime');
   const crimeStatusText = crimeLayerMeta.loading
@@ -112,6 +114,26 @@ export default function MapPanel() {
                 CRIME LIVE
               </div>
               <span className="rounded-full bg-rose-100 px-1.5 py-0.5 text-[0.6rem] font-semibold text-rose-700">ON</span>
+            </div>
+            <div className="mt-1.5 flex items-center gap-1">
+              {[
+                { id: 'low', label: '弱' },
+                { id: 'medium', label: '中' },
+                { id: 'high', label: '強' },
+              ].map((level) => (
+                <button
+                  key={level.id}
+                  type="button"
+                  onClick={() => setCrimeHeatmapStrength(level.id)}
+                  className={`rounded px-1.5 py-0.5 text-[0.6rem] font-semibold border transition-colors ${
+                    crimeHeatmapStrength === level.id
+                      ? 'bg-rose-100 text-rose-700 border-rose-300'
+                      : 'bg-white text-foreground-secondary border-border hover:border-rose-200'
+                  }`}
+                >
+                  {level.label}
+                </button>
+              ))}
             </div>
             <div className="mt-1.5 h-1.5 w-full rounded-full bg-gradient-to-r from-yellow-300 via-orange-500 to-rose-900" />
             <p className={`mt-1.5 text-[0.64rem] leading-tight ${crimeLayerMeta.error ? 'text-rose-700 font-semibold' : 'text-foreground-secondary'}`}>
