@@ -45,7 +45,7 @@ const TAG_COLORS = {
   safe: '#16a34a'
 };
 
-const CRIME_HEATMAP_HOURS = 72;
+const CRIME_HEATMAP_DEFAULT_HOURS = 72;
 const CRIME_HEATMAP_LIMIT = 6000;
 const CRIME_REFRESH_INTERVAL_MS = 2 * 60 * 1000;
 const CRIME_IDLE_DEBOUNCE_MS = 450;
@@ -72,6 +72,39 @@ function getCrimeCategoryWeight(category) {
   return 1.2;
 }
 
+function getCrimeBucket(category) {
+  const c = String(category || '').toLowerCase();
+  if (
+    c.includes('homicide') ||
+    c.includes('human trafficking') ||
+    c.includes('rape') ||
+    c.includes('sex offense') ||
+    c.includes('assault') ||
+    c.includes('robbery') ||
+    c.includes('weapons') ||
+    c.includes('arson') ||
+    c.includes('kidnapping')
+  ) {
+    return 'violent';
+  }
+  if (
+    c.includes('burglary') ||
+    c.includes('motor vehicle theft') ||
+    c.includes('theft') ||
+    c.includes('larceny') ||
+    c.includes('vandalism') ||
+    c.includes('vehicle')
+  ) {
+    return 'property';
+  }
+  return 'other';
+}
+
+function matchesCrimeMode(category, mode) {
+  if (mode === 'all') return true;
+  return getCrimeBucket(category) === mode;
+}
+
 function getCrimeHeatmapRadiusForZoom(zoom) {
   const zoomLevel = Number.isFinite(zoom) ? Number(zoom) : 12;
   return Math.max(14, Math.min(38, Math.round(56 - zoomLevel * 2.4)));
@@ -96,6 +129,31 @@ function buildCrimeBoundsQuery(map) {
   });
   return params.toString();
 }
+
+type CrimeSummaryRow = { label: string; count: number };
+type CrimeLayerMeta = {
+  loading: boolean;
+  count: number;
+  modeCount: number;
+  violentCount: number;
+  propertyCount: number;
+  generatedAt: string;
+  error: string;
+  topCategories: CrimeSummaryRow[];
+  topNeighborhoods: CrimeSummaryRow[];
+};
+
+const EMPTY_CRIME_LAYER_META: CrimeLayerMeta = {
+  loading: false,
+  count: 0,
+  modeCount: 0,
+  violentCount: 0,
+  propertyCount: 0,
+  generatedAt: '',
+  error: '',
+  topCategories: [],
+  topNeighborhoods: []
+};
 
 const TAG_ICON_COMPONENTS = {
   eat: UtensilsCrossed,
@@ -168,6 +226,8 @@ export default function TripProvider({ children }: { children: ReactNode }) {
   const crimeIdleListenerRef = useRef<any>(null);
   const lastCrimeFetchAtRef = useRef(0);
   const lastCrimeQueryRef = useRef('');
+  const crimeIncidentsRef = useRef<any[]>([]);
+  const crimeGeneratedAtRef = useRef('');
   const positionCacheRef = useRef<Map<string, any>>(new Map());
   const geocodeStoreRef = useRef<Map<string, any>>(new Map());
   const travelTimeCacheRef = useRef<Map<string, any>>(new Map());
@@ -177,12 +237,9 @@ export default function TripProvider({ children }: { children: ReactNode }) {
 
   const [status, setStatus] = useState('Loading trip map...');
   const [statusError, setStatusError] = useState(false);
-  const [crimeLayerMeta, setCrimeLayerMeta] = useState({
-    loading: false,
-    count: 0,
-    generatedAt: '',
-    error: ''
-  });
+  const [crimeLayerMeta, setCrimeLayerMeta] = useState<CrimeLayerMeta>(EMPTY_CRIME_LAYER_META);
+  const [crimeHoursWindow, setCrimeHoursWindow] = useState(CRIME_HEATMAP_DEFAULT_HOURS);
+  const [crimeMode, setCrimeMode] = useState('all');
   const [mapsReady, setMapsReady] = useState(false);
   const [allEvents, setAllEvents] = useState<any[]>([]);
   const [allPlaces, setAllPlaces] = useState<any[]>([]);
@@ -550,10 +607,82 @@ export default function TripProvider({ children }: { children: ReactNode }) {
     setIsRouteUpdating(false);
   }, []);
 
+  const applyCrimeHeatmapData = useCallback((incidentsInput, generatedAtValue = '') => {
+    if (!mapsReady || !mapRef.current || !window.google?.maps?.visualization) return;
+    const incidents = Array.isArray(incidentsInput) ? incidentsInput : [];
+    const filteredIncidents = incidents.filter((incident) => matchesCrimeMode(incident?.incidentCategory, crimeMode));
+    const weightedPoints = filteredIncidents
+      .map((incident) => {
+        const lat = Number(incident?.lat);
+        const lng = Number(incident?.lng);
+        if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+        return {
+          location: new window.google.maps.LatLng(lat, lng),
+          weight: getCrimeCategoryWeight(incident?.incidentCategory)
+        };
+      })
+      .filter(Boolean);
+
+    if (!crimeHeatmapRef.current) {
+      crimeHeatmapRef.current = new window.google.maps.visualization.HeatmapLayer({
+        data: weightedPoints,
+        dissipating: true,
+        radius: getCrimeHeatmapRadiusForZoom(mapRef.current?.getZoom?.()),
+        opacity: 0.82,
+        maxIntensity: 7.5,
+        gradient: CRIME_HEATMAP_GRADIENT
+      });
+    } else {
+      crimeHeatmapRef.current.setData(weightedPoints);
+      crimeHeatmapRef.current.set('radius', getCrimeHeatmapRadiusForZoom(mapRef.current?.getZoom?.()));
+      crimeHeatmapRef.current.set('maxIntensity', 7.5);
+    }
+    crimeHeatmapRef.current.setMap(hiddenCategoriesRef.current.has('crime') ? null : mapRef.current);
+
+    const categoryCounts = new Map<string, number>();
+    const neighborhoodCounts = new Map<string, number>();
+    let violentCount = 0;
+    let propertyCount = 0;
+    for (const incident of incidents) {
+      const category = String(incident?.incidentCategory || 'Other');
+      categoryCounts.set(category, (categoryCounts.get(category) || 0) + 1);
+      const neighborhood = String(incident?.neighborhood || '').trim();
+      if (neighborhood) {
+        neighborhoodCounts.set(neighborhood, (neighborhoodCounts.get(neighborhood) || 0) + 1);
+      }
+      const bucket = getCrimeBucket(category);
+      if (bucket === 'violent') violentCount += 1;
+      if (bucket === 'property') propertyCount += 1;
+    }
+
+    const topCategories = Array.from(categoryCounts.entries())
+      .sort((left, right) => right[1] - left[1])
+      .slice(0, 3)
+      .map(([label, count]) => ({ label, count }));
+    const topNeighborhoods = Array.from(neighborhoodCounts.entries())
+      .sort((left, right) => right[1] - left[1])
+      .slice(0, 3)
+      .map(([label, count]) => ({ label, count }));
+
+    const resolvedGeneratedAt = String(generatedAtValue || new Date().toISOString());
+    crimeGeneratedAtRef.current = resolvedGeneratedAt;
+    setCrimeLayerMeta({
+      loading: false,
+      count: incidents.length,
+      modeCount: filteredIncidents.length,
+      violentCount,
+      propertyCount,
+      generatedAt: resolvedGeneratedAt,
+      error: '',
+      topCategories,
+      topNeighborhoods
+    });
+  }, [mapsReady, crimeMode]);
+
   const refreshCrimeHeatmap = useCallback(async ({ force = false }: { force?: boolean } = {}) => {
     if (!mapsReady || !mapRef.current || !window.google?.maps?.visualization) return;
     const boundsQuery = buildCrimeBoundsQuery(mapRef.current);
-    const requestPath = `/api/crime?hours=${CRIME_HEATMAP_HOURS}&limit=${CRIME_HEATMAP_LIMIT}${boundsQuery ? `&${boundsQuery}` : ''}`;
+    const requestPath = `/api/crime?hours=${crimeHoursWindow}&limit=${CRIME_HEATMAP_LIMIT}${boundsQuery ? `&${boundsQuery}` : ''}`;
     const now = Date.now();
     if (!force) {
       const sameQuery = requestPath === lastCrimeQueryRef.current;
@@ -571,38 +700,8 @@ export default function TripProvider({ children }: { children: ReactNode }) {
         throw new Error(payload?.error || `Crime data request failed: ${response.status}`);
       }
       const incidents = Array.isArray(payload?.incidents) ? payload.incidents : [];
-      const weightedPoints = incidents
-        .map((incident) => {
-          const lat = Number(incident?.lat);
-          const lng = Number(incident?.lng);
-          if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
-          return {
-            location: new window.google.maps.LatLng(lat, lng),
-            weight: getCrimeCategoryWeight(incident?.incidentCategory)
-          };
-        })
-        .filter(Boolean);
-      if (!crimeHeatmapRef.current) {
-        crimeHeatmapRef.current = new window.google.maps.visualization.HeatmapLayer({
-          data: weightedPoints,
-          dissipating: true,
-          radius: getCrimeHeatmapRadiusForZoom(mapRef.current?.getZoom?.()),
-          opacity: 0.82,
-          maxIntensity: 7.5,
-          gradient: CRIME_HEATMAP_GRADIENT
-        });
-      } else {
-        crimeHeatmapRef.current.setData(weightedPoints);
-        crimeHeatmapRef.current.set('radius', getCrimeHeatmapRadiusForZoom(mapRef.current?.getZoom?.()));
-        crimeHeatmapRef.current.set('maxIntensity', 7.5);
-      }
-      crimeHeatmapRef.current.setMap(hiddenCategoriesRef.current.has('crime') ? null : mapRef.current);
-      setCrimeLayerMeta({
-        loading: false,
-        count: weightedPoints.length,
-        generatedAt: String(payload?.generatedAt || new Date().toISOString()),
-        error: ''
-      });
+      crimeIncidentsRef.current = incidents;
+      applyCrimeHeatmapData(incidents, String(payload?.generatedAt || new Date().toISOString()));
     } catch (error) {
       console.error('Crime heatmap refresh failed.', error);
       setCrimeLayerMeta((prev) => ({
@@ -611,7 +710,7 @@ export default function TripProvider({ children }: { children: ReactNode }) {
         error: error instanceof Error ? error.message : 'Failed to refresh crime layer.'
       }));
     }
-  }, [mapsReady]);
+  }, [mapsReady, crimeHoursWindow, applyCrimeHeatmapData]);
 
   const applyRoutePolylineStyle = useCallback((isUpdating) => {
     if (!routePolylineRef.current) return;
@@ -735,6 +834,11 @@ export default function TripProvider({ children }: { children: ReactNode }) {
       void refreshCrimeHeatmap({ force: true });
     }
   }, [hiddenCategories, refreshCrimeHeatmap]);
+
+  useEffect(() => {
+    if (!mapsReady || crimeIncidentsRef.current.length === 0) return;
+    applyCrimeHeatmapData(crimeIncidentsRef.current, crimeGeneratedAtRef.current);
+  }, [mapsReady, crimeMode, applyCrimeHeatmapData]);
 
   const addEventToDayPlan = useCallback((event) => {
     if (!selectedDate) { setStatusMessage('Select a specific date before adding events to your day plan.', true); return; }
@@ -1507,6 +1611,7 @@ export default function TripProvider({ children }: { children: ReactNode }) {
     // State
     status, statusError, mapsReady,
     crimeLayerMeta,
+    crimeHoursWindow, setCrimeHoursWindow, crimeMode, setCrimeMode,
     allEvents, allPlaces, visibleEvents, visiblePlaces,
     selectedDate, setSelectedDate, showAllEvents, setShowAllEvents,
     travelMode, setTravelMode, baseLocationText, setBaseLocationText,
