@@ -45,6 +45,57 @@ const TAG_COLORS = {
   safe: '#16a34a'
 };
 
+const CRIME_HEATMAP_HOURS = 24;
+const CRIME_HEATMAP_LIMIT = 6000;
+const CRIME_REFRESH_INTERVAL_MS = 2 * 60 * 1000;
+const CRIME_IDLE_DEBOUNCE_MS = 450;
+const CRIME_MIN_REQUEST_INTERVAL_MS = 20 * 1000;
+const CRIME_HEATMAP_GRADIENT = [
+  'rgba(0, 0, 0, 0)',
+  'rgba(34, 197, 94, 0.28)',
+  'rgba(245, 158, 11, 0.45)',
+  'rgba(239, 68, 68, 0.62)',
+  'rgba(153, 27, 27, 0.82)'
+];
+
+function getCrimeCategoryWeight(category) {
+  const c = String(category || '').toLowerCase();
+  if (!c) return 1;
+  if (c.includes('homicide') || c.includes('human trafficking')) return 4.2;
+  if (c.includes('rape') || c.includes('sex offense')) return 3.8;
+  if (c.includes('assault') || c.includes('robbery')) return 3.2;
+  if (c.includes('weapons') || c.includes('arson') || c.includes('kidnapping')) return 2.8;
+  if (c.includes('burglary') || c.includes('motor vehicle theft')) return 2.3;
+  if (c.includes('theft') || c.includes('larceny')) return 1.8;
+  if (c.includes('vandalism') || c.includes('vehicle')) return 1.6;
+  return 1.2;
+}
+
+function getCrimeHeatmapRadiusForZoom(zoom) {
+  const zoomLevel = Number.isFinite(zoom) ? Number(zoom) : 12;
+  return Math.max(14, Math.min(38, Math.round(56 - zoomLevel * 2.4)));
+}
+
+function buildCrimeBoundsQuery(map) {
+  const bounds = map?.getBounds?.();
+  const ne = bounds?.getNorthEast?.();
+  const sw = bounds?.getSouthWest?.();
+  if (!ne || !sw) return '';
+  const north = Number(ne.lat?.());
+  const east = Number(ne.lng?.());
+  const south = Number(sw.lat?.());
+  const west = Number(sw.lng?.());
+  if (![north, east, south, west].every(Number.isFinite)) return '';
+  if (south >= north || west >= east) return '';
+  const params = new URLSearchParams({
+    south: south.toFixed(6),
+    west: west.toFixed(6),
+    north: north.toFixed(6),
+    east: east.toFixed(6)
+  });
+  return params.toString();
+}
+
 const TAG_ICON_COMPONENTS = {
   eat: UtensilsCrossed,
   bar: Martini,
@@ -111,6 +162,11 @@ export default function TripProvider({ children }: { children: ReactNode }) {
   const baseLatLngRef = useRef<any>(null);
   const markersRef = useRef<any[]>([]);
   const regionPolygonsRef = useRef<any[]>([]);
+  const crimeHeatmapRef = useRef<any>(null);
+  const crimeRefreshTimerRef = useRef<number | null>(null);
+  const crimeIdleListenerRef = useRef<any>(null);
+  const lastCrimeFetchAtRef = useRef(0);
+  const lastCrimeQueryRef = useRef('');
   const positionCacheRef = useRef<Map<string, any>>(new Map());
   const geocodeStoreRef = useRef<Map<string, any>>(new Map());
   const travelTimeCacheRef = useRef<Map<string, any>>(new Map());
@@ -487,6 +543,55 @@ export default function TripProvider({ children }: { children: ReactNode }) {
     setIsRouteUpdating(false);
   }, []);
 
+  const refreshCrimeHeatmap = useCallback(async ({ force = false }: { force?: boolean } = {}) => {
+    if (!mapsReady || !mapRef.current || !window.google?.maps?.visualization) return;
+    const boundsQuery = buildCrimeBoundsQuery(mapRef.current);
+    const requestPath = `/api/crime?hours=${CRIME_HEATMAP_HOURS}&limit=${CRIME_HEATMAP_LIMIT}${boundsQuery ? `&${boundsQuery}` : ''}`;
+    const now = Date.now();
+    if (!force) {
+      const sameQuery = requestPath === lastCrimeQueryRef.current;
+      const recentlyFetched = now - lastCrimeFetchAtRef.current < CRIME_MIN_REQUEST_INTERVAL_MS;
+      if (sameQuery && recentlyFetched) return;
+    }
+    lastCrimeQueryRef.current = requestPath;
+    lastCrimeFetchAtRef.current = now;
+
+    try {
+      const response = await fetch(requestPath);
+      const payload = await response.json().catch(() => null);
+      if (!response.ok) {
+        throw new Error(payload?.error || `Crime data request failed: ${response.status}`);
+      }
+      const incidents = Array.isArray(payload?.incidents) ? payload.incidents : [];
+      const weightedPoints = incidents
+        .map((incident) => {
+          const lat = Number(incident?.lat);
+          const lng = Number(incident?.lng);
+          if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+          return {
+            location: new window.google.maps.LatLng(lat, lng),
+            weight: getCrimeCategoryWeight(incident?.incidentCategory)
+          };
+        })
+        .filter(Boolean);
+      if (!crimeHeatmapRef.current) {
+        crimeHeatmapRef.current = new window.google.maps.visualization.HeatmapLayer({
+          data: weightedPoints,
+          dissipating: true,
+          radius: getCrimeHeatmapRadiusForZoom(mapRef.current?.getZoom?.()),
+          opacity: 0.68,
+          gradient: CRIME_HEATMAP_GRADIENT
+        });
+      } else {
+        crimeHeatmapRef.current.setData(weightedPoints);
+        crimeHeatmapRef.current.set('radius', getCrimeHeatmapRadiusForZoom(mapRef.current?.getZoom?.()));
+      }
+      crimeHeatmapRef.current.setMap(hiddenCategoriesRef.current.has('crime') ? null : mapRef.current);
+    } catch (error) {
+      console.error('Crime heatmap refresh failed.', error);
+    }
+  }, [mapsReady]);
+
   const applyRoutePolylineStyle = useCallback((isUpdating) => {
     if (!routePolylineRef.current) return;
     if (isUpdating) {
@@ -599,9 +704,16 @@ export default function TripProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
-    if (!baseMarkerRef.current) return;
-    baseMarkerRef.current.map = hiddenCategories.has('home') ? null : mapRef.current;
-  }, [hiddenCategories]);
+    if (baseMarkerRef.current) {
+      baseMarkerRef.current.map = hiddenCategories.has('home') ? null : mapRef.current;
+    }
+    if (crimeHeatmapRef.current) {
+      crimeHeatmapRef.current.setMap(hiddenCategories.has('crime') ? null : mapRef.current);
+    }
+    if (!hiddenCategories.has('crime')) {
+      void refreshCrimeHeatmap({ force: true });
+    }
+  }, [hiddenCategories, refreshCrimeHeatmap]);
 
   const addEventToDayPlan = useCallback((event) => {
     if (!selectedDate) { setStatusMessage('Select a specific date before adding events to your day plan.', true); return; }
@@ -1005,6 +1117,7 @@ export default function TripProvider({ children }: { children: ReactNode }) {
         if (!config.mapsBrowserKey) { setStatusMessage('Missing GOOGLE_MAPS_BROWSER_KEY in .env. Map cannot load.', true); return; }
         await loadGoogleMapsScript(config.mapsBrowserKey);
         await window.google.maps.importLibrary('marker');
+        await window.google.maps.importLibrary('visualization');
         if (!mounted || !mapElementRef.current || !window.google?.maps) return;
         mapRef.current = new window.google.maps.Map(mapElementRef.current, {
           center: { lat: 37.7749, lng: -122.4194 }, zoom: 12,
@@ -1033,6 +1146,51 @@ export default function TripProvider({ children }: { children: ReactNode }) {
     void bootstrap();
     return () => { mounted = false; clearMapMarkers(); clearRoute(); if (baseMarkerRef.current) baseMarkerRef.current.map = null; };
   }, [clearMapMarkers, clearRoute, geocode, loadSourcesFromServer, setBaseMarker, setStatusMessage]);
+
+  useEffect(() => {
+    if (!mapsReady || !window.google?.maps?.visualization || !mapRef.current) return;
+    let cancelled = false;
+    let idleDebounceTimer: number | null = null;
+    void refreshCrimeHeatmap({ force: true });
+
+    if (crimeIdleListenerRef.current?.remove) {
+      crimeIdleListenerRef.current.remove();
+      crimeIdleListenerRef.current = null;
+    }
+    crimeIdleListenerRef.current = mapRef.current.addListener('idle', () => {
+      if (cancelled) return;
+      if (idleDebounceTimer) window.clearTimeout(idleDebounceTimer);
+      idleDebounceTimer = window.setTimeout(() => {
+        if (cancelled) return;
+        void refreshCrimeHeatmap();
+      }, CRIME_IDLE_DEBOUNCE_MS);
+    });
+
+    crimeRefreshTimerRef.current = window.setInterval(() => {
+      if (cancelled) return;
+      void refreshCrimeHeatmap({ force: true });
+    }, CRIME_REFRESH_INTERVAL_MS);
+
+    return () => {
+      cancelled = true;
+      if (idleDebounceTimer) {
+        window.clearTimeout(idleDebounceTimer);
+        idleDebounceTimer = null;
+      }
+      if (crimeIdleListenerRef.current?.remove) {
+        crimeIdleListenerRef.current.remove();
+        crimeIdleListenerRef.current = null;
+      }
+      if (crimeRefreshTimerRef.current) {
+        window.clearInterval(crimeRefreshTimerRef.current);
+        crimeRefreshTimerRef.current = null;
+      }
+      if (crimeHeatmapRef.current) {
+        crimeHeatmapRef.current.setMap(null);
+        crimeHeatmapRef.current = null;
+      }
+    };
+  }, [mapsReady, refreshCrimeHeatmap]);
 
   // ---- Re-render on filter changes ----
   useEffect(() => {

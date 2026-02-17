@@ -1,12 +1,13 @@
 'use client';
 
-import { Calendar, House } from 'lucide-react';
+import { Calendar, House, Siren } from 'lucide-react';
 import { useTrip, TAG_COLORS, getTagIconComponent } from '@/components/providers/TripProvider';
 import { formatTag } from '@/lib/helpers';
 import StatusBar from '@/components/StatusBar';
 
 const EVENT_COLOR = '#ea580c';
 const HOME_COLOR = '#111827';
+const CRIME_COLOR = '#be123c';
 
 function FilterChip({ active, color, icon: Icon, label, onClick }) {
   return (
@@ -55,6 +56,13 @@ export default function MapPanel() {
           icon={House}
           label="Home"
           onClick={() => toggleCategory('home')}
+        />
+        <FilterChip
+          active={!hiddenCategories.has('crime')}
+          color={CRIME_COLOR}
+          icon={Siren}
+          label="Crime Live"
+          onClick={() => toggleCategory('crime')}
         />
         {Object.keys(TAG_COLORS).map((tag) => (
           <FilterChip

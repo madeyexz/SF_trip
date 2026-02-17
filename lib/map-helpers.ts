@@ -172,7 +172,7 @@ export function loadGoogleMapsScript(apiKey) {
     const callbackName = `initGoogleMaps_${Math.random().toString(36).slice(2)}`;
     window[callbackName] = () => { delete window[callbackName]; resolve(); };
     const script = document.createElement('script');
-    script.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(apiKey)}&libraries=places&loading=async&callback=${callbackName}`;
+    script.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(apiKey)}&libraries=places,visualization&loading=async&callback=${callbackName}`;
     script.async = true;
     script.defer = true;
     script.onerror = () => { delete window[callbackName]; reject(new Error('Failed to load Google Maps script.')); };
