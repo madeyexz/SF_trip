@@ -1167,15 +1167,15 @@ export default function TripProvider({ children }: { children: ReactNode }) {
           const regionStyle = (() => {
             if (pwp.tag === 'avoid') {
               const risk = place.risk || 'medium';
-              if (risk === 'extreme') return { fill: '#7f1d1d', fillOpacity: 0.38, strokeOpacity: 0.85, strokeWeight: 3 };
-              if (risk === 'high') return { fill: '#991b1b', fillOpacity: 0.25, strokeOpacity: 0.7, strokeWeight: 2.5 };
-              if (risk === 'medium-high') return { fill: '#dc2626', fillOpacity: 0.18, strokeOpacity: 0.55, strokeWeight: 2 };
-              return { fill: '#ef4444', fillOpacity: 0.10, strokeOpacity: 0.4, strokeWeight: 1.5 };
+              if (risk === 'extreme') return { fill: '#FF4444', fillOpacity: 0.30, strokeOpacity: 0.9, strokeWeight: 3 };
+              if (risk === 'high') return { fill: '#FF4444', fillOpacity: 0.22, strokeOpacity: 0.75, strokeWeight: 2.5 };
+              if (risk === 'medium-high') return { fill: '#FF4444', fillOpacity: 0.15, strokeOpacity: 0.55, strokeWeight: 2 };
+              return { fill: '#FF4444', fillOpacity: 0.10, strokeOpacity: 0.4, strokeWeight: 1.5 };
             }
             const safetyLevel = place.safetyLevel || 'high';
-            if (safetyLevel === 'very-high') return { fill: '#15803d', fillOpacity: 0.24, strokeOpacity: 0.78, strokeWeight: 2.5 };
-            if (safetyLevel === 'high') return { fill: '#16a34a', fillOpacity: 0.17, strokeOpacity: 0.62, strokeWeight: 2 };
-            return { fill: '#22c55e', fillOpacity: 0.13, strokeOpacity: 0.5, strokeWeight: 1.8 };
+            if (safetyLevel === 'very-high') return { fill: '#00FF88', fillOpacity: 0.18, strokeOpacity: 0.8, strokeWeight: 2.5 };
+            if (safetyLevel === 'high') return { fill: '#00FF88', fillOpacity: 0.12, strokeOpacity: 0.6, strokeWeight: 2 };
+            return { fill: '#00FF88', fillOpacity: 0.08, strokeOpacity: 0.45, strokeWeight: 1.8 };
           })();
           const polygon = new window.google.maps.Polygon({
             map: mapRef.current,
