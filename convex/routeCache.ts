@@ -1,5 +1,6 @@
 import { mutation, query } from './_generated/server';
 import { v } from 'convex/values';
+import { requireAuthenticatedUserId } from './authz';
 
 export const getRouteByKey = query({
   args: {
@@ -33,6 +34,8 @@ export const upsertRouteByKey = mutation({
     updatedAt: v.string()
   },
   handler: async (ctx, args) => {
+    await requireAuthenticatedUserId(ctx);
+
     const existing = await ctx.db
       .query('routeCache')
       .withIndex('by_key', (q) => q.eq('key', args.key))

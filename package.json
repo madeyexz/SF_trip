@@ -7,7 +7,7 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "test:backend": "node --test lib/events.test.mjs lib/events.planner.test.mjs lib/pair-api.test.mjs lib/planner-api.test.mjs",
+    "test:backend": "node --test lib/events.test.mjs lib/events.planner.test.mjs lib/pair-api.test.mjs lib/planner-api.test.mjs lib/security.test.mjs convex/authz.test.mjs lib/next-config-security.test.mjs lib/api-guards.test.mjs",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "typecheck": "tsc --noEmit",

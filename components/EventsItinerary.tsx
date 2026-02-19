@@ -7,6 +7,7 @@ import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { useTrip } from '@/components/providers/TripProvider';
 import { formatDateDayMonth } from '@/lib/helpers';
 import { parseEventTimeRange } from '@/lib/planner-helpers';
+import { getSafeExternalHref } from '@/lib/security';
 
 function EventsItinerarySkeleton() {
   const titleWidths = ['w-4/5', 'w-3/5', 'w-2/3', 'w-3/4'];
@@ -82,6 +83,7 @@ export default function EventsItinerary() {
           visibleEvents.map((event) => {
             const location = event.address || event.locationText || 'Location not listed';
             const time = event.startDateTimeText || 'Time not listed';
+            const safeEventUrl = getSafeExternalHref(event.eventUrl);
             const eventRange = parseEventTimeRange(event.startDateTimeText);
             const hasConflict = eventRange && visibleEvents.some((other) => {
               if (other.eventUrl === event.eventUrl) return false;
@@ -97,7 +99,9 @@ export default function EventsItinerary() {
                 {event.travelDurationText ? <p className="my-0.5 text-[0.82rem] text-foreground-secondary leading-relaxed"><strong>Travel:</strong> {event.travelDurationText}</p> : null}
                 <p className="my-0.5 text-[0.82rem] text-foreground-secondary leading-relaxed">{event.description || ''}</p>
                 <Button type="button" size="sm" variant="secondary" onClick={() => addEventToDayPlan(event)}>Add to day</Button>
-                <a className="inline-flex items-center gap-0.5 mt-1.5 text-accent no-underline font-semibold text-[0.82rem] hover:text-accent-hover hover:underline hover:underline-offset-2" href={event.eventUrl} target="_blank" rel="noreferrer">Open event</a>
+                {safeEventUrl ? (
+                  <a className="inline-flex items-center gap-0.5 mt-1.5 text-accent no-underline font-semibold text-[0.82rem] hover:text-accent-hover hover:underline hover:underline-offset-2" href={safeEventUrl} target="_blank" rel="noreferrer">Open event</a>
+                ) : null}
               </Card>
             );
           })

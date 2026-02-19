@@ -1,8 +1,65 @@
 import { mutation, query } from './_generated/server';
 import { v } from 'convex/values';
+import { requireOwnerUserId } from './authz';
 
 const sourceTypeValidator = v.union(v.literal('event'), v.literal('spot'));
 const sourceStatusValidator = v.union(v.literal('active'), v.literal('paused'));
+
+function parseIpv4(hostname: string) {
+  const parts = hostname.split('.');
+  if (parts.length !== 4) {
+    return null;
+  }
+  const octets = parts.map((part) => Number.parseInt(part, 10));
+  if (octets.some((value) => !Number.isInteger(value) || value < 0 || value > 255)) {
+    return null;
+  }
+  return octets;
+}
+
+function isPrivateHost(hostname: string) {
+  const value = hostname.toLowerCase();
+  if (
+    value === 'localhost' ||
+    value.endsWith('.localhost') ||
+    value.endsWith('.local') ||
+    value.endsWith('.internal') ||
+    value === '::1' ||
+    value.startsWith('fc') ||
+    value.startsWith('fd') ||
+    value.startsWith('fe80:')
+  ) {
+    return true;
+  }
+
+  const ipv4 = parseIpv4(value);
+  if (!ipv4) {
+    return false;
+  }
+  const [a, b] = ipv4;
+  return (
+    a === 10 ||
+    a === 127 ||
+    (a === 169 && b === 254) ||
+    (a === 172 && b >= 16 && b <= 31) ||
+    (a === 192 && b === 168)
+  );
+}
+
+function assertPublicSourceUrl(url: string) {
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    throw new Error('Invalid URL. Use a full http(s) URL.');
+  }
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+    throw new Error('Invalid URL. Use a full http(s) URL.');
+  }
+  if (isPrivateHost(parsed.hostname)) {
+    throw new Error('Source URL must target the public internet.');
+  }
+}
 
 export const listSources = query({
   args: {},
@@ -36,9 +93,12 @@ export const createSource = mutation({
     label: v.optional(v.string())
   },
   handler: async (ctx, args) => {
+    await requireOwnerUserId(ctx);
+
     const now = new Date().toISOString();
     const nextUrl = args.url.trim();
     const nextLabel = (args.label || '').trim() || nextUrl;
+    assertPublicSourceUrl(nextUrl);
     const existing = await ctx.db
       .query('sources')
       .withIndex('by_url', (q) => q.eq('url', nextUrl))
@@ -83,6 +143,8 @@ export const updateSource = mutation({
     rssStateJson: v.optional(v.string())
   },
   handler: async (ctx, args) => {
+    await requireOwnerUserId(ctx);
+
     const existing = await ctx.db.get(args.sourceId);
     if (!existing) {
       return null;
@@ -132,6 +194,8 @@ export const deleteSource = mutation({
     sourceId: v.id('sources')
   },
   handler: async (ctx, args) => {
+    await requireOwnerUserId(ctx);
+
     const existing = await ctx.db.get(args.sourceId);
     if (!existing) {
       return { deleted: false };

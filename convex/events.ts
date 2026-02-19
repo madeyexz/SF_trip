@@ -1,5 +1,6 @@
 import { mutation, query } from './_generated/server';
 import { v } from 'convex/values';
+import { requireAuthenticatedUserId, requireOwnerUserId } from './authz';
 
 const eventValidator = v.object({
   id: v.string(),
@@ -80,6 +81,8 @@ export const upsertGeocode = mutation({
     updatedAt: v.string()
   },
   handler: async (ctx, args) => {
+    await requireAuthenticatedUserId(ctx);
+
     const existing = await ctx.db
       .query('geocodeCache')
       .withIndex('by_address_key', (q) => q.eq('addressKey', args.addressKey))
@@ -114,6 +117,8 @@ export const upsertEvents = mutation({
     missedSyncThreshold: v.optional(v.number())
   },
   handler: async (ctx, args) => {
+    await requireOwnerUserId(ctx);
+
     const missedSyncThreshold = Math.max(1, Number(args.missedSyncThreshold) || 2);
     const keepUrls = new Set(args.events.map((event) => event.eventUrl));
     const existingRows = await ctx.db.query('events').collect();

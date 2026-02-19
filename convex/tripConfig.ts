@@ -1,5 +1,6 @@
 import { mutation, query } from './_generated/server';
 import { v } from 'convex/values';
+import { requireOwnerUserId } from './authz';
 
 const TRIP_CONFIG_KEY = 'default';
 
@@ -32,6 +33,8 @@ export const saveTripConfig = mutation({
     updatedAt: v.string()
   },
   handler: async (ctx, args) => {
+    await requireOwnerUserId(ctx);
+
     const existing = await ctx.db
       .query('tripConfig')
       .withIndex('by_key', (q) => q.eq('key', TRIP_CONFIG_KEY))

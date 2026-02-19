@@ -3,6 +3,8 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import ical from 'node-ical';
 import { ConvexHttpClient } from 'convex/browser';
+import { getScopedConvexClient } from './convex-client-context.ts';
+import { validateIngestionSourceUrl } from './security.ts';
 
 const DOC_LOCATION_FILE = path.join(process.cwd(), 'docs', 'my_location.md');
 const DATA_DIR = path.join(process.cwd(), 'data');
@@ -243,7 +245,7 @@ export async function createSourcePayload(input) {
     throw new Error('sourceType must be "event" or "spot".');
   }
 
-  assertValidUrl(url);
+  assertValidSourceUrl(url);
 
   const source = await client.mutation('sources:createSource', {
     sourceType,
@@ -600,6 +602,11 @@ function getConvexUrl() {
 }
 
 function createConvexClient() {
+  const scopedClient = getScopedConvexClient();
+  if (scopedClient) {
+    return scopedClient;
+  }
+
   const convexUrl = getConvexUrl();
 
   if (!convexUrl) {
@@ -1075,6 +1082,18 @@ async function syncEventsFromSources({ eventSources, rssFallbackStateBySourceUrl
   const rssStateBySourceUrl = {};
 
   for (const source of eventSources) {
+    const sourceValidation = validateIngestionSourceUrl(source?.url);
+    if (!sourceValidation.ok) {
+      errors.push(createIngestionError({
+        sourceType: 'event',
+        sourceId: source?.id,
+        sourceUrl: source?.url,
+        stage: 'source_validation',
+        message: sourceValidation.error
+      }));
+      continue;
+    }
+
     try {
       if (looksLikeRssFeedUrl(source.url)) {
         const sourceUrlKey = buildRssSourceStateKey(source.url);
@@ -1172,6 +1191,22 @@ async function syncSpotsFromSources({ spotSources }) {
 async function syncEventsFromRssSource({ source, rssState = {} }) {
   const errors = [];
   const nextRssState = { ...rssState };
+  const sourceValidation = validateIngestionSourceUrl(source?.url);
+  if (!sourceValidation.ok) {
+    errors.push(createIngestionError({
+      sourceType: 'event',
+      sourceId: source?.id,
+      sourceUrl: source?.url,
+      stage: 'source_validation',
+      message: sourceValidation.error
+    }));
+    return {
+      events: [],
+      errors,
+      rssState: trimRssSeenState(nextRssState)
+    };
+  }
+
   const firecrawlEnabled = cleanText(process.env.ENABLE_FIRECRAWL).toLowerCase() === 'true';
 
   // Firecrawl/RSS disabled by default.
@@ -1746,14 +1781,10 @@ function normalizeSourceRecord(source) {
   };
 }
 
-function assertValidUrl(url) {
-  try {
-    const parsed = new URL(url);
-    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
-      throw new Error();
-    }
-  } catch {
-    throw new Error('Invalid URL. Use a full http(s) URL.');
+function assertValidSourceUrl(url) {
+  const validation = validateIngestionSourceUrl(url);
+  if (!validation.ok) {
+    throw new Error(validation.error);
   }
 }
 

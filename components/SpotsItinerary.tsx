@@ -7,6 +7,7 @@ import { Card } from '@/components/ui/card';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { useTrip, getTagColor } from '@/components/providers/TripProvider';
 import { formatDateDayMonth, formatTag, normalizePlaceTag, truncate } from '@/lib/helpers';
+import { getSafeExternalHref } from '@/lib/security';
 
 function SpotsItinerarySkeleton() {
   const titleWidths = ['w-3/5', 'w-2/3', 'w-1/2', 'w-3/4'];
@@ -78,34 +79,42 @@ export default function SpotsItinerary() {
           <p className="my-3 text-muted text-sm text-center p-7 bg-bg-subtle rounded-none border border-dashed border-border">No curated places in this category.</p>
         ) : (
           visiblePlaces.map((place) => (
-            <Card className="p-3.5 hover:border-accent-border hover:shadow-[0_0_0_3px_var(--color-accent-glow)]" key={place.id || `${place.name}-${place.location}`}>
-              <div className="flex gap-2 justify-between items-start">
-                <h3 className="m-0 mb-1.5 text-[0.92rem] font-semibold leading-snug">{place.name}</h3>
-                <Badge className="uppercase tracking-wider shrink-0" variant="secondary" style={{ backgroundColor: `${getTagColor(place.tag)}22`, color: getTagColor(place.tag) }}>{formatTag(place.tag)}</Badge>
-              </div>
-              <p className="my-0.5 text-[0.82rem] text-foreground-secondary leading-relaxed"><strong>Location:</strong> {place.location}</p>
-              {place.curatorComment ? <p className="my-0.5 text-[0.82rem] text-foreground-secondary leading-relaxed"><strong>Curator note:</strong> {place.curatorComment}</p> : null}
-              {place.description ? <p className="my-0.5 text-[0.82rem] text-foreground-secondary leading-relaxed">{truncate(place.description, 180)}</p> : null}
-              {place.details ? <p className="my-0.5 text-[0.82rem] text-foreground-secondary leading-relaxed">{truncate(place.details, 220)}</p> : null}
-              {normalizePlaceTag(place.tag) === 'avoid' ? (
-                <div className="my-1.5 flex flex-col gap-1">
-                  <p className="my-0 flex items-center gap-1.5 text-[0.82rem] font-semibold text-[#CC3333]"><TriangleAlert className="w-4 h-4 shrink-0" />{place.risk === 'extreme' ? 'DO NOT VISIT' : place.risk === 'high' ? 'High risk — stay away' : 'Exercise caution'}</p>
-                  {place.crimeTypes ? <p className="my-0 text-[0.78rem] text-[#CC3333] font-medium pl-[22px]">{place.crimeTypes}</p> : null}
-                </div>
-              ) : normalizePlaceTag(place.tag) === 'safe' ? (
-                <div className="my-1.5 flex flex-col gap-1">
-                  <p className="my-0 flex items-center gap-1.5 text-[0.82rem] font-semibold text-accent"><ShieldCheck className="w-4 h-4 shrink-0" />Safer area</p>
-                  <p className="my-0 text-[0.78rem] text-accent font-medium pl-[22px]">{place.safetyLabel || place.safetyHighlights || 'Lower violent-crime profile than city average.'}</p>
-                  {place.crimeTypes ? <p className="my-0 text-[0.76rem] text-accent/80 pl-[22px]">Watch for: {place.crimeTypes}</p> : null}
-                </div>
-              ) : (
-                <Button type="button" size="sm" variant="secondary" onClick={() => addPlaceToDayPlan(place)}>Add to day</Button>
-              )}
-              <p className="my-0.5 text-[0.82rem] text-foreground-secondary leading-relaxed flex flex-wrap gap-3">
-                <a className="inline-flex items-center gap-0.5 mt-1.5 text-accent no-underline font-semibold text-[0.82rem] hover:text-accent-hover hover:underline hover:underline-offset-2" href={place.mapLink} target="_blank" rel="noreferrer">Open map</a>
-                {place.cornerLink ? <a className="inline-flex items-center gap-0.5 mt-1.5 text-accent no-underline font-semibold text-[0.82rem] hover:text-accent-hover hover:underline hover:underline-offset-2" href={place.cornerLink} target="_blank" rel="noreferrer">Corner page</a> : null}
-              </p>
-            </Card>
+            (() => {
+              const safeMapLink = getSafeExternalHref(place.mapLink);
+              const safeCornerLink = getSafeExternalHref(place.cornerLink);
+              return (
+                <Card className="p-3.5 hover:border-accent-border hover:shadow-[0_0_0_3px_var(--color-accent-glow)]" key={place.id || `${place.name}-${place.location}`}>
+                  <div className="flex gap-2 justify-between items-start">
+                    <h3 className="m-0 mb-1.5 text-[0.92rem] font-semibold leading-snug">{place.name}</h3>
+                    <Badge className="uppercase tracking-wider shrink-0" variant="secondary" style={{ backgroundColor: `${getTagColor(place.tag)}22`, color: getTagColor(place.tag) }}>{formatTag(place.tag)}</Badge>
+                  </div>
+                  <p className="my-0.5 text-[0.82rem] text-foreground-secondary leading-relaxed"><strong>Location:</strong> {place.location}</p>
+                  {place.curatorComment ? <p className="my-0.5 text-[0.82rem] text-foreground-secondary leading-relaxed"><strong>Curator note:</strong> {place.curatorComment}</p> : null}
+                  {place.description ? <p className="my-0.5 text-[0.82rem] text-foreground-secondary leading-relaxed">{truncate(place.description, 180)}</p> : null}
+                  {place.details ? <p className="my-0.5 text-[0.82rem] text-foreground-secondary leading-relaxed">{truncate(place.details, 220)}</p> : null}
+                  {normalizePlaceTag(place.tag) === 'avoid' ? (
+                    <div className="my-1.5 flex flex-col gap-1">
+                      <p className="my-0 flex items-center gap-1.5 text-[0.82rem] font-semibold text-[#CC3333]"><TriangleAlert className="w-4 h-4 shrink-0" />{place.risk === 'extreme' ? 'DO NOT VISIT' : place.risk === 'high' ? 'High risk — stay away' : 'Exercise caution'}</p>
+                      {place.crimeTypes ? <p className="my-0 text-[0.78rem] text-[#CC3333] font-medium pl-[22px]">{place.crimeTypes}</p> : null}
+                    </div>
+                  ) : normalizePlaceTag(place.tag) === 'safe' ? (
+                    <div className="my-1.5 flex flex-col gap-1">
+                      <p className="my-0 flex items-center gap-1.5 text-[0.82rem] font-semibold text-accent"><ShieldCheck className="w-4 h-4 shrink-0" />Safer area</p>
+                      <p className="my-0 text-[0.78rem] text-accent font-medium pl-[22px]">{place.safetyLabel || place.safetyHighlights || 'Lower violent-crime profile than city average.'}</p>
+                      {place.crimeTypes ? <p className="my-0 text-[0.76rem] text-accent/80 pl-[22px]">Watch for: {place.crimeTypes}</p> : null}
+                    </div>
+                  ) : (
+                    <Button type="button" size="sm" variant="secondary" onClick={() => addPlaceToDayPlan(place)}>Add to day</Button>
+                  )}
+                  {(safeMapLink || safeCornerLink) ? (
+                    <p className="my-0.5 text-[0.82rem] text-foreground-secondary leading-relaxed flex flex-wrap gap-3">
+                      {safeMapLink ? <a className="inline-flex items-center gap-0.5 mt-1.5 text-accent no-underline font-semibold text-[0.82rem] hover:text-accent-hover hover:underline hover:underline-offset-2" href={safeMapLink} target="_blank" rel="noreferrer">Open map</a> : null}
+                      {safeCornerLink ? <a className="inline-flex items-center gap-0.5 mt-1.5 text-accent no-underline font-semibold text-[0.82rem] hover:text-accent-hover hover:underline hover:underline-offset-2" href={safeCornerLink} target="_blank" rel="noreferrer">Corner page</a> : null}
+                    </p>
+                  ) : null}
+                </Card>
+              );
+            })()
           ))
         )}
       </div>
