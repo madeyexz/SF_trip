@@ -1,6 +1,7 @@
 'use client';
 
 import { Button } from '@/components/ui/button';
+import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue
 } from '@/components/ui/select';
@@ -64,7 +65,8 @@ function getCollisions(items) {
 export default function PlannerItinerary() {
   const {
     selectedDate, travelMode, setTravelMode,
-    dayPlanItems, activePlanId, baseLocationText,
+    dayPlanItems, activePlanId, baseLocationText, authUserId, currentPairRoomId,
+    plannerViewMode, setPlannerViewMode,
     routeSummary, isRouteUpdating,
     clearDayPlan, startPlanDrag, removePlanItem,
     handleExportPlannerIcs, handleAddDayPlanToGoogleCalendar
@@ -72,6 +74,11 @@ export default function PlannerItinerary() {
 
   const routeSummaryText =
     routeSummary || (selectedDate && dayPlanItems.length ? 'Waiting for routable stops...' : 'Add stops to draw route');
+  const hasEditableItems = dayPlanItems.some((item) => {
+    if (!currentPairRoomId) return true;
+    if (!item.ownerUserId || !authUserId) return true;
+    return item.ownerUserId === authUserId;
+  });
 
   return (
     <div className="flex flex-col p-3 min-h-0 h-full overflow-hidden">
@@ -89,10 +96,24 @@ export default function PlannerItinerary() {
                 <SelectItem value="WALKING">Walking</SelectItem>
               </SelectContent>
             </Select>
+            {currentPairRoomId ? (
+              <ToggleGroup
+                type="single"
+                value={plannerViewMode}
+                onValueChange={(value) => {
+                  if (value) setPlannerViewMode(value);
+                }}
+                aria-label="Planner ownership filter"
+              >
+                <ToggleGroupItem value="mine" aria-label="Show my plans">Mine</ToggleGroupItem>
+                <ToggleGroupItem value="partner" aria-label="Show partner plans">Partner</ToggleGroupItem>
+                <ToggleGroupItem value="merged" aria-label="Show merged plans">Merged</ToggleGroupItem>
+              </ToggleGroup>
+            ) : null}
           </div>
         </div>
         <div className="flex gap-1 shrink-0">
-          <Button type="button" size="sm" variant="secondary" onClick={clearDayPlan} disabled={!selectedDate || dayPlanItems.length === 0}>Clear</Button>
+          <Button type="button" size="sm" variant="secondary" onClick={clearDayPlan} disabled={!selectedDate || dayPlanItems.length === 0 || !hasEditableItems}>Clear</Button>
           <Button type="button" size="sm" variant="secondary" onClick={handleExportPlannerIcs} disabled={!selectedDate || dayPlanItems.length === 0}>.ics</Button>
           <Button type="button" size="sm" variant="secondary" onClick={handleAddDayPlanToGoogleCalendar} disabled={!selectedDate || dayPlanItems.length === 0}>GCal</Button>
         </div>
@@ -119,24 +140,32 @@ export default function PlannerItinerary() {
                 const widthPct = 100 / total;
                 const leftPct = col * widthPct;
                 const hasCollision = collisions.has(item.id);
+                const isReadOnly = Boolean(
+                  currentPairRoomId
+                  && item.ownerUserId
+                  && authUserId
+                  && item.ownerUserId !== authUserId
+                );
                 const itemClass = [
                   'planner-item',
                   item.kind === 'event' ? 'planner-item-event' : 'planner-item-place',
+                  isReadOnly ? 'opacity-70' : '',
                   activePlanId === item.id ? 'planner-item-active' : ''
                 ].filter(Boolean).join(' ');
 
                 return (
-                  <article className={itemClass} key={item.id} style={{ top: `${top}px`, height: `${height}px`, width: `${widthPct}%`, left: `${leftPct}%` }} onPointerDown={(e) => startPlanDrag(e, item, 'move')}>
-                    <button type="button" className="absolute left-0 right-0 top-0 h-2 border-none bg-transparent cursor-ns-resize" aria-label="Adjust start time" onPointerDown={(e) => startPlanDrag(e, item, 'resize-start')} />
+                  <article className={itemClass} key={item.id} style={{ top: `${top}px`, height: `${height}px`, width: `${widthPct}%`, left: `${leftPct}%` }} onPointerDown={isReadOnly ? undefined : (e) => startPlanDrag(e, item, 'move')}>
+                    <button type="button" className={`absolute left-0 right-0 top-0 h-2 border-none bg-transparent ${isReadOnly ? 'cursor-default' : 'cursor-ns-resize'}`} aria-label="Adjust start time" onPointerDown={isReadOnly ? undefined : (e) => startPlanDrag(e, item, 'resize-start')} />
                     <div className="absolute top-1 right-1.5 flex items-center gap-1.5">
                       {hasCollision ? <AlertTriangle size={12} className="text-amber-500" aria-label="Time conflict" /> : null}
                       <button type="button" className="px-1.5 py-0.5 rounded border border-slate-300 bg-white text-slate-600 text-[0.65rem] font-semibold leading-tight cursor-pointer hover:bg-blue-50 hover:border-blue-400 hover:text-blue-600 transition-colors" aria-label="Add to Google Calendar" onClick={(e) => { e.stopPropagation(); const url = buildGoogleCalendarItemUrl({ dateISO: selectedDate, item, baseLocationText }); window.open(url, '_blank', 'noopener,noreferrer'); }} title="Add to Google Calendar">+ GCal</button>
-                      <button type="button" className="border-none bg-transparent text-slate-600 text-base leading-none cursor-pointer hover:text-slate-900" aria-label="Remove from plan" onClick={(e) => { e.stopPropagation(); removePlanItem(item.id); }}>x</button>
+                      <button type="button" className="border-none bg-transparent text-slate-600 text-base leading-none cursor-pointer hover:text-slate-900 disabled:opacity-35 disabled:cursor-not-allowed" aria-label="Remove from plan" disabled={isReadOnly} onClick={(e) => { e.stopPropagation(); removePlanItem(item.id); }}>x</button>
                     </div>
                     <div className="text-[0.72rem] font-bold text-gray-800 tracking-wide">{formatMinuteLabel(item.startMinutes)} - {formatMinuteLabel(item.endMinutes)}</div>
                     <div className="mt-0.5 text-[0.82rem] font-bold text-slate-900 leading-tight break-words">{item.title}</div>
+                    {isReadOnly ? <div className="mt-0.5 text-[0.65rem] font-semibold uppercase tracking-wide text-amber-700">Partner</div> : null}
                     {item.locationText ? <div className="mt-0.5 text-[0.72rem] text-slate-700 leading-tight break-words">{item.locationText}</div> : null}
-                    <button type="button" className="absolute left-0 right-0 bottom-0 h-2 border-none bg-transparent cursor-ns-resize" aria-label="Adjust end time" onPointerDown={(e) => startPlanDrag(e, item, 'resize-end')} />
+                    <button type="button" className={`absolute left-0 right-0 bottom-0 h-2 border-none bg-transparent ${isReadOnly ? 'cursor-default' : 'cursor-ns-resize'}`} aria-label="Adjust end time" onPointerDown={isReadOnly ? undefined : (e) => startPlanDrag(e, item, 'resize-end')} />
                   </article>
                 );
               });

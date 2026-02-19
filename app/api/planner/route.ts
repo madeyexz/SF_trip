@@ -1,35 +1,38 @@
-import { loadPlannerPayload, normalizePlannerRoomId, savePlannerPayload } from '@/lib/events';
-import { requireAdminSession } from '@/lib/admin-auth';
+import { requireAuthenticatedClient } from '@/lib/request-auth';
+import { getPlannerRoomCodeFromUrl, parsePlannerPostPayload } from '@/lib/planner-api';
 
 export const runtime = 'nodejs';
 
-function getRoomIdFromRequest(request) {
-  const url = new URL(request.url);
-  return normalizePlannerRoomId(url.searchParams.get('roomId'));
-}
+export async function GET(request: Request) {
+  const auth = await requireAuthenticatedClient();
+  if (auth.deniedResponse || !auth.client) {
+    return auth.deniedResponse;
+  }
 
-export async function GET(request) {
-  const roomId = getRoomIdFromRequest(request);
-  if (!roomId) {
-    return Response.json({
-      plannerByDate: {},
-      source: 'local',
-      roomId: ''
+  const roomCode = getPlannerRoomCodeFromUrl(request.url);
+  try {
+    const payload = await auth.client.query('planner:getPlannerState', {
+      roomCode: roomCode || undefined
     });
+    return Response.json(payload);
+  } catch (error) {
+    return Response.json(
+      {
+        error: error instanceof Error ? error.message : 'Failed to load planner state.'
+      },
+      { status: 400 }
+    );
   }
-
-  const deniedResponse = requireAdminSession(request);
-  if (deniedResponse) {
-    return deniedResponse;
-  }
-
-  const payload = await loadPlannerPayload(roomId);
-  return Response.json(payload);
 }
 
-export async function POST(request) {
-  const queryRoomId = getRoomIdFromRequest(request);
-  let body = null;
+export async function POST(request: Request) {
+  const auth = await requireAuthenticatedClient();
+  if (auth.deniedResponse || !auth.client) {
+    return auth.deniedResponse;
+  }
+
+  const queryRoomCode = getPlannerRoomCodeFromUrl(request.url);
+  let body: unknown = null;
 
   try {
     body = await request.json();
@@ -42,30 +45,28 @@ export async function POST(request) {
     );
   }
 
-  const roomId = normalizePlannerRoomId(body?.roomId || queryRoomId);
-  if (!roomId) {
+  const plannerPayload = parsePlannerPostPayload(body, queryRoomCode);
+  if (!plannerPayload.ok) {
     return Response.json(
       {
-        error: 'roomId is required for shared planner persistence.'
+        error: plannerPayload.error
       },
       { status: 400 }
     );
   }
 
-  const deniedResponse = requireAdminSession(request);
-  if (deniedResponse) {
-    return deniedResponse;
-  }
-
-  if (!body || typeof body !== 'object' || !body.plannerByDate || typeof body.plannerByDate !== 'object') {
+  try {
+    const payload = await auth.client.mutation('planner:replacePlannerState', {
+      roomCode: plannerPayload.roomCode || undefined,
+      plannerByDate: plannerPayload.plannerByDate
+    });
+    return Response.json(payload);
+  } catch (error) {
     return Response.json(
       {
-        error: 'plannerByDate object is required.'
+        error: error instanceof Error ? error.message : 'Failed to save planner state.'
       },
       { status: 400 }
     );
   }
-
-  const payload = await savePlannerPayload(body.plannerByDate, roomId);
-  return Response.json(payload);
 }

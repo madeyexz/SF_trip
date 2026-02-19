@@ -1,12 +1,12 @@
 import { syncEvents } from '@/lib/events';
-import { requireAdminSession } from '@/lib/admin-auth';
+import { requireOwnerClient } from '@/lib/request-auth';
 
 export const runtime = 'nodejs';
 
 let syncInFlight = null;
 
-export async function POST(request) {
-  const deniedResponse = requireAdminSession(request);
+export async function POST() {
+  const { deniedResponse } = await requireOwnerClient();
   if (deniedResponse) {
     return deniedResponse;
   }

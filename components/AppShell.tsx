@@ -22,14 +22,14 @@ export default function AppShell({ children }) {
   const pathname = usePathname();
   const router = useRouter();
   const {
-    isSyncing, handleSync, handleDeviceLocation, authConfigured, isAdminAuthenticated
+    isSyncing, handleSync, handleDeviceLocation, canManageGlobal
   } = useTrip();
 
   const activeId = NAV_ITEMS.find((n) => pathname.startsWith(n.href))?.id || 'planning';
   const showMap = MAP_TABS.has(activeId);
   const hasMapSidebar = activeId !== 'map' && showMap;
-  const canSync = authConfigured && isAdminAuthenticated;
-  const syncLabel = isSyncing ? 'Syncing...' : canSync ? 'Sync' : 'Locked';
+  const canSync = canManageGlobal;
+  const syncLabel = isSyncing ? 'Syncing...' : canSync ? 'Sync' : 'Owner only';
 
   return (
     <main className="min-h-dvh h-dvh flex flex-col w-full overflow-hidden">
@@ -55,7 +55,7 @@ export default function AppShell({ children }) {
             size="sm"
             onClick={handleSync}
             disabled={isSyncing || !canSync}
-            title={canSync ? 'Sync events and spots' : 'Unlock admin mode in Config'}
+            title={canSync ? 'Sync events and spots' : 'Owner role required'}
           >
             <RefreshCw size={14} className={isSyncing ? 'animate-spin' : ''} />
             {syncLabel}

@@ -2,6 +2,8 @@
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
+import { useAuthActions } from '@convex-dev/auth/react';
+import { useConvexAuth } from 'convex/react';
 import { MapPin } from 'lucide-react';
 import { __iconNode as calendarIconNode } from 'lucide-react/dist/esm/icons/calendar.js';
 import { __iconNode as coffeeIconNode } from 'lucide-react/dist/esm/icons/coffee.js';
@@ -157,9 +159,7 @@ function getTagIconNode(tag) {
 
 export { TAG_COLORS };
 
-const PLANNER_MODE_STORAGE_KEY = 'sf-trip-planner-mode-v1';
-const SHARED_ROOM_STORAGE_KEY = 'sf-trip-shared-room-v1';
-const PLANNER_MODES = new Set(['local', 'shared']);
+const ACTIVE_PAIR_ROOM_STORAGE_KEY = 'sf-trip-active-pair-room-v1';
 
 function normalizePlannerRoomId(value) {
   const nextValue = String(value || '').trim().toLowerCase().replace(/[^a-z0-9_-]/g, '');
@@ -167,6 +167,46 @@ function normalizePlannerRoomId(value) {
     return '';
   }
   return nextValue;
+}
+
+function sanitizePlannerByDateWithOwner(value, fallbackOwnerUserId = '') {
+  const sanitized = sanitizePlannerByDate(value || {}) as Record<string, any[]>;
+  const ownerByItemId = new Map<string, string>();
+
+  for (const items of Object.values(value || {})) {
+    if (!Array.isArray(items)) continue;
+    for (const row of items) {
+      if (!row || typeof row !== 'object') continue;
+      const itemId = typeof row.id === 'string' ? row.id : '';
+      if (!itemId) continue;
+      const ownerUserId = typeof row.ownerUserId === 'string' ? row.ownerUserId : '';
+      if (ownerUserId) ownerByItemId.set(itemId, ownerUserId);
+    }
+  }
+
+  const result: Record<string, any[]> = {};
+  for (const [dateISO, items] of Object.entries(sanitized)) {
+    result[dateISO] = items.map((item) => ({
+      ...item,
+      ownerUserId: ownerByItemId.get(item.id) || fallbackOwnerUserId
+    }));
+  }
+  return result;
+}
+
+function mergePlannerByDate(mineByDate, partnerByDate) {
+  const merged = {};
+  const dateSet = new Set([...Object.keys(mineByDate || {}), ...Object.keys(partnerByDate || {})]);
+
+  for (const dateISO of dateSet) {
+    const mineItems = Array.isArray(mineByDate?.[dateISO]) ? mineByDate[dateISO] : [];
+    const partnerItems = Array.isArray(partnerByDate?.[dateISO]) ? partnerByDate[dateISO] : [];
+    const combined = sortPlanItems([...mineItems, ...partnerItems]);
+    if (combined.length > 0) {
+      merged[dateISO] = combined;
+    }
+  }
+  return merged;
 }
 
 const TripContext = createContext<any>(null);
@@ -178,6 +218,8 @@ export function useTrip() {
 }
 
 export default function TripProvider({ children }: { children: ReactNode }) {
+  const { isLoading: authLoading, isAuthenticated } = useConvexAuth();
+  const { signOut } = useAuthActions();
   const mapPanelRef = useRef<any>(null);
   const sidebarRef = useRef<any>(null);
   const mapElementRef = useRef<any>(null);
@@ -199,7 +241,6 @@ export default function TripProvider({ children }: { children: ReactNode }) {
   const travelTimeCacheRef = useRef<Map<string, any>>(new Map());
   const plannedRouteCacheRef = useRef<Map<string, any>>(new Map());
   const plannerHydratedRef = useRef(false);
-  const plannerPreferencesHydratedRef = useRef(false);
 
   const [status, setStatus] = useState('Loading trip map...');
   const [statusError, setStatusError] = useState(false);
@@ -219,7 +260,9 @@ export default function TripProvider({ children }: { children: ReactNode }) {
   const [hiddenCategories, setHiddenCategories] = useState<Set<string>>(new Set());
   const hiddenCategoriesRef = useRef<Set<string>>(new Set());
   const [calendarMonthISO, setCalendarMonthISO] = useState('');
-  const [plannerByDate, setPlannerByDate] = useState<Record<string, any[]>>({});
+  const [plannerByDateMine, setPlannerByDateMine] = useState<Record<string, any[]>>({});
+  const [plannerByDatePartner, setPlannerByDatePartner] = useState<Record<string, any[]>>({});
+  const [plannerViewMode, setPlannerViewMode] = useState('merged');
   const [activePlanId, setActivePlanId] = useState('');
   const [routeSummary, setRouteSummary] = useState('');
   const [isRouteUpdating, setIsRouteUpdating] = useState(false);
@@ -232,10 +275,39 @@ export default function TripProvider({ children }: { children: ReactNode }) {
   const [syncingSourceId, setSyncingSourceId] = useState('');
   const [tripStart, setTripStart] = useState('');
   const [tripEnd, setTripEnd] = useState('');
-  const [plannerMode, setPlannerMode] = useState('local');
-  const [sharedPlannerRoomId, setSharedPlannerRoomId] = useState('');
-  const [authConfigured, setAuthConfigured] = useState(false);
-  const [isAdminAuthenticated, setIsAdminAuthenticated] = useState(false);
+  const [currentPairRoomId, setCurrentPairRoomId] = useState('');
+  const [pairRooms, setPairRooms] = useState<any[]>([]);
+  const [pairMemberCount, setPairMemberCount] = useState(1);
+  const [profile, setProfile] = useState<any>(null);
+  const [authUserId, setAuthUserId] = useState('');
+  const [isPairActionPending, setIsPairActionPending] = useState(false);
+  const [isSigningOut, setIsSigningOut] = useState(false);
+
+  const plannerByDate = useMemo(
+    () => mergePlannerByDate(plannerByDateMine, plannerByDatePartner),
+    [plannerByDateMine, plannerByDatePartner]
+  );
+
+  const plannerByDateForView = useMemo(() => {
+    if (!currentPairRoomId) {
+      return plannerByDateMine;
+    }
+    if (plannerViewMode === 'mine') {
+      return plannerByDateMine;
+    }
+    if (plannerViewMode === 'partner') {
+      return plannerByDatePartner;
+    }
+    return plannerByDate;
+  }, [
+    currentPairRoomId,
+    plannerByDate,
+    plannerByDateMine,
+    plannerByDatePartner,
+    plannerViewMode
+  ]);
+
+  const canManageGlobal = profile?.role === 'owner';
 
   const placeTagOptions = useMemo(() => {
     const tags = new Set<string>();
@@ -272,12 +344,10 @@ export default function TripProvider({ children }: { children: ReactNode }) {
     hiddenCategoriesRef.current = hiddenCategories;
   }, [hiddenCategories]);
 
-  const plannerStorageKey = useMemo(() => {
-    if (plannerMode === 'shared' && sharedPlannerRoomId) {
-      return `${PLAN_STORAGE_KEY}:shared:${sharedPlannerRoomId}`;
-    }
-    return PLAN_STORAGE_KEY;
-  }, [plannerMode, sharedPlannerRoomId]);
+  const plannerStorageKey = useMemo(
+    () => (currentPairRoomId ? `${PLAN_STORAGE_KEY}:pair:${currentPairRoomId}` : `${PLAN_STORAGE_KEY}:self`),
+    [currentPairRoomId]
+  );
 
   const uniqueDates = useMemo(() => {
     if (tripStart && tripEnd) {
@@ -288,11 +358,11 @@ export default function TripProvider({ children }: { children: ReactNode }) {
       const d = normalizeDateKey(e.startDateISO);
       if (d) dateSet.add(d);
     }
-    for (const d of Object.keys(plannerByDate)) {
+    for (const d of Object.keys(plannerByDateForView)) {
       if (d) dateSet.add(d);
     }
     return Array.from(dateSet).sort();
-  }, [tripStart, tripEnd, allEvents, plannerByDate]);
+  }, [tripStart, tripEnd, allEvents, plannerByDateForView]);
 
   const eventsByDate = useMemo(() => {
     const map = new Map();
@@ -306,11 +376,11 @@ export default function TripProvider({ children }: { children: ReactNode }) {
 
   const planItemsByDate = useMemo(() => {
     const map = new Map();
-    for (const [d, items] of Object.entries(plannerByDate)) {
+    for (const [d, items] of Object.entries(plannerByDateForView)) {
       map.set(d, Array.isArray(items) ? items.length : 0);
     }
     return map;
-  }, [plannerByDate]);
+  }, [plannerByDateForView]);
 
   const calendarAnchorISO = useMemo(
     () => calendarMonthISO || selectedDate || uniqueDates[0] || toISODate(new Date()),
@@ -332,9 +402,9 @@ export default function TripProvider({ children }: { children: ReactNode }) {
 
   const dayPlanItems = useMemo(() => {
     if (!selectedDate) return [];
-    const items = plannerByDate[selectedDate];
+    const items = plannerByDateForView[selectedDate];
     return Array.isArray(items) ? sortPlanItems(items) : [];
-  }, [plannerByDate, selectedDate]);
+  }, [plannerByDateForView, selectedDate]);
 
   const plannedRouteStops = useMemo(() => {
     const stops = [];
@@ -353,85 +423,106 @@ export default function TripProvider({ children }: { children: ReactNode }) {
   // ---- Planner persistence ----
   useEffect(() => {
     try {
-      const modeRaw = window.localStorage.getItem(PLANNER_MODE_STORAGE_KEY);
-      const roomRaw = window.localStorage.getItem(SHARED_ROOM_STORAGE_KEY);
-      const nextMode = PLANNER_MODES.has(modeRaw) ? modeRaw : 'local';
+      const roomRaw = window.localStorage.getItem(ACTIVE_PAIR_ROOM_STORAGE_KEY);
       const nextRoomId = normalizePlannerRoomId(roomRaw);
-      setPlannerMode(nextMode);
-      setSharedPlannerRoomId(nextRoomId);
+      if (nextRoomId) setCurrentPairRoomId(nextRoomId);
     } catch { /* ignore */ }
-    plannerPreferencesHydratedRef.current = true;
   }, []);
 
   useEffect(() => {
-    if (!plannerPreferencesHydratedRef.current) {
-      return;
-    }
     try {
-      window.localStorage.setItem(PLANNER_MODE_STORAGE_KEY, plannerMode);
-      window.localStorage.setItem(SHARED_ROOM_STORAGE_KEY, sharedPlannerRoomId);
+      if (currentPairRoomId) {
+        window.localStorage.setItem(ACTIVE_PAIR_ROOM_STORAGE_KEY, currentPairRoomId);
+      } else {
+        window.localStorage.removeItem(ACTIVE_PAIR_ROOM_STORAGE_KEY);
+      }
     } catch { /* ignore */ }
-  }, [plannerMode, sharedPlannerRoomId]);
+  }, [currentPairRoomId]);
 
   useEffect(() => {
     let mounted = true;
-    let localPlanner = {};
+    let localPlannerMine = {};
     plannerHydratedRef.current = false;
+
     try {
       const raw = window.localStorage.getItem(plannerStorageKey);
       if (raw) {
         const parsed = JSON.parse(raw);
         if (parsed && typeof parsed === 'object') {
-          localPlanner = sanitizePlannerByDate(parsed);
-          setPlannerByDate(localPlanner);
+          localPlannerMine = sanitizePlannerByDateWithOwner(parsed, authUserId);
         }
       }
     } catch { /* ignore */ }
+    setPlannerByDateMine(localPlannerMine);
+    setPlannerByDatePartner({});
 
-    async function loadSharedPlannerFromServer() {
-      if (plannerMode !== 'shared' || !sharedPlannerRoomId || !isAdminAuthenticated) {
+    async function loadPlannerFromServer() {
+      if (!isAuthenticated) {
         if (mounted) {
+          setPlannerByDateMine({});
+          setPlannerByDatePartner({});
+          setPairMemberCount(1);
           plannerHydratedRef.current = true;
         }
         return;
       }
 
       try {
-        const payload = await fetchJson(`/api/planner?roomId=${encodeURIComponent(sharedPlannerRoomId)}`);
+        const queryString = currentPairRoomId
+          ? `?roomCode=${encodeURIComponent(currentPairRoomId)}`
+          : '';
+        const payload = await fetchJson(`/api/planner${queryString}`);
         if (!mounted) return;
-        const remotePlanner = sanitizePlannerByDate(payload?.plannerByDate || {}) as Record<string, any[]>;
-        if (hasPlannerEntries(remotePlanner) || !hasPlannerEntries(localPlanner)) {
-          setPlannerByDate(remotePlanner);
+
+        const resolvedUserId = String(payload?.userId || authUserId || '');
+        if (resolvedUserId) setAuthUserId(resolvedUserId);
+
+        const remoteMine = sanitizePlannerByDateWithOwner(
+          payload?.plannerByDateMine || {},
+          resolvedUserId,
+        ) as Record<string, any[]>;
+        const remotePartner = sanitizePlannerByDateWithOwner(
+          payload?.plannerByDatePartner || {},
+          '',
+        ) as Record<string, any[]>;
+
+        if (hasPlannerEntries(remoteMine) || !hasPlannerEntries(localPlannerMine)) {
+          setPlannerByDateMine(remoteMine);
         }
+        setPlannerByDatePartner(remotePartner);
+        setPairMemberCount(Number(payload?.memberCount) || (currentPairRoomId ? 2 : 1));
       } catch (error) {
-        if (error instanceof Error && error.message.toLowerCase().includes('admin password required')) {
-          setIsAdminAuthenticated(false);
-        }
         console.error('Planner load failed; continuing with local planner cache.', error);
+        if (mounted) {
+          setPlannerByDatePartner({});
+          setPairMemberCount(currentPairRoomId ? 2 : 1);
+        }
       } finally {
         if (mounted) plannerHydratedRef.current = true;
       }
     }
-    void loadSharedPlannerFromServer();
-    return () => { mounted = false; plannerHydratedRef.current = true; };
-  }, [isAdminAuthenticated, plannerMode, plannerStorageKey, sharedPlannerRoomId]);
 
-  const savePlannerToServer = useCallback(async (nextPlannerByDate, roomId) => {
-    if (!roomId) {
-      return;
-    }
+    void loadPlannerFromServer();
+    return () => {
+      mounted = false;
+      plannerHydratedRef.current = true;
+    };
+  }, [authUserId, currentPairRoomId, isAuthenticated, plannerStorageKey]);
 
+  const savePlannerToServer = useCallback(async (nextPlannerByDateMine, roomId) => {
     try {
-      const response = await fetch(`/api/planner?roomId=${encodeURIComponent(roomId)}`, {
+      const queryString = roomId ? `?roomCode=${encodeURIComponent(roomId)}` : '';
+      const response = await fetch(`/api/planner${queryString}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ roomId, plannerByDate: compactPlannerByDate(nextPlannerByDate) })
+        body: JSON.stringify({
+          roomCode: roomId || undefined,
+          plannerByDate: compactPlannerByDate(nextPlannerByDateMine)
+        })
       });
+
       if (!response.ok) {
         const payload = await response.json().catch(() => null);
-        if (response.status === 401) {
-          setIsAdminAuthenticated(false);
-        }
         throw new Error(payload?.error || `Planner save failed: ${response.status}`);
       }
     } catch (error) {
@@ -440,21 +531,23 @@ export default function TripProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
-    const compactPlanner = compactPlannerByDate(plannerByDate);
-    try { window.localStorage.setItem(plannerStorageKey, JSON.stringify(compactPlanner)); } catch { /* ignore */ }
+    const compactPlannerMine = compactPlannerByDate(plannerByDateMine);
+    try {
+      window.localStorage.setItem(plannerStorageKey, JSON.stringify(compactPlannerMine));
+    } catch { /* ignore */ }
     if (!plannerHydratedRef.current) return;
-    if (plannerMode !== 'shared' || !sharedPlannerRoomId || !isAdminAuthenticated) return;
+    if (!isAuthenticated) return;
+
     const timeoutId = window.setTimeout(() => {
-      void savePlannerToServer(compactPlanner, sharedPlannerRoomId);
+      void savePlannerToServer(compactPlannerMine, currentPairRoomId);
     }, 450);
     return () => { window.clearTimeout(timeoutId); };
   }, [
-    isAdminAuthenticated,
-    plannerByDate,
-    plannerMode,
+    currentPairRoomId,
+    isAuthenticated,
+    plannerByDateMine,
     plannerStorageKey,
-    savePlannerToServer,
-    sharedPlannerRoomId
+    savePlannerToServer
   ]);
 
   // ---- Geocode cache ----
@@ -485,71 +578,127 @@ export default function TripProvider({ children }: { children: ReactNode }) {
     setStatusError(isError);
   }, []);
 
-  const requireAdminClient = useCallback(() => {
-    if (authConfigured && isAdminAuthenticated) {
+  const requireOwnerClient = useCallback(() => {
+    if (canManageGlobal) {
       return true;
     }
+    setStatusMessage('Owner role required for this action.', true);
+    return false;
+  }, [canManageGlobal, setStatusMessage]);
 
-    if (!authConfigured) {
-      setStatusMessage('Server admin password is not configured. Set APP_ADMIN_PASSWORD first.', true);
+  const handleSignOut = useCallback(async () => {
+    setIsSigningOut(true);
+    try {
+      await signOut();
+      setStatusMessage('Signed out.');
+      if (typeof window !== 'undefined') {
+        window.location.assign('/signin');
+      }
+    } catch (error) {
+      setStatusMessage(error instanceof Error ? error.message : 'Sign out failed.', true);
+    } finally {
+      setIsSigningOut(false);
+    }
+  }, [setStatusMessage, signOut]);
+
+  const loadPairRooms = useCallback(async () => {
+    if (!isAuthenticated) {
+      setPairRooms([]);
+      return [];
+    }
+    try {
+      const payload = await fetchJson('/api/pair');
+      const rooms = Array.isArray(payload?.rooms) ? payload.rooms : [];
+      setPairRooms(rooms);
+      return rooms;
+    } catch (error) {
+      console.error('Failed to load pair rooms.', error);
+      return [];
+    }
+  }, [isAuthenticated]);
+
+  useEffect(() => {
+    if (!isAuthenticated) {
+      setPairRooms([]);
+      return;
+    }
+    void loadPairRooms();
+  }, [isAuthenticated, loadPairRooms]);
+
+  const handleUsePersonalPlanner = useCallback(() => {
+    setCurrentPairRoomId('');
+    setPairMemberCount(1);
+    setPlannerViewMode('mine');
+    setStatusMessage('Switched to your personal planner.');
+  }, [setStatusMessage]);
+
+  const handleCreatePairRoom = useCallback(async () => {
+    setIsPairActionPending(true);
+    try {
+      const payload = await fetchJson('/api/pair', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'create' })
+      });
+      const roomCode = normalizePlannerRoomId(payload?.roomCode);
+      if (!roomCode) {
+        throw new Error('Pair room was created but no room code was returned.');
+      }
+      setCurrentPairRoomId(roomCode);
+      setPairMemberCount(Number(payload?.memberCount) || 1);
+      setPlannerViewMode('merged');
+      await loadPairRooms();
+      setStatusMessage(`Created pair room "${roomCode}". Share this code to invite your partner.`);
+      return roomCode;
+    } catch (error) {
+      setStatusMessage(error instanceof Error ? error.message : 'Failed to create pair room.', true);
+      return '';
+    } finally {
+      setIsPairActionPending(false);
+    }
+  }, [loadPairRooms, setStatusMessage]);
+
+  const handleJoinPairRoom = useCallback(async (roomCodeInput) => {
+    const roomCode = normalizePlannerRoomId(roomCodeInput);
+    if (!roomCode) {
+      setStatusMessage('Room code is required (2-64 chars: a-z, 0-9, _ or -).', true);
       return false;
     }
 
-    setStatusMessage('Unlock admin mode in Config before running this action.', true);
-    return false;
-  }, [authConfigured, isAdminAuthenticated, setStatusMessage]);
-
-  const refreshAuthSession = useCallback(async () => {
+    setIsPairActionPending(true);
     try {
-      const payload = await fetchJson('/api/auth/session');
-      const nextConfigured = Boolean(payload?.authConfigured);
-      const nextAuthenticated = nextConfigured && Boolean(payload?.authenticated);
-      setAuthConfigured(nextConfigured);
-      setIsAdminAuthenticated(nextAuthenticated);
-      return payload;
-    } catch {
-      setAuthConfigured(false);
-      setIsAdminAuthenticated(false);
-      return null;
-    }
-  }, []);
-
-  const handleAdminLogin = useCallback(async (password) => {
-    const response = await fetch('/api/auth/session', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ password: String(password || '') })
-    });
-    const payload = await response.json().catch(() => null);
-    if (!response.ok) {
-      const message = payload?.error || `Login failed: ${response.status}`;
-      setStatusMessage(message, true);
-      throw new Error(message);
-    }
-
-    setAuthConfigured(Boolean(payload?.authConfigured));
-    setIsAdminAuthenticated(Boolean(payload?.authenticated));
-    setStatusMessage('Admin mode unlocked.');
-    return true;
-  }, [setStatusMessage]);
-
-  const handleAdminLogout = useCallback(async () => {
-    try {
-      await fetch('/api/auth/session', {
-        method: 'DELETE'
+      const payload = await fetchJson('/api/pair', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'join', roomCode })
       });
+      const joinedRoomCode = normalizePlannerRoomId(payload?.roomCode || roomCode);
+      setCurrentPairRoomId(joinedRoomCode);
+      setPairMemberCount(Number(payload?.memberCount) || 2);
+      setPlannerViewMode('merged');
+      await loadPairRooms();
+      setStatusMessage(`Joined pair room "${joinedRoomCode}".`);
+      return true;
+    } catch (error) {
+      setStatusMessage(error instanceof Error ? error.message : 'Failed to join pair room.', true);
+      return false;
     } finally {
-      setIsAdminAuthenticated(false);
-      setStatusMessage('Admin mode locked.');
+      setIsPairActionPending(false);
     }
-  }, [setStatusMessage]);
+  }, [loadPairRooms, setStatusMessage]);
 
-  const applyPlannerSettings = useCallback(({ mode, roomId }) => {
-    const nextMode = PLANNER_MODES.has(mode) ? mode : 'local';
-    const nextRoomId = normalizePlannerRoomId(roomId);
-    setPlannerMode(nextMode);
-    setSharedPlannerRoomId(nextRoomId);
-  }, []);
+  const handleSelectPairRoom = useCallback((roomCodeInput) => {
+    const roomCode = normalizePlannerRoomId(roomCodeInput);
+    if (!roomCode) {
+      setStatusMessage('Select a valid room code.', true);
+      return;
+    }
+    setCurrentPairRoomId(roomCode);
+    setPlannerViewMode('merged');
+    const selectedRoom = pairRooms.find((room) => normalizePlannerRoomId(room?.roomCode) === roomCode);
+    setPairMemberCount(Number(selectedRoom?.memberCount) || 2);
+    setStatusMessage(`Switched to pair room "${roomCode}".`);
+  }, [pairRooms, setStatusMessage]);
 
   const loadSourcesFromServer = useCallback(async () => {
     try {
@@ -777,7 +926,7 @@ export default function TripProvider({ children }: { children: ReactNode }) {
 
   const addEventToDayPlan = useCallback((event) => {
     if (!selectedDate) { setStatusMessage('Select a specific date before adding events to your day plan.', true); return; }
-    setPlannerByDate((prev) => {
+    setPlannerByDateMine((prev) => {
       const current = Array.isArray(prev[selectedDate]) ? prev[selectedDate] : [];
       const timeFromEvent = parseEventTimeRange(event.startDateTimeText);
       const startMinutes = timeFromEvent ? timeFromEvent.startMinutes : 9 * 60;
@@ -785,11 +934,11 @@ export default function TripProvider({ children }: { children: ReactNode }) {
       const next = sortPlanItems([...current, {
         id: createPlanId(), kind: 'event', sourceKey: event.eventUrl,
         title: event.name, locationText: event.address || event.locationText || '',
-        link: event.eventUrl, startMinutes, endMinutes
+        link: event.eventUrl, tag: '', startMinutes, endMinutes, ownerUserId: authUserId
       }]);
       return { ...prev, [selectedDate]: next };
     });
-  }, [selectedDate, setStatusMessage]);
+  }, [authUserId, selectedDate, setStatusMessage]);
 
   const addPlaceToDayPlan = useCallback((place) => {
     const tag = normalizePlaceTag(place.tag);
@@ -799,7 +948,7 @@ export default function TripProvider({ children }: { children: ReactNode }) {
       return;
     }
     if (!selectedDate) { setStatusMessage('Select a specific date before adding places to your day plan.', true); return; }
-    setPlannerByDate((prev) => {
+    setPlannerByDateMine((prev) => {
       const current = Array.isArray(prev[selectedDate]) ? prev[selectedDate] : [];
       const slot = getSuggestedPlanSlot(current, null, 75);
       const next = sortPlanItems([...current, {
@@ -807,15 +956,15 @@ export default function TripProvider({ children }: { children: ReactNode }) {
         title: place.name, locationText: place.location || '',
         link: place.mapLink || place.cornerLink || '',
         tag: normalizePlaceTag(place.tag),
-        startMinutes: slot.startMinutes, endMinutes: slot.endMinutes
+        startMinutes: slot.startMinutes, endMinutes: slot.endMinutes, ownerUserId: authUserId
       }]);
       return { ...prev, [selectedDate]: next };
     });
-  }, [selectedDate, setStatusMessage]);
+  }, [authUserId, selectedDate, setStatusMessage]);
 
   const removePlanItem = useCallback((itemId) => {
     if (!selectedDate) return;
-    setPlannerByDate((prev) => {
+    setPlannerByDateMine((prev) => {
       const current = Array.isArray(prev[selectedDate]) ? prev[selectedDate] : [];
       return { ...prev, [selectedDate]: current.filter((i) => i.id !== itemId) };
     });
@@ -823,11 +972,15 @@ export default function TripProvider({ children }: { children: ReactNode }) {
 
   const clearDayPlan = useCallback(() => {
     if (!selectedDate) return;
-    setPlannerByDate((prev) => ({ ...prev, [selectedDate]: [] }));
+    setPlannerByDateMine((prev) => ({ ...prev, [selectedDate]: [] }));
   }, [selectedDate]);
 
   const startPlanDrag = useCallback((pointerEvent, item, mode) => {
     if (!selectedDate) return;
+    if (item?.ownerUserId && authUserId && item.ownerUserId !== authUserId) {
+      setStatusMessage('You can only edit your own planner items.', true);
+      return;
+    }
     pointerEvent.preventDefault();
     pointerEvent.stopPropagation();
     const startY = pointerEvent.clientY;
@@ -845,7 +998,7 @@ export default function TripProvider({ children }: { children: ReactNode }) {
       const deltaY = moveEvent.clientY - startY;
       const deltaMinutes = snap(deltaY / MINUTE_HEIGHT);
       const duration = Math.max(MIN_PLAN_BLOCK, initialEnd - initialStart);
-      setPlannerByDate((prev) => {
+      setPlannerByDateMine((prev) => {
         const current = Array.isArray(prev[selectedDate]) ? prev[selectedDate] : [];
         const idx = current.findIndex((c) => c.id === item.id);
         if (idx < 0) return prev;
@@ -864,7 +1017,7 @@ export default function TripProvider({ children }: { children: ReactNode }) {
     const onUp = () => { window.removeEventListener('pointermove', onMove); window.removeEventListener('pointerup', onUp); setActivePlanId(''); };
     window.addEventListener('pointermove', onMove);
     window.addEventListener('pointerup', onUp);
-  }, [selectedDate]);
+  }, [authUserId, selectedDate, setStatusMessage]);
 
   const calculateTravelTimes = useCallback(async (evtsWithPositions: any[], activeTravelMode: string) => {
     if (!baseLatLngRef.current || !distanceMatrixRef.current) return evtsWithPositions;
@@ -1151,15 +1304,17 @@ export default function TripProvider({ children }: { children: ReactNode }) {
 
     async function bootstrap() {
       try {
-        const [config, eventsPayload, sourcesPayload, authPayload] = await Promise.all([
+        const [config, eventsPayload, sourcesPayload, mePayload] = await Promise.all([
           fetchJson('/api/config'),
           fetchJson('/api/events'),
           fetchJson('/api/sources').catch(() => ({ sources: [] })),
-          fetchJson('/api/auth/session').catch(() => ({ authConfigured: false, authenticated: false }))
+          fetchJson('/api/me').catch(() => null)
         ]);
         if (!mounted) return;
-        setAuthConfigured(Boolean(authPayload?.authConfigured));
-        setIsAdminAuthenticated(Boolean(authPayload?.authConfigured) && Boolean(authPayload?.authenticated));
+        const nextProfile = mePayload?.profile || null;
+        const nextUserId = String(nextProfile?.userId || '');
+        setProfile(nextProfile);
+        setAuthUserId(nextUserId);
         setTripStart(config.tripStart || '');
         setTripEnd(config.tripEnd || '');
         setBaseLocationText(config.baseLocation || '');
@@ -1169,8 +1324,9 @@ export default function TripProvider({ children }: { children: ReactNode }) {
         setAllEvents(loadedEvents);
         setAllPlaces(loadedPlaces);
         setSources(loadedSources);
+        void loadPairRooms();
 
-        if (authPayload?.authConfigured && authPayload?.authenticated) {
+        if (nextProfile?.role === 'owner') {
           void runBackgroundSync();
         }
 
@@ -1194,18 +1350,17 @@ export default function TripProvider({ children }: { children: ReactNode }) {
         if (geocodedBase) setBaseMarker(geocodedBase, `Base location: ${config.baseLocation}`);
         setMapsReady(true);
         const sampleNote = eventsPayload?.meta?.sampleData ? ' Showing sample data until you sync.' : '';
-        const authNote =
-          authPayload?.authConfigured && !authPayload?.authenticated
-            ? ' Unlock admin mode in Config to run sync or edit shared data.'
-            : '';
-        setStatusMessage(`Loaded ${loadedEvents.length} events and ${loadedPlaces.length} curated places.${sampleNote}${authNote}`);
+        const roleNote = nextProfile?.role === 'owner'
+          ? ''
+          : ' Signed in as member: sync, trip config, and source management are owner-only.';
+        setStatusMessage(`Loaded ${loadedEvents.length} events and ${loadedPlaces.length} curated places.${sampleNote}${roleNote}`);
       } catch (error) {
         setStatusMessage(error instanceof Error ? error.message : 'Failed to initialize app.', true);
       }
     }
     void bootstrap();
     return () => { mounted = false; clearMapMarkers(); clearRoute(); if (baseMarkerRef.current) baseMarkerRef.current.map = null; };
-  }, [clearMapMarkers, clearRoute, geocode, loadSourcesFromServer, setBaseMarker, setStatusMessage]);
+  }, [clearMapMarkers, clearRoute, geocode, loadPairRooms, loadSourcesFromServer, setBaseMarker, setStatusMessage]);
 
   useEffect(() => {
     if (!mapsReady || !window.google?.maps?.visualization || !mapRef.current) return;
@@ -1308,7 +1463,7 @@ export default function TripProvider({ children }: { children: ReactNode }) {
 
   // ---- Handlers ----
   const handleSync = useCallback(async () => {
-    if (!requireAdminClient()) {
+    if (!requireOwnerClient()) {
       return;
     }
 
@@ -1318,9 +1473,6 @@ export default function TripProvider({ children }: { children: ReactNode }) {
       const response = await fetch('/api/sync', { method: 'POST' });
       const payload = await response.json();
       if (!response.ok) {
-        if (response.status === 401) {
-          setIsAdminAuthenticated(false);
-        }
         throw new Error(payload.error || 'Sync failed');
       }
       const syncedEvents = Array.isArray(payload.events) ? payload.events : [];
@@ -1336,7 +1488,7 @@ export default function TripProvider({ children }: { children: ReactNode }) {
     } finally {
       setIsSyncing(false);
     }
-  }, [loadSourcesFromServer, requireAdminClient, setStatusMessage]);
+  }, [loadSourcesFromServer, requireOwnerClient, setStatusMessage]);
 
   const handleDeviceLocation = useCallback(() => {
     if (!navigator.geolocation || !window.google?.maps) { setStatusMessage('Geolocation is not supported in this browser.', true); return; }
@@ -1354,7 +1506,7 @@ export default function TripProvider({ children }: { children: ReactNode }) {
 
   const handleCreateSource = useCallback(async (event) => {
     event.preventDefault();
-    if (!requireAdminClient()) {
+    if (!requireOwnerClient()) {
       return;
     }
 
@@ -1370,9 +1522,6 @@ export default function TripProvider({ children }: { children: ReactNode }) {
       });
       const payload = await response.json();
       if (!response.ok) {
-        if (response.status === 401) {
-          setIsAdminAuthenticated(false);
-        }
         throw new Error(payload?.error || 'Failed to add source.');
       }
       await loadSourcesFromServer();
@@ -1384,10 +1533,10 @@ export default function TripProvider({ children }: { children: ReactNode }) {
     } finally {
       setIsSavingSource(false);
     }
-  }, [loadSourcesFromServer, newSourceLabel, newSourceType, newSourceUrl, requireAdminClient, setStatusMessage]);
+  }, [loadSourcesFromServer, newSourceLabel, newSourceType, newSourceUrl, requireOwnerClient, setStatusMessage]);
 
   const handleToggleSourceStatus = useCallback(async (source) => {
-    if (!requireAdminClient()) {
+    if (!requireOwnerClient()) {
       return;
     }
 
@@ -1400,9 +1549,6 @@ export default function TripProvider({ children }: { children: ReactNode }) {
       });
       const payload = await response.json();
       if (!response.ok) {
-        if (response.status === 401) {
-          setIsAdminAuthenticated(false);
-        }
         throw new Error(payload?.error || 'Failed to update source.');
       }
       await loadSourcesFromServer();
@@ -1410,10 +1556,10 @@ export default function TripProvider({ children }: { children: ReactNode }) {
     } catch (error) {
       setStatusMessage(error instanceof Error ? error.message : 'Failed to update source.', true);
     }
-  }, [loadSourcesFromServer, requireAdminClient, setStatusMessage]);
+  }, [loadSourcesFromServer, requireOwnerClient, setStatusMessage]);
 
   const handleDeleteSource = useCallback(async (source) => {
-    if (!requireAdminClient()) {
+    if (!requireOwnerClient()) {
       return;
     }
 
@@ -1421,9 +1567,6 @@ export default function TripProvider({ children }: { children: ReactNode }) {
       const response = await fetch(`/api/sources/${encodeURIComponent(source.id)}`, { method: 'DELETE' });
       const payload = await response.json();
       if (!response.ok) {
-        if (response.status === 401) {
-          setIsAdminAuthenticated(false);
-        }
         throw new Error(payload?.error || 'Failed to delete source.');
       }
       await loadSourcesFromServer();
@@ -1431,10 +1574,10 @@ export default function TripProvider({ children }: { children: ReactNode }) {
     } catch (error) {
       setStatusMessage(error instanceof Error ? error.message : 'Failed to delete source.', true);
     }
-  }, [loadSourcesFromServer, requireAdminClient, setStatusMessage]);
+  }, [loadSourcesFromServer, requireOwnerClient, setStatusMessage]);
 
   const handleSyncSource = useCallback(async (source) => {
-    if (!requireAdminClient()) {
+    if (!requireOwnerClient()) {
       return;
     }
 
@@ -1444,9 +1587,6 @@ export default function TripProvider({ children }: { children: ReactNode }) {
       const response = await fetch(`/api/sources/${encodeURIComponent(source.id)}`, { method: 'POST' });
       const payload = await response.json();
       if (!response.ok) {
-        if (response.status === 401) {
-          setIsAdminAuthenticated(false);
-        }
         throw new Error(payload?.error || 'Failed to sync source.');
       }
       await loadSourcesFromServer();
@@ -1457,7 +1597,7 @@ export default function TripProvider({ children }: { children: ReactNode }) {
     } finally {
       setSyncingSourceId('');
     }
-  }, [loadSourcesFromServer, requireAdminClient, setStatusMessage]);
+  }, [loadSourcesFromServer, requireOwnerClient, setStatusMessage]);
 
   const handleExportPlannerIcs = useCallback(() => {
     if (!selectedDate || dayPlanItems.length === 0) { setStatusMessage('Add planner stops before exporting iCal.', true); return; }
@@ -1485,8 +1625,8 @@ export default function TripProvider({ children }: { children: ReactNode }) {
   }, [baseLocationText, dayPlanItems, selectedDate, setStatusMessage]);
 
   const handleSaveTripDates = useCallback(async (start, end) => {
-    if (!requireAdminClient()) {
-      throw new Error('Admin mode is required.');
+    if (!requireOwnerClient()) {
+      throw new Error('Owner role is required.');
     }
 
     try {
@@ -1502,11 +1642,11 @@ export default function TripProvider({ children }: { children: ReactNode }) {
       setStatusMessage(`Failed to save trip dates: ${message}`, true);
       throw err;
     }
-  }, [requireAdminClient, setStatusMessage]);
+  }, [requireOwnerClient, setStatusMessage]);
 
   const handleSaveBaseLocation = useCallback(async (text) => {
-    if (!requireAdminClient()) {
-      throw new Error('Admin mode is required.');
+    if (!requireOwnerClient()) {
+      throw new Error('Owner role is required.');
     }
 
     await fetchJson('/api/config', {
@@ -1520,7 +1660,7 @@ export default function TripProvider({ children }: { children: ReactNode }) {
       if (geocodedBase) setBaseMarker(geocodedBase, `Base location: ${text}`);
     }
     setBaseLocationVersion((v) => v + 1);
-  }, [tripStart, tripEnd, mapsReady, geocode, requireAdminClient, setBaseMarker]);
+  }, [tripStart, tripEnd, mapsReady, geocode, requireOwnerClient, setBaseMarker]);
 
   const toggleCategory = useCallback((category) => {
     setHiddenCategories((prev) => {
@@ -1544,6 +1684,7 @@ export default function TripProvider({ children }: { children: ReactNode }) {
     // Refs
     mapPanelRef, sidebarRef, mapElementRef, mapRef,
     // State
+    authLoading, isAuthenticated, authUserId, profile, canManageGlobal,
     status, statusError, mapsReady,
     crimeLayerMeta,
     crimeHeatmapStrength, setCrimeHeatmapStrength,
@@ -1552,11 +1693,11 @@ export default function TripProvider({ children }: { children: ReactNode }) {
     travelMode, setTravelMode, baseLocationText, setBaseLocationText,
     isSyncing, placeTagFilter, setPlaceTagFilter, hiddenCategories, toggleCategory,
     calendarMonthISO, setCalendarMonthISO,
-    plannerByDate, setPlannerByDate,
+    plannerByDate, plannerByDateMine, plannerByDatePartner, plannerViewMode, setPlannerViewMode,
     activePlanId, setActivePlanId,
     routeSummary, isRouteUpdating,
-    authConfigured, isAdminAuthenticated,
-    plannerMode, sharedPlannerRoomId,
+    currentPairRoomId, pairRooms, pairMemberCount, isPairActionPending,
+    isSigningOut,
     sources, groupedSources,
     newSourceType, setNewSourceType, newSourceUrl, setNewSourceUrl,
     newSourceLabel, setNewSourceLabel, isSavingSource, syncingSourceId,
@@ -1568,8 +1709,8 @@ export default function TripProvider({ children }: { children: ReactNode }) {
     dayPlanItems, plannedRouteStops, travelReadyCount,
     // Handlers
     setStatusMessage,
-    refreshAuthSession, handleAdminLogin, handleAdminLogout,
-    applyPlannerSettings,
+    handleSignOut,
+    handleUsePersonalPlanner, handleCreatePairRoom, handleJoinPairRoom, handleSelectPairRoom,
     handleSync, handleDeviceLocation,
     handleCreateSource, handleToggleSourceStatus, handleDeleteSource, handleSyncSource,
     handleSaveTripDates, handleSaveBaseLocation,

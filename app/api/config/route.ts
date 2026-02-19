@@ -1,5 +1,5 @@
 import { loadBaseLocation, saveBaseLocation, getCalendarUrls, loadTripConfig, saveTripConfig } from '@/lib/events';
-import { requireAdminSession } from '@/lib/admin-auth';
+import { requireOwnerClient } from '@/lib/request-auth';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -21,7 +21,7 @@ export async function GET() {
 }
 
 export async function POST(request) {
-  const deniedResponse = requireAdminSession(request);
+  const { deniedResponse } = await requireOwnerClient();
   if (deniedResponse) {
     return deniedResponse;
   }

@@ -1,5 +1,5 @@
 import { createSourcePayload, loadSourcesPayload } from '@/lib/events';
-import { requireAdminSession } from '@/lib/admin-auth';
+import { requireOwnerClient } from '@/lib/request-auth';
 
 export const runtime = 'nodejs';
 
@@ -9,7 +9,7 @@ export async function GET() {
 }
 
 export async function POST(request) {
-  const deniedResponse = requireAdminSession(request);
+  const { deniedResponse } = await requireOwnerClient();
   if (deniedResponse) {
     return deniedResponse;
   }

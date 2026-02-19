@@ -1,7 +1,9 @@
+import { authTables } from '@convex-dev/auth/server';
 import { defineSchema, defineTable } from 'convex/server';
 import { v } from 'convex/values';
 
 export default defineSchema({
+  ...authTables,
   plannerState: defineTable({
     key: v.string(),
     plannerByDate: v.record(
@@ -22,6 +24,48 @@ export default defineSchema({
     ),
     updatedAt: v.string()
   }).index('by_key', ['key']),
+  plannerEntries: defineTable({
+    roomCode: v.string(),
+    ownerUserId: v.string(),
+    dateISO: v.string(),
+    itemId: v.string(),
+    kind: v.union(v.literal('event'), v.literal('place')),
+    sourceKey: v.string(),
+    title: v.string(),
+    locationText: v.string(),
+    link: v.string(),
+    tag: v.string(),
+    startMinutes: v.number(),
+    endMinutes: v.number(),
+    updatedAt: v.string()
+  })
+    .index('by_room_code', ['roomCode'])
+    .index('by_room_owner', ['roomCode', 'ownerUserId'])
+    .index('by_room_owner_date', ['roomCode', 'ownerUserId', 'dateISO'])
+    .index('by_room_date', ['roomCode', 'dateISO']),
+  pairRooms: defineTable({
+    roomCode: v.string(),
+    createdByUserId: v.string(),
+    createdAt: v.string(),
+    updatedAt: v.string()
+  }).index('by_room_code', ['roomCode']),
+  pairMembers: defineTable({
+    roomCode: v.string(),
+    userId: v.string(),
+    joinedAt: v.string()
+  })
+    .index('by_room_code', ['roomCode'])
+    .index('by_room_user', ['roomCode', 'userId'])
+    .index('by_user', ['userId']),
+  userProfiles: defineTable({
+    userId: v.string(),
+    role: v.union(v.literal('owner'), v.literal('member')),
+    email: v.optional(v.string()),
+    createdAt: v.string(),
+    updatedAt: v.string()
+  })
+    .index('by_user_id', ['userId'])
+    .index('by_role', ['role']),
   routeCache: defineTable({
     key: v.string(),
     encodedPolyline: v.string(),
