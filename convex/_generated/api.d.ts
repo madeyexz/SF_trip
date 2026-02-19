@@ -10,8 +10,10 @@
 
 import type * as appUsers from "../appUsers.js";
 import type * as auth from "../auth.js";
+import type * as authz from "../authz.js";
 import type * as events from "../events.js";
 import type * as http from "../http.js";
+import type * as ownerRole from "../ownerRole.js";
 import type * as planner from "../planner.js";
 import type * as routeCache from "../routeCache.js";
 import type * as sources from "../sources.js";
@@ -27,8 +29,10 @@ import type {
 declare const fullApi: ApiFromModules<{
   appUsers: typeof appUsers;
   auth: typeof auth;
+  authz: typeof authz;
   events: typeof events;
   http: typeof http;
+  ownerRole: typeof ownerRole;
   planner: typeof planner;
   routeCache: typeof routeCache;
   sources: typeof sources;
