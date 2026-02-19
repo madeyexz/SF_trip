@@ -5,21 +5,21 @@ import {
   Calendar,
   Route,
   AlertTriangle,
-  Clock,
-  Home,
-  BarChart3,
-  Rss,
   Users,
   ArrowRight,
   Terminal,
   Layers,
   Zap,
+  ShieldAlert,
+  CalendarSync,
+  GripVertical,
+  ExternalLink,
 } from 'lucide-react';
 
 export const metadata = {
   title: 'SF Trip Planner — Turn 50 Open Tabs Into One Trip Plan',
   description:
-    'Stop juggling newsletters, Google Maps lists, and bookmarked tabs. SF Trip Planner pulls every event and spot into one planner with map, calendar, and route planning.',
+    'See where events are, when they conflict, where it\'s safe, and plan your SF trip with friends. Live crime heatmaps, curated spots, and Google Calendar export.',
 };
 
 /* ------------------------------------------------------------------ */
@@ -46,15 +46,23 @@ function FeatureCard({
   icon: Icon,
   title,
   description,
+  accent,
 }: {
   icon: React.ComponentType<{ size?: number; className?: string }>;
   title: string;
   description: string;
+  accent?: 'green' | 'warning' | 'danger';
 }) {
+  const colors = {
+    green: { icon: 'text-accent', border: 'border-accent/20' },
+    warning: { icon: 'text-warning', border: 'border-warning/20' },
+    danger: { icon: 'text-danger', border: 'border-danger/20' },
+  };
+  const c = colors[accent || 'green'];
   return (
-    <div className="border border-border bg-card p-5">
+    <div className={`border ${c.border} bg-card p-5`}>
       <div className="mb-3 flex items-center gap-3">
-        <Icon size={16} className="text-accent" />
+        <Icon size={16} className={c.icon} />
         <h3 className="text-[13px] font-semibold uppercase tracking-[0.5px] text-foreground">
           {title}
         </h3>
@@ -115,14 +123,12 @@ export default function LandingPage() {
             Into One Trip Plan
           </h1>
 
-          <p className="mx-auto mt-5 max-w-[600px] text-[14px] leading-relaxed text-foreground-secondary">
-            You have 12 newsletters recommending SF events, a Google Maps list of restaurants, and
-            a friend&apos;s recs buried in chat.{' '}
+          <p className="mx-auto mt-5 max-w-[620px] text-[14px] leading-relaxed text-foreground-secondary">
+            See where every event is. See when they conflict. See where it&apos;s safe to walk.{' '}
             <span className="text-foreground">
-              SF Trip Planner pulls every source into one screen
+              One screen that shows you everything you need to decide
             </span>
-            &mdash;map, calendar, and day planner side by side&mdash;so you stop cross-referencing
-            and start deciding.
+            &mdash;then plan your days, plan with friends, and export to Google Calendar.
           </p>
 
           <div className="mt-8 flex items-center justify-center gap-4">
@@ -174,8 +180,9 @@ export default function LandingPage() {
             Sound Familiar?
           </h2>
           <p className="mt-4 max-w-[640px] text-[13px] leading-relaxed text-foreground-secondary">
-            You&apos;re visiting SF. You&apos;ve done the research. Now your browser has 47 tabs open and
-            you still don&apos;t know what to do on Tuesday.
+            You&apos;re visiting SF. You&apos;ve done the research. Now your browser has 47 tabs open,
+            you don&apos;t know what to do on Tuesday, and you&apos;re not sure which neighborhoods
+            are safe to walk at night.
           </p>
 
           <div className="mt-10 grid grid-cols-1 gap-3 md:grid-cols-3">
@@ -184,8 +191,8 @@ export default function LandingPage() {
                 [Scattered_Events]
               </p>
               <p className="mt-2 text-[13px] text-foreground-secondary">
-                Newsletters from Beehiiv, events on Luma, meetups on Eventbrite, and a friend&apos;s
-                list in iMessage. Each one links to a different site. Good luck cross-referencing dates.
+                Newsletters from Beehiiv, events on Luma, meetups on Eventbrite, a friend&apos;s
+                list in iMessage. Each links to a different site. Good luck cross-referencing dates.
               </p>
             </div>
             <div className="border border-warning/30 bg-warning/[0.05] p-5">
@@ -193,84 +200,60 @@ export default function LandingPage() {
                 [Buried_Spots]
               </p>
               <p className="mt-2 text-[13px] text-foreground-secondary">
-                Your restaurant list lives in Google Maps. That blog roundup of coffee shops?
-                Bookmarked and forgotten. The ramen spot someone mentioned? Lost in a group chat.
+                Your restaurant list lives in Google Maps. The coffee shop from that blog? Bookmarked
+                and forgotten. The ramen spot someone mentioned? Lost in a group chat.
               </p>
             </div>
-            <div className="border border-warning/30 bg-warning/[0.05] p-5">
-              <p className="text-[11px] font-bold uppercase tracking-[0.5px] text-warning">
-                [No_Big_Picture]
+            <div className="border border-danger/30 bg-danger/[0.05] p-5">
+              <p className="text-[11px] font-bold uppercase tracking-[0.5px] text-danger">
+                [Safety_Blind_Spot]
               </p>
               <p className="mt-2 text-[13px] text-foreground-secondary">
-                You know what you want to do. You don&apos;t know when things overlap, which events are
-                walkable from each other, or where you should even stay to save on transit.
+                Let&apos;s be honest&mdash;SF has neighborhoods where you don&apos;t want to wander at
+                10 PM. But crime maps and event pins live on completely different websites. Until now.
               </p>
             </div>
           </div>
         </div>
       </section>
 
-      {/* ── FEATURES GRID ── */}
+      {/* ── CORE VALUE: SEE ── */}
       <section className="border-b border-border py-20">
         <div className="mx-auto max-w-[1200px] px-6">
-          <SectionLabel>What You Get</SectionLabel>
+          <SectionLabel>See Everything</SectionLabel>
           <h2
             className="text-[32px] font-bold tracking-[-1px]"
             style={{ fontFamily: 'var(--font-space-grotesk)' }}
           >
-            Three Panes. Zero Tab-Switching.
+            See Before You Plan
           </h2>
           <p className="mt-4 max-w-[640px] text-[13px] leading-relaxed text-foreground-secondary">
-            Map, events, and day planner live side by side. Click an event on the left, see it on
-            the map, drag it into your schedule on the right. No context-switching. No copy-pasting
-            between apps.
+            Good decisions start with good information. Before you commit to anything, see where
+            events are, when they happen, what spots are nearby, and which streets to avoid.
           </p>
 
-          <div className="mt-10 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="mt-10 grid grid-cols-1 gap-3 sm:grid-cols-2">
             <FeatureCard
-              icon={Rss}
-              title="Never Miss an Event"
-              description="Sync RSS feeds, iCal calendars, and newsletters in one click. Events from Luma, Eventbrite, and Beehiiv show up automatically — no manual entry."
+              icon={MapPin}
+              title="See Where Events Are"
+              description="Every event plotted on one map. Color-coded pins by category — orange for events, teal for cafes, pink for nightlife. Tap any pin for details. No more switching between Luma, Eventbrite, and Google Maps."
             />
             <FeatureCard
               icon={AlertTriangle}
-              title="Spot Conflicts Instantly"
-              description="Two events at 7 PM on Thursday? You'll see the overlap highlighted before you commit. No more double-booking."
-            />
-            <FeatureCard
-              icon={Clock}
-              title="Know What's Coming"
-              description="Every map marker shows days remaining until the event. Focus on what's soon, skip what's passed."
-            />
-            <FeatureCard
-              icon={Home}
-              title="Pick the Right Neighborhood"
-              description="See where your events cluster on the map. Choose an Airbnb in the middle and cut your transit time in half."
-            />
-            <FeatureCard
-              icon={BarChart3}
-              title="Find Gaps for Coffee Chats"
-              description="A bar chart shows when events cluster by hour. Spot the 2-hour gap on Wednesday afternoon — perfect for that coffee chat."
-            />
-            <FeatureCard
-              icon={Route}
-              title="See the Route, Not Just the Pins"
-              description="Drag activities into your day planner. The map draws walking and transit routes between stops with estimated times."
-            />
-            <FeatureCard
-              icon={Calendar}
-              title="Keep Your Calendar in Sync"
-              description="Export your finalized itinerary to Google Calendar or download the ICS file. Your phone stays up to date."
-            />
-            <FeatureCard
-              icon={Users}
-              title="Plan Together, Decide Separately"
-              description="Traveling with a friend? Share a planner room. You each see both schedules, but only edit your own."
+              title="See When They Conflict"
+              description="Two events at 7 PM on Thursday? You'll see the overlap highlighted before you commit. The calendar shows event counts per day so you spot packed days and empty ones at a glance."
+              accent="warning"
             />
             <FeatureCard
               icon={Layers}
-              title="Show Only What Matters"
-              description="Toggle map layers by category — eat, bar, cafes, shops, events. Hunting for dinner? Hide everything else."
+              title="See Your Curated Spots"
+              description="That ramen place from the blog, the rooftop bar from a coworker, the coffee shop with the 4.9 rating. All imported, tagged by category, and visible on the same map alongside your events."
+            />
+            <FeatureCard
+              icon={ShieldAlert}
+              title="See Where It's Safe"
+              description="SF isn't all sunshine. Toggle the live crime heatmap to see which blocks had recent incidents. Pick restaurants in safe zones. Avoid walking through hot spots at night. Data sourced from SFPD and CivicHub."
+              accent="danger"
             />
           </div>
         </div>
@@ -281,24 +264,24 @@ export default function LandingPage() {
         <div className="mx-auto max-w-[1200px] px-6">
           <div className="grid grid-cols-1 items-center gap-12 lg:grid-cols-2">
             <div>
-              <SectionLabel>Map Overview</SectionLabel>
+              <SectionLabel>Map</SectionLabel>
               <h2
                 className="text-[28px] font-bold tracking-[-1px]"
                 style={{ fontFamily: 'var(--font-space-grotesk)' }}
               >
-                One Map. Every Option.
+                Events, Spots, and Crime&mdash;One Map
               </h2>
               <p className="mt-4 text-[13px] leading-relaxed text-foreground-secondary">
-                Every event and curated spot on a single interactive map. Orange pins for events,
-                teal for cafes, pink for nightlife. Tap a marker to see details, toggle the crime
-                heatmap to check neighborhoods, and watch route lines draw between your planned stops.
+                Every data source on a single interactive map. Events from your synced feeds. Spots
+                from your curated lists. Crime incidents from public safety data. Toggle layers on
+                and off. Zoom into a neighborhood and see exactly what&apos;s there.
               </p>
               <ul className="mt-6 space-y-2">
                 {[
-                  'Color-coded pins so you spot categories at a glance',
-                  'Live crime heatmap to vet neighborhoods before booking',
-                  'Route lines drawn between your planned stops',
-                  'Countdown badges so you never miss a deadline',
+                  'Color-coded pins: events, eat, bar, cafes, shops, avoid',
+                  'Live crime heatmap overlay from SFPD incident data',
+                  'Route lines between planned stops with time estimates',
+                  'Days-remaining countdown so you prioritize what\'s soon',
                 ].map((item) => (
                   <li key={item} className="flex items-center gap-2 text-[12px] text-foreground-secondary">
                     <Zap size={10} className="text-accent" />
@@ -315,7 +298,7 @@ export default function LandingPage() {
               </div>
               <Image
                 src="/screenshots/map.png"
-                alt="Interactive map with color-coded event and spot markers"
+                alt="Interactive map with color-coded event markers, spot pins, and crime heatmap"
                 width={1280}
                 height={720}
                 className="block w-full"
@@ -325,36 +308,82 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* ── SCREENSHOT: CALENDAR ── */}
+      {/* ── SAFETY ── */}
       <section className="border-b border-border py-20">
         <div className="mx-auto max-w-[1200px] px-6">
           <div className="grid grid-cols-1 items-center gap-12 lg:grid-cols-2">
-            <div className="order-2 border border-border lg:order-1">
-              <div className="flex h-8 items-center gap-2 border-b border-border bg-card px-4">
-                <span className="text-[10px] font-semibold uppercase tracking-[0.5px] text-muted">
-                  // CALENDAR_VIEW
-                </span>
+            <div className="order-2 lg:order-1">
+              <div className="border border-danger/20 bg-danger/[0.03] p-6">
+                <p className="text-[11px] font-bold uppercase tracking-[1px] text-danger">
+                  // CRIME_DATA_SOURCES
+                </p>
+                <p className="mt-3 text-[13px] leading-relaxed text-foreground-secondary">
+                  The crime heatmap pulls from publicly available San Francisco safety data,
+                  so you can overlay real incident reports directly on top of your trip plan.
+                </p>
+                <div className="mt-5 space-y-3">
+                  {[
+                    {
+                      name: 'SFPD Crime Maps',
+                      url: 'https://sfgov.org/services/sf-crime-maps',
+                      desc: 'Official SF government crime mapping',
+                    },
+                    {
+                      name: 'Safemap Interactive Heatmap',
+                      url: 'https://safemap.io/sf/map',
+                      desc: 'Visual crime density by block',
+                    },
+                    {
+                      name: 'SFPD Crime Dashboard',
+                      url: 'https://sanfranciscopolice.org',
+                      desc: 'Police department incident data',
+                    },
+                    {
+                      name: 'CivicHub Live Reports',
+                      url: 'https://civichub.us/ca/san-francisco',
+                      desc: 'Community-reported real-time incidents',
+                    },
+                  ].map((source) => (
+                    <a
+                      key={source.name}
+                      href={source.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-start gap-3 border border-border bg-card p-3 transition-colors hover:border-danger/40"
+                    >
+                      <ExternalLink size={12} className="mt-0.5 shrink-0 text-danger" />
+                      <div>
+                        <p className="text-[12px] font-semibold uppercase tracking-[0.5px] text-foreground">
+                          {source.name}
+                        </p>
+                        <p className="mt-0.5 text-[11px] text-foreground-secondary">{source.desc}</p>
+                      </div>
+                    </a>
+                  ))}
+                </div>
               </div>
-              <Image
-                src="/screenshots/calendar.png"
-                alt="Month calendar view showing event and plan counts per day"
-                width={1280}
-                height={720}
-                className="block w-full"
-              />
             </div>
             <div className="order-1 lg:order-2">
-              <SectionLabel>Calendar</SectionLabel>
+              <SectionLabel>Safety</SectionLabel>
               <h2
                 className="text-[28px] font-bold tracking-[-1px]"
                 style={{ fontFamily: 'var(--font-space-grotesk)' }}
               >
-                Spot Busy Days Before They Happen
+                Know Where to Walk&mdash;and Where Not To
               </h2>
               <p className="mt-4 text-[13px] leading-relaxed text-foreground-secondary">
-                Each day shows how many events are available and how many you&apos;ve planned. See at a
-                glance that Saturday is packed while Wednesday is wide open. Click any date to jump
-                straight into day-level planning.
+                San Francisco is an incredible city, but certain areas see more street crime than
+                others. The Tenderloin at midnight is a different experience than the Marina at noon.
+              </p>
+              <p className="mt-3 text-[13px] leading-relaxed text-foreground-secondary">
+                SF Trip Planner overlays a live crime heatmap directly on top of your events
+                and spots. See if that 9 PM meetup is in a safe zone. Check the walk from
+                dinner to your Airbnb. Make informed decisions about where to go and when.
+              </p>
+              <p className="mt-3 text-[13px] leading-relaxed text-foreground-secondary">
+                <span className="text-foreground">This isn&apos;t fear-mongering&mdash;it&apos;s situational awareness.</span>{' '}
+                The same data SFPD publishes, layered onto your trip plan so you don&apos;t
+                have to check a separate website.
               </p>
             </div>
           </div>
@@ -366,7 +395,7 @@ export default function LandingPage() {
         <div className="mx-auto max-w-[1200px] px-6">
           <div className="grid grid-cols-1 items-center gap-12 lg:grid-cols-2">
             <div>
-              <SectionLabel>Curated Spots</SectionLabel>
+              <SectionLabel>Spots</SectionLabel>
               <h2
                 className="text-[28px] font-bold tracking-[-1px]"
                 style={{ fontFamily: 'var(--font-space-grotesk)' }}
@@ -374,10 +403,10 @@ export default function LandingPage() {
                 Every Recommendation in One List
               </h2>
               <p className="mt-4 text-[13px] leading-relaxed text-foreground-secondary">
-                That ramen place from the blog. The rooftop bar your coworker mentioned. The coffee
-                shop with the 4.9 rating. Import them all, tag by category, and see them on the
-                map alongside your events. When it&apos;s time to plan dinner, filter to &ldquo;eat&rdquo; and
-                pick the one closest to your next event.
+                That ramen place from the blog. The rooftop bar your coworker mentioned. The
+                coffee shop with the 4.9 rating. Import them all, tag by category, and see them
+                on the map alongside your events. When it&apos;s time to plan dinner,
+                filter to &ldquo;eat&rdquo; and pick the one closest to your next event.
               </p>
             </div>
             <div className="border border-border">
@@ -393,6 +422,77 @@ export default function LandingPage() {
                 height={720}
                 className="block w-full"
               />
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* ── CORE VALUE: PLAN ── */}
+      <section className="border-b border-border py-20">
+        <div className="mx-auto max-w-[1200px] px-6">
+          <SectionLabel>Plan It</SectionLabel>
+          <h2
+            className="text-[32px] font-bold tracking-[-1px]"
+            style={{ fontFamily: 'var(--font-space-grotesk)' }}
+          >
+            Now Make It Happen
+          </h2>
+          <p className="mt-4 max-w-[640px] text-[13px] leading-relaxed text-foreground-secondary">
+            You&apos;ve seen everything. Now drag events into your day planner, share the plan
+            with your travel partner, and export the whole thing to your calendar.
+          </p>
+
+          <div className="mt-10 grid grid-cols-1 gap-3 md:grid-cols-3">
+            <FeatureCard
+              icon={GripVertical}
+              title="Plan with Ease"
+              description="Drag events and spots into a time-grid day planner. Rearrange by dragging. Routes update automatically on the map. See your full day at a glance."
+            />
+            <FeatureCard
+              icon={Users}
+              title="Plan with Friends"
+              description="Traveling with someone? Create a shared planner room. You each see both schedules side by side, but only edit your own. No stepping on each other's plans."
+            />
+            <FeatureCard
+              icon={CalendarSync}
+              title="Export to iCal &amp; Google Calendar"
+              description="Done planning? Export your itinerary as an ICS file or sync directly to Google Calendar. Every event, time, and location — on your phone before you land."
+            />
+          </div>
+        </div>
+      </section>
+
+      {/* ── SCREENSHOT: CALENDAR ── */}
+      <section className="border-b border-border py-20">
+        <div className="mx-auto max-w-[1200px] px-6">
+          <div className="grid grid-cols-1 items-center gap-12 lg:grid-cols-2">
+            <div className="border border-border">
+              <div className="flex h-8 items-center gap-2 border-b border-border bg-card px-4">
+                <span className="text-[10px] font-semibold uppercase tracking-[0.5px] text-muted">
+                  // CALENDAR_VIEW
+                </span>
+              </div>
+              <Image
+                src="/screenshots/calendar.png"
+                alt="Month calendar view showing event and plan counts per day"
+                width={1280}
+                height={720}
+                className="block w-full"
+              />
+            </div>
+            <div>
+              <SectionLabel>Calendar</SectionLabel>
+              <h2
+                className="text-[28px] font-bold tracking-[-1px]"
+                style={{ fontFamily: 'var(--font-space-grotesk)' }}
+              >
+                Spot Packed Days and Empty Ones
+              </h2>
+              <p className="mt-4 text-[13px] leading-relaxed text-foreground-secondary">
+                Each day shows how many events are available and how many you&apos;ve planned. See at a
+                glance that Saturday has 5 events while Wednesday is wide open. Click any date to
+                jump straight into day-level planning, then export the whole month to Google Calendar.
+              </p>
             </div>
           </div>
         </div>
