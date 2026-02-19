@@ -79,6 +79,7 @@ export default function PlannerItinerary() {
     if (!item.ownerUserId || !authUserId) return true;
     return item.ownerUserId === authUserId;
   });
+  const isMergedPairView = Boolean(currentPairRoomId && plannerViewMode === 'merged');
 
   return (
     <div className="flex flex-col p-3 min-h-0 h-full overflow-hidden">
@@ -128,27 +129,46 @@ export default function PlannerItinerary() {
               </div>
             ))}
           </div>
-          <div className="planner-block-layer">
+          <div className={`planner-block-layer ${isMergedPairView ? 'planner-block-layer-paired' : ''}`}>
             {(() => {
-              const { columns, totalCols } = computeOverlapColumns(dayPlanItems);
-              const collisions = getCollisions(dayPlanItems);
+              const mineItems = dayPlanItems.filter((item) => !item.ownerUserId || !authUserId || item.ownerUserId === authUserId);
+              const partnerItems = dayPlanItems.filter((item) => item.ownerUserId && authUserId && item.ownerUserId !== authUserId);
+
+              const allLayout = computeOverlapColumns(dayPlanItems);
+              const mineLayout = computeOverlapColumns(mineItems);
+              const partnerLayout = computeOverlapColumns(partnerItems);
+
+              const allCollisions = getCollisions(dayPlanItems);
+              const mineCollisions = getCollisions(mineItems);
+              const partnerCollisions = getCollisions(partnerItems);
+
               return dayPlanItems.map((item) => {
                 const top = item.startMinutes * PLAN_MINUTE_HEIGHT;
                 const height = Math.max(28, (item.endMinutes - item.startMinutes) * PLAN_MINUTE_HEIGHT);
-                const col = columns.get(item.id) || 0;
-                const total = totalCols.get(item.id) || 1;
-                const widthPct = 100 / total;
-                const leftPct = col * widthPct;
-                const hasCollision = collisions.has(item.id);
                 const isReadOnly = Boolean(
                   currentPairRoomId
                   && item.ownerUserId
                   && authUserId
                   && item.ownerUserId !== authUserId
                 );
+                const isPartnerOwned = isReadOnly;
+                const activeLayout = isMergedPairView
+                  ? (isPartnerOwned ? partnerLayout : mineLayout)
+                  : allLayout;
+                const activeCollisions = isMergedPairView
+                  ? (isPartnerOwned ? partnerCollisions : mineCollisions)
+                  : allCollisions;
+                const col = activeLayout.columns.get(item.id) || 0;
+                const total = activeLayout.totalCols.get(item.id) || 1;
+                const laneWidthPct = isMergedPairView ? 50 : 100;
+                const laneOffsetPct = isMergedPairView ? (isPartnerOwned ? 50 : 0) : 0;
+                const widthPct = laneWidthPct / total;
+                const leftPct = laneOffsetPct + col * widthPct;
+                const hasCollision = activeCollisions.has(item.id);
                 const itemClass = [
                   'planner-item',
                   item.kind === 'event' ? 'planner-item-event' : 'planner-item-place',
+                  isPartnerOwned ? 'planner-item-owner-partner' : 'planner-item-owner-mine',
                   isReadOnly ? 'opacity-70' : '',
                   activePlanId === item.id ? 'planner-item-active' : ''
                 ].filter(Boolean).join(' ');
@@ -163,7 +183,9 @@ export default function PlannerItinerary() {
                     </div>
                     <div className="text-[0.72rem] font-bold text-foreground-secondary tracking-wide">{formatMinuteLabel(item.startMinutes)} - {formatMinuteLabel(item.endMinutes)}</div>
                     <div className="mt-0.5 text-[0.82rem] font-bold text-foreground leading-tight break-words">{item.title}</div>
-                    {isReadOnly ? <div className="mt-0.5 text-[0.65rem] font-semibold uppercase tracking-wide text-warning">Partner</div> : null}
+                    <div className={`mt-0.5 text-[0.65rem] font-semibold uppercase tracking-wide ${isPartnerOwned ? 'text-warning' : 'text-accent'}`}>
+                      {isPartnerOwned ? 'Partner' : 'Mine'}
+                    </div>
                     {item.locationText ? <div className="mt-0.5 text-[0.72rem] text-foreground-secondary leading-tight break-words">{item.locationText}</div> : null}
                     <button type="button" className={`absolute left-0 right-0 bottom-0 h-2 border-none bg-transparent ${isReadOnly ? 'cursor-default' : 'cursor-ns-resize'}`} aria-label="Adjust end time" onPointerDown={isReadOnly ? undefined : (e) => startPlanDrag(e, item, 'resize-end')} />
                   </article>

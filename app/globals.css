@@ -58,6 +58,15 @@
 .planner-hour-row { position: absolute; left: 0; right: 0; height: 50px; border-top: 1px solid #1f1f1f; }
 .planner-hour-label { position: absolute; left: 10px; top: -8px; background: var(--color-card); color: var(--color-muted); font-size: 0.7rem; font-weight: 600; padding: 0 4px; }
 .planner-block-layer { position: absolute; inset: 0 0 0 76px; }
+.planner-block-layer-paired::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    linear-gradient(to right, rgba(0, 255, 136, 0.03) 0 50%, rgba(64, 140, 255, 0.04) 50% 100%),
+    linear-gradient(to right, transparent calc(50% - 0.5px), var(--color-border) 0, transparent calc(50% + 0.5px));
+}
 
 .planner-item {
   position: absolute; border-radius: 0; box-sizing: border-box;
@@ -70,6 +79,8 @@
 .planner-item-active { box-shadow: 0 0 0 3px var(--color-accent-glow); }
 .planner-item-event { background: rgba(255, 136, 0, 0.10); border-color: rgba(255, 136, 0, 0.3); }
 .planner-item-place { background: rgba(0, 255, 136, 0.06); border-color: rgba(0, 255, 136, 0.2); }
+.planner-item-owner-mine { background: rgba(0, 255, 136, 0.08); border-color: rgba(0, 255, 136, 0.35); }
+.planner-item-owner-partner { background: rgba(64, 140, 255, 0.12); border-color: rgba(64, 140, 255, 0.4); }
 
 /* Google Maps container needs absolute positioning */
 #map { position: absolute; inset: 0; background: #141414; }
