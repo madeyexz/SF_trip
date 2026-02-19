@@ -157,14 +157,14 @@ export default function PlannerItinerary() {
                   <article className={itemClass} key={item.id} style={{ top: `${top}px`, height: `${height}px`, width: `${widthPct}%`, left: `${leftPct}%` }} onPointerDown={isReadOnly ? undefined : (e) => startPlanDrag(e, item, 'move')}>
                     <button type="button" className={`absolute left-0 right-0 top-0 h-2 border-none bg-transparent ${isReadOnly ? 'cursor-default' : 'cursor-ns-resize'}`} aria-label="Adjust start time" onPointerDown={isReadOnly ? undefined : (e) => startPlanDrag(e, item, 'resize-start')} />
                     <div className="absolute top-1 right-1.5 flex items-center gap-1.5">
-                      {hasCollision ? <AlertTriangle size={12} className="text-amber-500" aria-label="Time conflict" /> : null}
-                      <button type="button" className="px-1.5 py-0.5 rounded border border-slate-300 bg-white text-slate-600 text-[0.65rem] font-semibold leading-tight cursor-pointer hover:bg-blue-50 hover:border-blue-400 hover:text-blue-600 transition-colors" aria-label="Add to Google Calendar" onClick={(e) => { e.stopPropagation(); const url = buildGoogleCalendarItemUrl({ dateISO: selectedDate, item, baseLocationText }); window.open(url, '_blank', 'noopener,noreferrer'); }} title="Add to Google Calendar">+ GCal</button>
-                      <button type="button" className="border-none bg-transparent text-slate-600 text-base leading-none cursor-pointer hover:text-slate-900 disabled:opacity-35 disabled:cursor-not-allowed" aria-label="Remove from plan" disabled={isReadOnly} onClick={(e) => { e.stopPropagation(); removePlanItem(item.id); }}>x</button>
+                      {hasCollision ? <AlertTriangle size={12} className="text-warning" aria-label="Time conflict" /> : null}
+                      <button type="button" className="px-1.5 py-0.5 rounded-none border border-border bg-bg-elevated text-foreground-secondary text-[0.65rem] font-semibold leading-tight cursor-pointer hover:bg-accent-light hover:border-accent-border hover:text-accent transition-colors" aria-label="Add to Google Calendar" onClick={(e) => { e.stopPropagation(); const url = buildGoogleCalendarItemUrl({ dateISO: selectedDate, item, baseLocationText }); window.open(url, '_blank', 'noopener,noreferrer'); }} title="Add to Google Calendar">+ GCal</button>
+                      <button type="button" className="border-none bg-transparent text-foreground-secondary text-base leading-none cursor-pointer hover:text-foreground disabled:opacity-35 disabled:cursor-not-allowed" aria-label="Remove from plan" disabled={isReadOnly} onClick={(e) => { e.stopPropagation(); removePlanItem(item.id); }}>x</button>
                     </div>
-                    <div className="text-[0.72rem] font-bold text-gray-800 tracking-wide">{formatMinuteLabel(item.startMinutes)} - {formatMinuteLabel(item.endMinutes)}</div>
-                    <div className="mt-0.5 text-[0.82rem] font-bold text-slate-900 leading-tight break-words">{item.title}</div>
-                    {isReadOnly ? <div className="mt-0.5 text-[0.65rem] font-semibold uppercase tracking-wide text-amber-700">Partner</div> : null}
-                    {item.locationText ? <div className="mt-0.5 text-[0.72rem] text-slate-700 leading-tight break-words">{item.locationText}</div> : null}
+                    <div className="text-[0.72rem] font-bold text-foreground-secondary tracking-wide">{formatMinuteLabel(item.startMinutes)} - {formatMinuteLabel(item.endMinutes)}</div>
+                    <div className="mt-0.5 text-[0.82rem] font-bold text-foreground leading-tight break-words">{item.title}</div>
+                    {isReadOnly ? <div className="mt-0.5 text-[0.65rem] font-semibold uppercase tracking-wide text-warning">Partner</div> : null}
+                    {item.locationText ? <div className="mt-0.5 text-[0.72rem] text-foreground-secondary leading-tight break-words">{item.locationText}</div> : null}
                     <button type="button" className={`absolute left-0 right-0 bottom-0 h-2 border-none bg-transparent ${isReadOnly ? 'cursor-default' : 'cursor-ns-resize'}`} aria-label="Adjust end time" onPointerDown={isReadOnly ? undefined : (e) => startPlanDrag(e, item, 'resize-end')} />
                   </article>
                 );
@@ -173,10 +173,10 @@ export default function PlannerItinerary() {
           </div>
         </div>
       ) : (
-        <p className="my-3 text-muted text-sm text-center p-7 bg-bg-subtle rounded-[10px] border border-dashed border-border">Pick a date from the left to start planning.</p>
+        <p className="my-3 text-muted text-sm text-center p-7 bg-bg-subtle rounded-none border border-dashed border-border">Pick a date from the left to start planning.</p>
       )}
 
-      <div className="mt-2.5 shrink-0 flex items-center gap-1.5 flex-wrap p-2 border border-border rounded-[10px] bg-bg-subtle text-foreground-secondary text-[0.8rem]" role="status" aria-live="polite">
+      <div className="mt-2.5 shrink-0 flex items-center gap-1.5 flex-wrap p-2 border border-border rounded-none bg-bg-subtle text-foreground-secondary text-[0.8rem]" role="status" aria-live="polite">
         <strong>Route:</strong> {routeSummaryText}
         {isRouteUpdating ? <span className="inline-flex items-center ml-2 text-[0.78rem] font-semibold text-accent before:content-[''] before:w-1.5 before:h-1.5 before:rounded-full before:bg-current before:mr-1.5 before:animate-[statusPulse_1.1s_ease-in-out_infinite]">Updating...</span> : null}
       </div>

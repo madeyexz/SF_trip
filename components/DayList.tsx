@@ -25,7 +25,7 @@ export default function DayList() {
   if (uniqueDates.length === 0) {
     return (
       <div className="flex flex-col gap-0.5 p-2 overflow-y-auto border-r border-border bg-bg-subtle scrollbar-thin day-list-responsive">
-        <p className="my-3 text-muted text-sm text-center p-7 bg-bg-subtle rounded-[10px] border border-dashed border-border">No event dates</p>
+        <p className="my-3 text-muted text-sm text-center p-7 bg-bg-subtle rounded-none border border-dashed border-border">No event dates</p>
       </div>
     );
   }
@@ -44,7 +44,7 @@ export default function DayList() {
           <button
             key={dateISO}
             type="button"
-            className={`relative flex flex-col gap-1 px-3 py-2.5 rounded-lg text-left cursor-pointer transition-all duration-200 day-list-item-responsive
+            className={`relative flex flex-col gap-1 px-3 py-2.5 rounded-none text-left cursor-pointer transition-all duration-200 day-list-item-responsive
               ${isActive
                 ? 'bg-accent-light border border-accent-border shadow-[0_0_0_2px_var(--color-accent-glow)]'
                 : 'border border-transparent hover:bg-card hover:border-border'}
@@ -59,24 +59,24 @@ export default function DayList() {
             {!isEmpty && (
               <div className="flex flex-col gap-1 w-full" aria-hidden="true">
                 {eventCount > 0 && (
-                  <div className="h-[6px] rounded-full bg-border/60 overflow-hidden" title={`${eventCount} events`}>
+                  <div className="h-[6px] rounded-none bg-border/60 overflow-hidden" title={`${eventCount} events`}>
                     <div
-                      className="h-full rounded-full"
+                      className="h-full"
                       style={{
                         width: `${Math.max(evI * 100, 22)}%`,
-                        backgroundColor: '#ea580c',
+                        backgroundColor: '#FF8800',
                         opacity: 0.35 + evI * 0.65,
                       }}
                     />
                   </div>
                 )}
                 {planCount > 0 && (
-                  <div className="h-[6px] rounded-full bg-border/60 overflow-hidden" title={`${planCount} plans`}>
+                  <div className="h-[6px] rounded-none bg-border/60 overflow-hidden" title={`${planCount} plans`}>
                     <div
-                      className="h-full rounded-full"
+                      className="h-full"
                       style={{
                         width: `${Math.max(plI * 100, 22)}%`,
-                        backgroundColor: '#2563eb',
+                        backgroundColor: '#00FF88',
                         opacity: 0.35 + plI * 0.65,
                       }}
                     />

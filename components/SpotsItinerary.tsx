@@ -27,16 +27,16 @@ export default function SpotsItinerary() {
               onValueChange={(v) => { if (v) setPlaceTagFilter(v); }}
             >
               {placeTagOptions.map((tag) => (
-                <ToggleGroupItem key={tag} className="shrink-0 px-3 py-1 text-[0.8rem] font-medium rounded-full" value={tag}>{formatTag(tag)}</ToggleGroupItem>
+                <ToggleGroupItem key={tag} className="shrink-0 px-3 py-1" value={tag}>{formatTag(tag)}</ToggleGroupItem>
               ))}
             </ToggleGroup>
           </div>
         </div>
-        <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-bg-subtle text-muted text-[0.7rem] font-semibold whitespace-nowrap">{visiblePlaces.length} places</span>
+        <span className="inline-flex items-center px-2 py-0.5 rounded-none bg-bg-subtle text-muted text-[0.7rem] font-semibold whitespace-nowrap">{visiblePlaces.length} places</span>
       </div>
       <div className="flex flex-col gap-2">
         {visiblePlaces.length === 0 ? (
-          <p className="my-3 text-muted text-sm text-center p-7 bg-bg-subtle rounded-[10px] border border-dashed border-border">No curated places in this category.</p>
+          <p className="my-3 text-muted text-sm text-center p-7 bg-bg-subtle rounded-none border border-dashed border-border">No curated places in this category.</p>
         ) : (
           visiblePlaces.map((place) => (
             <Card className="p-3.5 hover:border-accent-border hover:shadow-[0_0_0_3px_var(--color-accent-glow)]" key={place.id || `${place.name}-${place.location}`}>
@@ -50,14 +50,14 @@ export default function SpotsItinerary() {
               {place.details ? <p className="my-0.5 text-[0.82rem] text-foreground-secondary leading-relaxed">{truncate(place.details, 220)}</p> : null}
               {normalizePlaceTag(place.tag) === 'avoid' ? (
                 <div className="my-1.5 flex flex-col gap-1">
-                  <p className="my-0 flex items-center gap-1.5 text-[0.82rem] font-semibold text-red-600"><TriangleAlert className="w-4 h-4 shrink-0" />{place.risk === 'extreme' ? 'DO NOT VISIT' : place.risk === 'high' ? 'High risk — stay away' : 'Exercise caution'}</p>
-                  {place.crimeTypes ? <p className="my-0 text-[0.78rem] text-red-500 font-medium pl-[22px]">{place.crimeTypes}</p> : null}
+                  <p className="my-0 flex items-center gap-1.5 text-[0.82rem] font-semibold text-[#FF4444]"><TriangleAlert className="w-4 h-4 shrink-0" />{place.risk === 'extreme' ? 'DO NOT VISIT' : place.risk === 'high' ? 'High risk — stay away' : 'Exercise caution'}</p>
+                  {place.crimeTypes ? <p className="my-0 text-[0.78rem] text-[#FF4444] font-medium pl-[22px]">{place.crimeTypes}</p> : null}
                 </div>
               ) : normalizePlaceTag(place.tag) === 'safe' ? (
                 <div className="my-1.5 flex flex-col gap-1">
-                  <p className="my-0 flex items-center gap-1.5 text-[0.82rem] font-semibold text-green-700"><ShieldCheck className="w-4 h-4 shrink-0" />Safer area</p>
-                  <p className="my-0 text-[0.78rem] text-green-700 font-medium pl-[22px]">{place.safetyLabel || place.safetyHighlights || 'Lower violent-crime profile than city average.'}</p>
-                  {place.crimeTypes ? <p className="my-0 text-[0.76rem] text-green-700/80 pl-[22px]">Watch for: {place.crimeTypes}</p> : null}
+                  <p className="my-0 flex items-center gap-1.5 text-[0.82rem] font-semibold text-accent"><ShieldCheck className="w-4 h-4 shrink-0" />Safer area</p>
+                  <p className="my-0 text-[0.78rem] text-accent font-medium pl-[22px]">{place.safetyLabel || place.safetyHighlights || 'Lower violent-crime profile than city average.'}</p>
+                  {place.crimeTypes ? <p className="my-0 text-[0.76rem] text-accent/80 pl-[22px]">Watch for: {place.crimeTypes}</p> : null}
                 </div>
               ) : (
                 <Button type="button" size="sm" variant="secondary" onClick={() => addPlaceToDayPlan(place)}>Add to day</Button>
