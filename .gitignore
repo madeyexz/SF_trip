@@ -1,6 +1,13 @@
 docs/my_location.md
 .env
 node_modules
+.DS_Store
+
+# AI tooling config
+.claude/
+.agents/
+.cursor/
+.factory/
 data/events-cache.json
 data/geocode-cache.json
 data/route-cache.json
