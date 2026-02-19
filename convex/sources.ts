@@ -1,9 +1,53 @@
 import { mutation, query } from './_generated/server';
+import type { Id } from './_generated/dataModel';
 import { v } from 'convex/values';
 import { requireAuthenticatedUserId, requireOwnerUserId } from './authz';
 
 const sourceTypeValidator = v.union(v.literal('event'), v.literal('spot'));
 const sourceStatusValidator = v.union(v.literal('active'), v.literal('paused'));
+const sourceRecordValidator = v.object({
+  _id: v.id('sources'),
+  sourceType: sourceTypeValidator,
+  url: v.string(),
+  label: v.string(),
+  status: sourceStatusValidator,
+  createdAt: v.string(),
+  updatedAt: v.string(),
+  lastSyncedAt: v.optional(v.string()),
+  lastError: v.optional(v.string()),
+  rssStateJson: v.optional(v.string())
+});
+const deleteSourceResultValidator = v.object({
+  deleted: v.boolean()
+});
+
+type SourceRecordLike = {
+  _id: Id<'sources'>;
+  sourceType: 'event' | 'spot';
+  url: string;
+  label: string;
+  status: 'active' | 'paused';
+  createdAt: string;
+  updatedAt: string;
+  lastSyncedAt?: string;
+  lastError?: string;
+  rssStateJson?: string;
+};
+
+function buildSourceResponse(row: SourceRecordLike) {
+  return {
+    _id: row._id,
+    sourceType: row.sourceType,
+    url: row.url,
+    label: row.label,
+    status: row.status,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
+    ...(typeof row.lastSyncedAt === 'string' ? { lastSyncedAt: row.lastSyncedAt } : {}),
+    ...(typeof row.lastError === 'string' ? { lastError: row.lastError } : {}),
+    ...(typeof row.rssStateJson === 'string' ? { rssStateJson: row.rssStateJson } : {})
+  };
+}
 
 function parseIpv4(hostname: string) {
   const parts = hostname.split('.');
@@ -63,12 +107,13 @@ function assertPublicSourceUrl(url: string) {
 
 export const listSources = query({
   args: {},
+  returns: v.array(sourceRecordValidator),
   handler: async (ctx) => {
     await requireAuthenticatedUserId(ctx);
     const rows = await ctx.db.query('sources').collect();
 
     return rows
-      .map(({ _creationTime, ...row }) => row)
+      .map(({ _creationTime, ...row }) => buildSourceResponse(row))
       .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
   }
 });
@@ -77,6 +122,7 @@ export const listActiveSources = query({
   args: {
     sourceType: sourceTypeValidator
   },
+  returns: v.array(sourceRecordValidator),
   handler: async (ctx, args) => {
     await requireAuthenticatedUserId(ctx);
     const rows = await ctx.db
@@ -84,7 +130,7 @@ export const listActiveSources = query({
       .withIndex('by_type_status', (q) => q.eq('sourceType', args.sourceType).eq('status', 'active'))
       .collect();
 
-    return rows.map(({ _creationTime, ...row }) => row);
+    return rows.map(({ _creationTime, ...row }) => buildSourceResponse(row));
   }
 });
 
@@ -94,6 +140,7 @@ export const createSource = mutation({
     url: v.string(),
     label: v.optional(v.string())
   },
+  returns: sourceRecordValidator,
   handler: async (ctx, args) => {
     await requireOwnerUserId(ctx);
 
@@ -107,18 +154,21 @@ export const createSource = mutation({
       .first();
 
     if (existing && existing.sourceType === args.sourceType) {
-      await ctx.db.patch(existing._id, {
-        label: nextLabel,
-        status: 'active',
-        updatedAt: now
-      });
+      const shouldPatch = existing.label !== nextLabel || existing.status !== 'active';
+      if (shouldPatch) {
+        await ctx.db.patch(existing._id, {
+          label: nextLabel,
+          status: 'active',
+          updatedAt: now
+        });
+      }
 
-      return {
+      return buildSourceResponse({
         ...existing,
         label: nextLabel,
         status: 'active',
-        updatedAt: now
-      };
+        updatedAt: shouldPatch ? now : existing.updatedAt
+      });
     }
 
     const sourceId = await ctx.db.insert('sources', {
@@ -130,8 +180,15 @@ export const createSource = mutation({
       updatedAt: now
     });
 
-    const created = await ctx.db.get(sourceId);
-    return created;
+    return buildSourceResponse({
+      _id: sourceId,
+      sourceType: args.sourceType,
+      url: nextUrl,
+      label: nextLabel,
+      status: 'active',
+      createdAt: now,
+      updatedAt: now
+    });
   }
 });
 
@@ -144,6 +201,7 @@ export const updateSource = mutation({
     lastError: v.optional(v.string()),
     rssStateJson: v.optional(v.string())
   },
+  returns: v.union(v.null(), sourceRecordValidator),
   handler: async (ctx, args) => {
     await requireOwnerUserId(ctx);
 
@@ -153,41 +211,63 @@ export const updateSource = mutation({
     }
 
     const updates: {
-      updatedAt: string,
+      updatedAt?: string,
       label?: string,
       status?: 'active' | 'paused',
       lastSyncedAt?: string,
       lastError?: string,
       rssStateJson?: string
-    } = {
-      updatedAt: new Date().toISOString()
-    };
+    } = {};
 
     if (typeof args.label === 'string') {
-      updates.label = args.label.trim() || existing.label;
+      const nextLabel = args.label.trim() || existing.label;
+      if (nextLabel !== existing.label) {
+        updates.label = nextLabel;
+      }
     }
 
     if (typeof args.status === 'string') {
-      updates.status = args.status;
+      if (args.status !== existing.status) {
+        updates.status = args.status;
+      }
     }
 
     if (typeof args.lastSyncedAt === 'string') {
-      updates.lastSyncedAt = args.lastSyncedAt;
+      if (args.lastSyncedAt !== existing.lastSyncedAt) {
+        updates.lastSyncedAt = args.lastSyncedAt;
+      }
     }
 
     if (typeof args.lastError === 'string') {
-      updates.lastError = args.lastError.trim();
+      const nextLastError = args.lastError.trim();
+      if (nextLastError !== existing.lastError) {
+        updates.lastError = nextLastError;
+      }
     }
 
     if (typeof args.rssStateJson === 'string') {
-      updates.rssStateJson = args.rssStateJson.trim();
+      const nextRssStateJson = args.rssStateJson.trim();
+      if (nextRssStateJson !== existing.rssStateJson) {
+        updates.rssStateJson = nextRssStateJson;
+      }
     }
 
-    await ctx.db.patch(args.sourceId, updates);
-    return {
-      ...existing,
-      ...updates
-    };
+    if (Object.keys(updates).length > 0) {
+      updates.updatedAt = new Date().toISOString();
+      await ctx.db.patch(args.sourceId, updates);
+    }
+    return buildSourceResponse({
+      _id: existing._id,
+      sourceType: existing.sourceType,
+      url: existing.url,
+      label: updates.label ?? existing.label,
+      status: updates.status ?? existing.status,
+      createdAt: existing.createdAt,
+      updatedAt: updates.updatedAt ?? existing.updatedAt,
+      lastSyncedAt: updates.lastSyncedAt ?? existing.lastSyncedAt,
+      lastError: updates.lastError ?? existing.lastError,
+      rssStateJson: updates.rssStateJson ?? existing.rssStateJson
+    });
   }
 });
 
@@ -195,6 +275,7 @@ export const deleteSource = mutation({
   args: {
     sourceId: v.id('sources')
   },
+  returns: deleteSourceResultValidator,
   handler: async (ctx, args) => {
     await requireOwnerUserId(ctx);
 

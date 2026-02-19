@@ -18,9 +18,40 @@ const spotValidator = v.object({
   sourceUrl: v.optional(v.string()),
   confidence: v.optional(v.number())
 });
+const spotRecordValidator = v.object({
+  id: v.string(),
+  name: v.string(),
+  tag: v.string(),
+  location: v.string(),
+  mapLink: v.string(),
+  cornerLink: v.string(),
+  curatorComment: v.string(),
+  description: v.string(),
+  details: v.string(),
+  lat: v.optional(v.number()),
+  lng: v.optional(v.number()),
+  sourceId: v.optional(v.string()),
+  sourceUrl: v.optional(v.string()),
+  confidence: v.optional(v.number()),
+  missedSyncCount: v.optional(v.number()),
+  isDeleted: v.optional(v.boolean()),
+  lastSeenAt: v.optional(v.string()),
+  updatedAt: v.optional(v.string())
+});
+const syncMetaValidator = v.object({
+  key: v.string(),
+  syncedAt: v.string(),
+  calendars: v.array(v.string()),
+  eventCount: v.number()
+});
+const upsertSpotsResultValidator = v.object({
+  spotCount: v.number(),
+  syncedAt: v.string()
+});
 
 export const listSpots = query({
   args: {},
+  returns: v.array(spotRecordValidator),
   handler: async (ctx) => {
     await requireAuthenticatedUserId(ctx);
     const rows = await ctx.db.query('spots').collect();
@@ -34,6 +65,7 @@ export const listSpots = query({
 
 export const getSyncMeta = query({
   args: {},
+  returns: v.union(v.null(), syncMetaValidator),
   handler: async (ctx) => {
     await requireAuthenticatedUserId(ctx);
     const row = await ctx.db.query('syncMeta').withIndex('by_key', (q) => q.eq('key', 'spots')).first();
@@ -54,6 +86,7 @@ export const upsertSpots = mutation({
     sourceUrls: v.array(v.string()),
     missedSyncThreshold: v.optional(v.number())
   },
+  returns: upsertSpotsResultValidator,
   handler: async (ctx, args) => {
     await requireOwnerUserId(ctx);
 

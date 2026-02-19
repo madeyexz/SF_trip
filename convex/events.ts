@@ -18,9 +18,50 @@ const eventValidator = v.object({
   sourceUrl: v.optional(v.string()),
   confidence: v.optional(v.number())
 });
+const eventRecordValidator = v.object({
+  id: v.string(),
+  name: v.string(),
+  description: v.string(),
+  eventUrl: v.string(),
+  startDateTimeText: v.string(),
+  startDateISO: v.string(),
+  locationText: v.string(),
+  address: v.string(),
+  googleMapsUrl: v.string(),
+  lat: v.optional(v.number()),
+  lng: v.optional(v.number()),
+  sourceId: v.optional(v.string()),
+  sourceUrl: v.optional(v.string()),
+  confidence: v.optional(v.number()),
+  missedSyncCount: v.optional(v.number()),
+  isDeleted: v.optional(v.boolean()),
+  lastSeenAt: v.optional(v.string()),
+  updatedAt: v.optional(v.string())
+});
+const syncMetaValidator = v.object({
+  key: v.string(),
+  syncedAt: v.string(),
+  calendars: v.array(v.string()),
+  eventCount: v.number()
+});
+const geocodeValidator = v.object({
+  addressKey: v.string(),
+  lat: v.number(),
+  lng: v.number(),
+  updatedAt: v.string()
+});
+const upsertGeocodeResultValidator = v.object({
+  addressKey: v.string(),
+  updatedAt: v.string()
+});
+const upsertEventsResultValidator = v.object({
+  eventCount: v.number(),
+  syncedAt: v.string()
+});
 
 export const listEvents = query({
   args: {},
+  returns: v.array(eventRecordValidator),
   handler: async (ctx) => {
     await requireAuthenticatedUserId(ctx);
     const events = await ctx.db.query('events').collect();
@@ -38,6 +79,7 @@ export const listEvents = query({
 
 export const getSyncMeta = query({
   args: {},
+  returns: v.union(v.null(), syncMetaValidator),
   handler: async (ctx) => {
     await requireAuthenticatedUserId(ctx);
     const row = await ctx.db.query('syncMeta').withIndex('by_key', (q) => q.eq('key', 'events')).first();
@@ -55,6 +97,7 @@ export const getGeocodeByAddressKey = query({
   args: {
     addressKey: v.string()
   },
+  returns: v.union(v.null(), geocodeValidator),
   handler: async (ctx, args) => {
     await requireAuthenticatedUserId(ctx);
     const row = await ctx.db
@@ -83,6 +126,7 @@ export const upsertGeocode = mutation({
     lng: v.number(),
     updatedAt: v.string()
   },
+  returns: upsertGeocodeResultValidator,
   handler: async (ctx, args) => {
     await requireAuthenticatedUserId(ctx);
 
@@ -100,15 +144,23 @@ export const upsertGeocode = mutation({
     };
 
     if (existing) {
-      await ctx.db.patch(existing._id, next);
+      const shouldPatch = existing.addressText !== args.addressText ||
+        existing.lat !== args.lat ||
+        existing.lng !== args.lng;
+      if (shouldPatch) {
+        await ctx.db.patch(existing._id, next);
+      }
+      return {
+        addressKey: args.addressKey,
+        updatedAt: shouldPatch ? args.updatedAt : existing.updatedAt
+      };
     } else {
       await ctx.db.insert('geocodeCache', next);
+      return {
+        addressKey: args.addressKey,
+        updatedAt: args.updatedAt
+      };
     }
-
-    return {
-      addressKey: args.addressKey,
-      updatedAt: args.updatedAt
-    };
   }
 });
 
@@ -119,6 +171,7 @@ export const upsertEvents = mutation({
     calendars: v.array(v.string()),
     missedSyncThreshold: v.optional(v.number())
   },
+  returns: upsertEventsResultValidator,
   handler: async (ctx, args) => {
     await requireOwnerUserId(ctx);
 

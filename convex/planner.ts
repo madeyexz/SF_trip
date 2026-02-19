@@ -20,6 +20,49 @@ const planItemValidator = v.object({
 });
 
 const plannerByDateValidator = v.record(v.string(), v.array(planItemValidator));
+const plannerStateItemValidator = v.object({
+  id: v.string(),
+  kind: v.union(v.literal('event'), v.literal('place')),
+  sourceKey: v.string(),
+  title: v.string(),
+  locationText: v.string(),
+  link: v.string(),
+  tag: v.string(),
+  startMinutes: v.number(),
+  endMinutes: v.number(),
+  ownerUserId: v.string()
+});
+const plannerStateByDateValidator = v.record(v.string(), v.array(plannerStateItemValidator));
+const getPlannerStateResultValidator = v.object({
+  userId: v.string(),
+  roomCode: v.string(),
+  memberCount: v.number(),
+  plannerByDateMine: plannerStateByDateValidator,
+  plannerByDatePartner: plannerStateByDateValidator,
+  plannerByDateCombined: plannerStateByDateValidator
+});
+const replacePlannerStateResultValidator = v.object({
+  userId: v.string(),
+  roomCode: v.string(),
+  dateCount: v.number(),
+  itemCount: v.number(),
+  updatedAt: v.string()
+});
+const pairRoomMutationResultValidator = v.object({
+  roomCode: v.string(),
+  memberCount: v.number()
+});
+const joinPairRoomResultValidator = v.object({
+  roomCode: v.string(),
+  memberCount: v.number(),
+  migratedLegacyRoom: v.boolean()
+});
+const listMyPairRoomsResultValidator = v.array(v.object({
+  roomCode: v.string(),
+  memberCount: v.number(),
+  joinedAt: v.string(),
+  updatedAt: v.string()
+}));
 
 type ConvexCtx = QueryCtx | MutationCtx;
 
@@ -33,6 +76,25 @@ type PlanItem = {
   tag: string;
   startMinutes: number;
   endMinutes: number;
+};
+type PlannerStateItem = PlanItem & {
+  ownerUserId: string;
+};
+
+type PlannerByDate = Record<string, PlanItem[]>;
+
+type PlannerEntryLike = {
+  dateISO: string;
+  itemId: string;
+  kind: 'event' | 'place';
+  sourceKey: string;
+  title: string;
+  locationText: string;
+  link: string;
+  tag: string;
+  startMinutes: number;
+  endMinutes: number;
+  updatedAt: string;
 };
 
 function cleanText(value: unknown) {
@@ -64,7 +126,7 @@ function clampMinutes(value: unknown, min: number, max: number) {
   return Math.min(max, Math.max(min, Math.round(parsed)));
 }
 
-function sortPlanItems(items: PlanItem[]) {
+function sortPlanItems<T extends { startMinutes: number }>(items: T[]) {
   return [...items].sort((left, right) => left.startMinutes - right.startMinutes);
 }
 
@@ -143,19 +205,73 @@ async function ensureRoomMembership(
   };
 }
 
-function pushByDate(target: Record<string, PlanItem[]>, dateISO: string, item: PlanItem) {
+function pushByDate<T>(target: Record<string, T[]>, dateISO: string, item: T) {
   if (!target[dateISO]) {
     target[dateISO] = [];
   }
   target[dateISO].push(item);
 }
 
-function finalizePlannerByDate(value: Record<string, PlanItem[]>) {
-  const result: Record<string, PlanItem[]> = {};
+function finalizePlannerByDate<T extends { startMinutes: number }>(value: Record<string, T[]>) {
+  const result: Record<string, T[]> = {};
   for (const [dateISO, items] of Object.entries(value)) {
     result[dateISO] = sortPlanItems(items);
   }
   return result;
+}
+
+function plannerFingerprint(plannerByDate: PlannerByDate) {
+  const entries = Object.entries(plannerByDate)
+    .sort(([leftDate], [rightDate]) => leftDate.localeCompare(rightDate))
+    .map(([dateISO, items]) => {
+      const normalizedItems = [...items].sort((left, right) => {
+        if (left.startMinutes !== right.startMinutes) {
+          return left.startMinutes - right.startMinutes;
+        }
+        if (left.endMinutes !== right.endMinutes) {
+          return left.endMinutes - right.endMinutes;
+        }
+        if (left.kind !== right.kind) {
+          return left.kind.localeCompare(right.kind);
+        }
+        if (left.sourceKey !== right.sourceKey) {
+          return left.sourceKey.localeCompare(right.sourceKey);
+        }
+        if (left.id !== right.id) {
+          return left.id.localeCompare(right.id);
+        }
+        if (left.title !== right.title) {
+          return left.title.localeCompare(right.title);
+        }
+        if (left.locationText !== right.locationText) {
+          return left.locationText.localeCompare(right.locationText);
+        }
+        if (left.link !== right.link) {
+          return left.link.localeCompare(right.link);
+        }
+        return left.tag.localeCompare(right.tag);
+      });
+      return [dateISO, normalizedItems];
+    });
+  return JSON.stringify(entries);
+}
+
+function plannerByDateFromRows(rows: PlannerEntryLike[]) {
+  const plannerByDate: PlannerByDate = {};
+  for (const row of rows) {
+    pushByDate(plannerByDate, row.dateISO, {
+      id: row.itemId,
+      kind: row.kind,
+      sourceKey: row.sourceKey,
+      title: row.title,
+      locationText: row.locationText,
+      link: row.link,
+      tag: row.tag,
+      startMinutes: row.startMinutes,
+      endMinutes: row.endMinutes
+    });
+  }
+  return finalizePlannerByDate(plannerByDate);
 }
 
 async function maybeMigrateLegacyPlanner(
@@ -209,6 +325,7 @@ export const getPlannerState = query({
   args: {
     roomCode: v.optional(v.string())
   },
+  returns: getPlannerStateResultValidator,
   handler: async (ctx, args) => {
     const userId = await requireCurrentUserId(ctx);
     const { roomCode, isPairRoom } = await ensureRoomMembership(ctx, userId, args.roomCode);
@@ -218,9 +335,9 @@ export const getPlannerState = query({
       .withIndex('by_room_code', (q) => q.eq('roomCode', roomCode))
       .collect();
 
-    const plannerByDateMine: Record<string, PlanItem[]> = {};
-    const plannerByDatePartner: Record<string, PlanItem[]> = {};
-    const plannerByDateCombined: Record<string, PlanItem[]> = {};
+    const plannerByDateMine: Record<string, PlannerStateItem[]> = {};
+    const plannerByDatePartner: Record<string, PlannerStateItem[]> = {};
+    const plannerByDateCombined: Record<string, PlannerStateItem[]> = {};
 
     for (const row of rows) {
       const planItem = {
@@ -268,6 +385,7 @@ export const replacePlannerState = mutation({
     roomCode: v.optional(v.string()),
     plannerByDate: plannerByDateValidator
   },
+  returns: replacePlannerStateResultValidator,
   handler: async (ctx, args) => {
     const userId = await requireCurrentUserId(ctx);
     const { roomCode, isPairRoom } = await ensureRoomMembership(ctx, userId, args.roomCode);
@@ -280,11 +398,25 @@ export const replacePlannerState = mutation({
       .withIndex('by_room_owner', (q) => q.eq('roomCode', roomCode).eq('ownerUserId', userId))
       .collect();
 
+    const sanitized = sanitizePlannerByDate(args.plannerByDate);
+    if (plannerFingerprint(plannerByDateFromRows(existing)) === plannerFingerprint(sanitized)) {
+      const updatedAt = existing.reduce(
+        (maxUpdatedAt, row) => (row.updatedAt > maxUpdatedAt ? row.updatedAt : maxUpdatedAt),
+        ''
+      ) || new Date().toISOString();
+      return {
+        userId,
+        roomCode,
+        dateCount: Object.keys(sanitized).length,
+        itemCount: existing.length,
+        updatedAt
+      };
+    }
+
     for (const row of existing) {
       await ctx.db.delete(row._id);
     }
 
-    const sanitized = sanitizePlannerByDate(args.plannerByDate);
     const updatedAt = new Date().toISOString();
     let inserted = 0;
     for (const [dateISO, items] of Object.entries(sanitized)) {
@@ -329,6 +461,7 @@ function generateRoomCode() {
 
 export const createPairRoom = mutation({
   args: {},
+  returns: pairRoomMutationResultValidator,
   handler: async (ctx) => {
     const userId = await requireCurrentUserId(ctx);
     const now = new Date().toISOString();
@@ -373,6 +506,7 @@ export const joinPairRoom = mutation({
   args: {
     roomCode: v.string()
   },
+  returns: joinPairRoomResultValidator,
   handler: async (ctx, args) => {
     const userId = await requireCurrentUserId(ctx);
     const roomCode = normalizeRoomCode(args.roomCode);
@@ -420,6 +554,7 @@ export const joinPairRoom = mutation({
       .withIndex('by_room_user', (q) => q.eq('roomCode', roomCode).eq('userId', userId))
       .first();
 
+    let didAddMembership = false;
     if (!existingMembership) {
       const members = await ctx.db
         .query('pairMembers')
@@ -434,11 +569,14 @@ export const joinPairRoom = mutation({
         userId,
         joinedAt: now
       });
+      didAddMembership = true;
     }
 
-    await ctx.db.patch(room._id, {
-      updatedAt: now
-    });
+    if (didAddMembership) {
+      await ctx.db.patch(room._id, {
+        updatedAt: now
+      });
+    }
 
     const memberCount = (
       await ctx.db
@@ -457,6 +595,7 @@ export const joinPairRoom = mutation({
 
 export const listMyPairRooms = query({
   args: {},
+  returns: listMyPairRoomsResultValidator,
   handler: async (ctx) => {
     const userId = await requireCurrentUserId(ctx);
     const memberships = await ctx.db

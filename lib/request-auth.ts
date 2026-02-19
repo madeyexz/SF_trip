@@ -50,7 +50,9 @@ export async function requireAuthenticatedClient() {
   }
 
   try {
-    const profile = await client.mutation('appUsers:ensureCurrentUserProfile' as any, {});
+    const profile =
+      await client.query('appUsers:getCurrentUserProfile' as any, {}) ||
+      await client.mutation('appUsers:ensureCurrentUserProfile' as any, {});
     return {
       client,
       deniedResponse: null,
