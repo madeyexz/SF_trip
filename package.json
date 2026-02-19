@@ -7,6 +7,7 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
+    "test:backend": "node --test lib/events.test.mjs lib/events.planner.test.mjs lib/pair-api.test.mjs lib/planner-api.test.mjs",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "typecheck": "tsc --noEmit",
