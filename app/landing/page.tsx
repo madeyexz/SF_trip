@@ -17,9 +17,9 @@ import {
 } from 'lucide-react';
 
 export const metadata = {
-  title: 'SF Trip Planner — Mission Control for Your San Francisco Trip',
+  title: 'SF Trip Planner — Turn 50 Open Tabs Into One Trip Plan',
   description:
-    'Aggregate events, curate spots, plan routes, and sync to Google Calendar. One dark terminal to rule your SF adventure.',
+    'Stop juggling newsletters, Google Maps lists, and bookmarked tabs. SF Trip Planner pulls every event and spot into one planner with map, calendar, and route planning.',
 };
 
 /* ------------------------------------------------------------------ */
@@ -84,7 +84,7 @@ export default function LandingPage() {
             href="/signin"
             className="bg-accent px-4 py-1.5 text-[11px] font-bold uppercase tracking-[0.5px] text-[#0C0C0C] transition-colors hover:bg-accent-hover"
           >
-            Launch Planner
+            Plan Your Trip Free
           </Link>
         </div>
       </nav>
@@ -104,25 +104,25 @@ export default function LandingPage() {
         <div className="pointer-events-none absolute left-1/2 top-1/3 h-[400px] w-[600px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-accent/[0.04] blur-[100px]" />
 
         <div className="relative z-10 mx-auto max-w-[1200px] px-6 text-center">
-          <Badge>Open Source</Badge>
+          <Badge>Free &amp; Open Source</Badge>
 
           <h1
             className="mt-6 text-[42px] font-bold leading-tight tracking-[-1px] text-foreground"
             style={{ fontFamily: 'var(--font-space-grotesk)' }}
           >
-            One Terminal to Plan
+            Turn 50 Open Tabs
             <br />
-            Your SF Adventure
+            Into One Trip Plan
           </h1>
 
           <p className="mx-auto mt-5 max-w-[600px] text-[14px] leading-relaxed text-foreground-secondary">
-            Too many recommendation lists. Too many bookmarked tabs. Zero integration.
-            <br />
+            You have 12 newsletters recommending SF events, a Google Maps list of restaurants, and
+            a friend&apos;s recs buried in chat.{' '}
             <span className="text-foreground">
-              SF Trip Planner aggregates events, curates spots, plans routes, and syncs to your
-              calendar
+              SF Trip Planner pulls every source into one screen
             </span>
-            &mdash;all from one dark, developer-friendly mission control.
+            &mdash;map, calendar, and day planner side by side&mdash;so you stop cross-referencing
+            and start deciding.
           </p>
 
           <div className="mt-8 flex items-center justify-center gap-4">
@@ -131,7 +131,7 @@ export default function LandingPage() {
               className="inline-flex items-center gap-2 bg-accent px-6 py-3 text-[11px] font-bold uppercase tracking-[0.5px] text-[#0C0C0C] transition-colors hover:bg-accent-hover"
             >
               <Terminal size={14} />
-              Launch Planner
+              Plan Your Trip Free
             </Link>
             <a
               href="https://github.com/madeyexz/SF_trip"
@@ -139,7 +139,7 @@ export default function LandingPage() {
               rel="noopener noreferrer"
               className="inline-flex items-center gap-2 border border-border bg-card px-6 py-3 text-[11px] font-bold uppercase tracking-[0.5px] text-foreground transition-colors hover:border-accent"
             >
-              View Source
+              View on GitHub
               <ArrowRight size={12} />
             </a>
           </div>
@@ -171,40 +171,39 @@ export default function LandingPage() {
             className="text-[32px] font-bold tracking-[-1px]"
             style={{ fontFamily: 'var(--font-space-grotesk)' }}
           >
-            Information Overload, Zero Structure
+            Sound Familiar?
           </h2>
           <p className="mt-4 max-w-[640px] text-[13px] leading-relaxed text-foreground-secondary">
-            Planning a trip to San Francisco means juggling dozens of event recommendation lists,
-            curated spot roundups, scattered across newsletters, calendars, and bookmarks. By the
-            time you cross-reference dates, check locations, and figure out logistics, the trip is
-            half over.
+            You&apos;re visiting SF. You&apos;ve done the research. Now your browser has 47 tabs open and
+            you still don&apos;t know what to do on Tuesday.
           </p>
 
           <div className="mt-10 grid grid-cols-1 gap-3 md:grid-cols-3">
             <div className="border border-warning/30 bg-warning/[0.05] p-5">
               <p className="text-[11px] font-bold uppercase tracking-[0.5px] text-warning">
-                [Problem_01]
+                [Scattered_Events]
               </p>
               <p className="mt-2 text-[13px] text-foreground-secondary">
-                Too many event recommendation lists from newsletters, Luma, Eventbrite, and friends.
+                Newsletters from Beehiiv, events on Luma, meetups on Eventbrite, and a friend&apos;s
+                list in iMessage. Each one links to a different site. Good luck cross-referencing dates.
               </p>
             </div>
             <div className="border border-warning/30 bg-warning/[0.05] p-5">
               <p className="text-[11px] font-bold uppercase tracking-[0.5px] text-warning">
-                [Problem_02]
+                [Buried_Spots]
               </p>
               <p className="mt-2 text-[13px] text-foreground-secondary">
-                Too many spot recommendation lists&mdash;restaurants, cafes, bars, shops&mdash;spread
-                across Google Maps lists and notes.
+                Your restaurant list lives in Google Maps. That blog roundup of coffee shops?
+                Bookmarked and forgotten. The ramen spot someone mentioned? Lost in a group chat.
               </p>
             </div>
             <div className="border border-warning/30 bg-warning/[0.05] p-5">
               <p className="text-[11px] font-bold uppercase tracking-[0.5px] text-warning">
-                [Problem_03]
+                [No_Big_Picture]
               </p>
               <p className="mt-2 text-[13px] text-foreground-secondary">
-                No single view to compare times, locations, and priorities. Too many open tabs, zero
-                integration.
+                You know what you want to do. You don&apos;t know when things overlap, which events are
+                walkable from each other, or where you should even stay to save on transit.
               </p>
             </div>
           </div>
@@ -214,64 +213,64 @@ export default function LandingPage() {
       {/* ── FEATURES GRID ── */}
       <section className="border-b border-border py-20">
         <div className="mx-auto max-w-[1200px] px-6">
-          <SectionLabel>Capabilities</SectionLabel>
+          <SectionLabel>What You Get</SectionLabel>
           <h2
             className="text-[32px] font-bold tracking-[-1px]"
             style={{ fontFamily: 'var(--font-space-grotesk)' }}
           >
-            Everything in One Place
+            Three Panes. Zero Tab-Switching.
           </h2>
           <p className="mt-4 max-w-[640px] text-[13px] leading-relaxed text-foreground-secondary">
-            Inspired by information software design principles&mdash;show the user what they need to
-            know, not what they can click. Three parallel interfaces working together: map overview,
-            day filtering, and activity planning.
+            Map, events, and day planner live side by side. Click an event on the left, see it on
+            the map, drag it into your schedule on the right. No context-switching. No copy-pasting
+            between apps.
           </p>
 
           <div className="mt-10 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
             <FeatureCard
               icon={Rss}
-              title="Aggregate Sources"
-              description="Pull events from RSS feeds, iCal calendars, and newsletters (Beehiiv via Firecrawl). One sync, all your events."
+              title="Never Miss an Event"
+              description="Sync RSS feeds, iCal calendars, and newsletters in one click. Events from Luma, Eventbrite, and Beehiiv show up automatically — no manual entry."
             />
             <FeatureCard
               icon={AlertTriangle}
-              title="Time Conflict Warnings"
-              description="Visual warnings when events overlap. See conflicts at a glance so you never double-book a time slot."
+              title="Spot Conflicts Instantly"
+              description="Two events at 7 PM on Thursday? You'll see the overlap highlighted before you commit. No more double-booking."
             />
             <FeatureCard
               icon={Clock}
-              title="Days Remaining"
-              description="Map markers show how many days until each event. Prioritize what's coming up and skip what's passed."
+              title="Know What's Coming"
+              description="Every map marker shows days remaining until the event. Focus on what's soon, skip what's passed."
             />
             <FeatureCard
               icon={Home}
-              title="Choose Your Stay"
-              description="See the spatial distribution of events to pick accommodation that minimizes transit time and cost."
+              title="Pick the Right Neighborhood"
+              description="See where your events cluster on the map. Choose an Airbnb in the middle and cut your transit time in half."
             />
             <FeatureCard
               icon={BarChart3}
-              title="Time Distribution"
-              description="Bar charts reveal when events cluster. Find free windows for coffee chats and spontaneous exploration."
+              title="Find Gaps for Coffee Chats"
+              description="A bar chart shows when events cluster by hour. Spot the 2-hour gap on Wednesday afternoon — perfect for that coffee chat."
             />
             <FeatureCard
               icon={Route}
-              title="Auto Route Planning"
-              description="Automatic route generation between planned activities. See polylines on the map with walking/transit times."
+              title="See the Route, Not Just the Pins"
+              description="Drag activities into your day planner. The map draws walking and transit routes between stops with estimated times."
             />
             <FeatureCard
               icon={Calendar}
-              title="Google Calendar Sync"
-              description="Export your planned itinerary to Google Calendar or download as ICS. Keep your schedule in sync everywhere."
+              title="Keep Your Calendar in Sync"
+              description="Export your finalized itinerary to Google Calendar or download the ICS file. Your phone stays up to date."
             />
             <FeatureCard
               icon={Users}
-              title="Pair Planner"
-              description="Traveling with someone? Create a shared room and plan together in real-time with separate ownership of items."
+              title="Plan Together, Decide Separately"
+              description="Traveling with a friend? Share a planner room. You each see both schedules, but only edit your own."
             />
             <FeatureCard
               icon={Layers}
-              title="Category Filters"
-              description="Filter spots by type: eat, bar, cafes, go out, shops. Toggle layers on the map. See only what matters."
+              title="Show Only What Matters"
+              description="Toggle map layers by category — eat, bar, cafes, shops, events. Hunting for dinner? Hide everything else."
             />
           </div>
         </div>
@@ -287,19 +286,19 @@ export default function LandingPage() {
                 className="text-[28px] font-bold tracking-[-1px]"
                 style={{ fontFamily: 'var(--font-space-grotesk)' }}
               >
-                See Everything on the Map
+                One Map. Every Option.
               </h2>
               <p className="mt-4 text-[13px] leading-relaxed text-foreground-secondary">
-                Every event and curated spot plotted on an interactive Google Map. Color-coded
-                markers by category&mdash;orange for events, green for safe zones, red for areas to
-                avoid. Toggle crime heatmaps, filter by category, and tap any marker for details.
+                Every event and curated spot on a single interactive map. Orange pins for events,
+                teal for cafes, pink for nightlife. Tap a marker to see details, toggle the crime
+                heatmap to check neighborhoods, and watch route lines draw between your planned stops.
               </p>
               <ul className="mt-6 space-y-2">
                 {[
-                  'Color-coded pins by category',
-                  'Live crime heatmap overlay',
-                  'Route polylines between planned stops',
-                  'Days-remaining countdown on markers',
+                  'Color-coded pins so you spot categories at a glance',
+                  'Live crime heatmap to vet neighborhoods before booking',
+                  'Route lines drawn between your planned stops',
+                  'Countdown badges so you never miss a deadline',
                 ].map((item) => (
                   <li key={item} className="flex items-center gap-2 text-[12px] text-foreground-secondary">
                     <Zap size={10} className="text-accent" />
@@ -350,12 +349,12 @@ export default function LandingPage() {
                 className="text-[28px] font-bold tracking-[-1px]"
                 style={{ fontFamily: 'var(--font-space-grotesk)' }}
               >
-                Month View at a Glance
+                Spot Busy Days Before They Happen
               </h2>
               <p className="mt-4 text-[13px] leading-relaxed text-foreground-secondary">
-                A classic month grid showing event counts and planned item counts for every day.
-                Quickly spot busy days, find open slots, and jump to any date for detailed planning.
-                Events are synced from all your configured sources automatically.
+                Each day shows how many events are available and how many you&apos;ve planned. See at a
+                glance that Saturday is packed while Wednesday is wide open. Click any date to jump
+                straight into day-level planning.
               </p>
             </div>
           </div>
@@ -372,12 +371,13 @@ export default function LandingPage() {
                 className="text-[28px] font-bold tracking-[-1px]"
                 style={{ fontFamily: 'var(--font-space-grotesk)' }}
               >
-                Your Shortlist, Organized
+                Every Recommendation in One List
               </h2>
               <p className="mt-4 text-[13px] leading-relaxed text-foreground-secondary">
-                Import spots from Google Maps lists, curated guides, and personal notes. Categorize
-                them as restaurants, cafes, bars, shops, or places to visit. See them on the map,
-                filter by type, and drag them into your daily planner.
+                That ramen place from the blog. The rooftop bar your coworker mentioned. The coffee
+                shop with the 4.9 rating. Import them all, tag by category, and see them on the
+                map alongside your events. When it&apos;s time to plan dinner, filter to &ldquo;eat&rdquo; and
+                pick the one closest to your next event.
               </p>
             </div>
             <div className="border border-border">
@@ -401,13 +401,17 @@ export default function LandingPage() {
       {/* ── TECH STACK ── */}
       <section className="border-b border-border py-20">
         <div className="mx-auto max-w-[1200px] px-6">
-          <SectionLabel>System Info</SectionLabel>
+          <SectionLabel>Under the Hood</SectionLabel>
           <h2
             className="text-[32px] font-bold tracking-[-1px]"
             style={{ fontFamily: 'var(--font-space-grotesk)' }}
           >
-            Built With
+            Open Source. Ship It Yourself.
           </h2>
+          <p className="mt-4 max-w-[640px] text-[13px] leading-relaxed text-foreground-secondary">
+            Fork the repo, swap in your own API keys, and deploy to Vercel. Every piece of the
+            stack is open and documented.
+          </p>
           <div className="mt-8 flex flex-wrap gap-3">
             {[
               'Next.js 15',
@@ -441,10 +445,11 @@ export default function LandingPage() {
             className="mt-4 text-[32px] font-bold tracking-[-1px]"
             style={{ fontFamily: 'var(--font-space-grotesk)' }}
           >
-            Stop Tab-Hopping. Start Planning.
+            Close the 47 Tabs. Open One Planner.
           </h2>
           <p className="mx-auto mt-4 max-w-[480px] text-[13px] leading-relaxed text-foreground-secondary">
-            Centralize your SF trip research into one mission control. Free and open source.
+            Sign in with your email. Import your sources. Start dragging events into your
+            schedule. Takes about two minutes.
           </p>
           <div className="mt-8">
             <Link
@@ -452,7 +457,7 @@ export default function LandingPage() {
               className="inline-flex items-center gap-2 bg-accent px-8 py-3 text-[11px] font-bold uppercase tracking-[0.5px] text-[#0C0C0C] transition-colors hover:bg-accent-hover"
             >
               <Terminal size={14} />
-              Launch Planner
+              Plan Your Trip Free
             </Link>
           </div>
         </div>
