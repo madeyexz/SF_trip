@@ -1,7 +1,8 @@
-import Resend from '@auth/core/providers/resend';
+import { Email } from '@convex-dev/auth/providers/Email';
 import { convexAuth } from '@convex-dev/auth/server';
 
 const authEmailFrom = String(process.env.AUTH_EMAIL_FROM || '').trim();
+const authResendTemplateId = String(process.env.AUTH_RESEND_TEMPLATE_ID || '').trim();
 
 function brandedEmailHtml(url: string) {
   return `<!DOCTYPE html>
@@ -33,7 +34,7 @@ function brandedEmailHtml(url: string) {
       <!-- Header -->
       <div style="font-size:11px;font-weight:500;color:#8a8a8a;letter-spacing:1px;margin-bottom:8px;">// AUTHENTICATION</div>
       <div style="font-size:18px;font-weight:600;color:#FFFFFF;font-family:Arial,Helvetica,sans-serif;margin-bottom:8px;">Sign in to SF Trip Planner</div>
-      <div style="font-size:13px;font-weight:400;color:#8a8a8a;line-height:1.5;margin-bottom:24px;">Click below to securely access your trip planner. This link expires in 24 hours.</div>
+      <div style="font-size:13px;font-weight:400;color:#8a8a8a;line-height:1.5;margin-bottom:24px;">Click below to securely access your trip planner. This link expires in 1 hour.</div>
 
       <!-- CTA Button -->
       <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
@@ -71,22 +72,44 @@ function brandedEmailHtml(url: string) {
 </html>`;
 }
 
-const resendProvider = Resend({
-  from: authEmailFrom || 'SF Trip Planner <onboarding@resend.dev>',
-  async sendVerificationRequest({ identifier: to, url, provider }) {
+const resendProvider = Email({
+  id: 'resend',
+  apiKey: process.env.AUTH_RESEND_KEY,
+  maxAge: 60 * 60, // 1 hour
+  authorize: undefined, // magic link: click link → signed in, no email re-entry
+  async sendVerificationRequest({ identifier: email, url, provider }) {
+    const host = new URL(url).host;
+    const basePayload = {
+      from: authEmailFrom || 'SF Trip Planner <onboarding@resend.dev>',
+      to: email,
+      subject: 'Sign in to SF Trip Planner',
+    };
+    const payload = authResendTemplateId
+      ? {
+          ...basePayload,
+          template: {
+            id: authResendTemplateId,
+            variables: {
+              APP_NAME: 'SF Trip Planner',
+              HOST: host,
+              SIGN_IN_URL: url,
+              YEAR: String(new Date().getUTCFullYear()),
+            },
+          },
+        }
+      : {
+          ...basePayload,
+          html: brandedEmailHtml(url),
+          text: `Sign in to SF Trip Planner\n\n${url}\n\nIf you didn't request this, ignore it.`,
+        };
+
     const res = await fetch('https://api.resend.com/emails', {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${provider.apiKey}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({
-        from: provider.from,
-        to,
-        subject: 'Sign in to SF Trip Planner',
-        html: brandedEmailHtml(url),
-        text: `Sign in to SF Trip Planner\n\n${url}\n\nIf you didn't request this, ignore it.`,
-      }),
+      body: JSON.stringify(payload),
     });
     if (!res.ok) {
       throw new Error(`Resend error: ${await res.text()}`);
