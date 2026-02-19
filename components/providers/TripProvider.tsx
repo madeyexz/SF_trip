@@ -28,9 +28,9 @@ import {
 import { getSafeExternalHref } from '@/lib/security';
 import {
   createPlanId, sortPlanItems, sanitizePlannerByDate, compactPlannerByDate,
-  hasPlannerEntries, parseEventTimeRange, getSuggestedPlanSlot,
+  parseEventTimeRange, getSuggestedPlanSlot,
   buildPlannerIcs, buildGoogleCalendarStopUrls,
-  PLAN_STORAGE_KEY, GEOCODE_CACHE_STORAGE_KEY, MAX_ROUTE_STOPS
+  MAX_ROUTE_STOPS
 } from '@/lib/planner-helpers';
 import {
   createLucidePinIcon, createLucidePinIconWithLabel, toCoordinateKey, createTravelTimeCacheKey,
@@ -159,8 +159,6 @@ function getTagIconNode(tag) {
 }
 
 export { TAG_COLORS };
-
-const ACTIVE_PAIR_ROOM_STORAGE_KEY = 'sf-trip-active-pair-room-v1';
 
 function normalizePlannerRoomId(value) {
   const nextValue = String(value || '').trim().toLowerCase().replace(/[^a-z0-9_-]/g, '');
@@ -346,11 +344,6 @@ export default function TripProvider({ children }: { children: ReactNode }) {
     hiddenCategoriesRef.current = hiddenCategories;
   }, [hiddenCategories]);
 
-  const plannerStorageKey = useMemo(
-    () => (currentPairRoomId ? `${PLAN_STORAGE_KEY}:pair:${currentPairRoomId}` : `${PLAN_STORAGE_KEY}:self`),
-    [currentPairRoomId]
-  );
-
   const uniqueDates = useMemo(() => {
     if (tripStart && tripEnd) {
       return buildISODateRange(tripStart, tripEnd);
@@ -427,38 +420,9 @@ export default function TripProvider({ children }: { children: ReactNode }) {
 
   // ---- Planner persistence ----
   useEffect(() => {
-    try {
-      const roomRaw = window.localStorage.getItem(ACTIVE_PAIR_ROOM_STORAGE_KEY);
-      const nextRoomId = normalizePlannerRoomId(roomRaw);
-      if (nextRoomId) setCurrentPairRoomId(nextRoomId);
-    } catch { /* ignore */ }
-  }, []);
-
-  useEffect(() => {
-    try {
-      if (currentPairRoomId) {
-        window.localStorage.setItem(ACTIVE_PAIR_ROOM_STORAGE_KEY, currentPairRoomId);
-      } else {
-        window.localStorage.removeItem(ACTIVE_PAIR_ROOM_STORAGE_KEY);
-      }
-    } catch { /* ignore */ }
-  }, [currentPairRoomId]);
-
-  useEffect(() => {
     let mounted = true;
-    let localPlannerMine = {};
     plannerHydratedRef.current = false;
-
-    try {
-      const raw = window.localStorage.getItem(plannerStorageKey);
-      if (raw) {
-        const parsed = JSON.parse(raw);
-        if (parsed && typeof parsed === 'object') {
-          localPlannerMine = sanitizePlannerByDateWithOwner(parsed, authUserId);
-        }
-      }
-    } catch { /* ignore */ }
-    setPlannerByDateMine(localPlannerMine);
+    setPlannerByDateMine({});
     setPlannerByDatePartner({});
 
     async function loadPlannerFromServer() {
@@ -491,14 +455,13 @@ export default function TripProvider({ children }: { children: ReactNode }) {
           '',
         ) as Record<string, any[]>;
 
-        if (hasPlannerEntries(remoteMine) || !hasPlannerEntries(localPlannerMine)) {
-          setPlannerByDateMine(remoteMine);
-        }
+        setPlannerByDateMine(remoteMine);
         setPlannerByDatePartner(remotePartner);
         setPairMemberCount(Number(payload?.memberCount) || (currentPairRoomId ? 2 : 1));
       } catch (error) {
-        console.error('Planner load failed; continuing with local planner cache.', error);
+        console.error('Planner load failed; continuing with in-memory planner state.', error);
         if (mounted) {
+          setPlannerByDateMine({});
           setPlannerByDatePartner({});
           setPairMemberCount(currentPairRoomId ? 2 : 1);
         }
@@ -512,7 +475,7 @@ export default function TripProvider({ children }: { children: ReactNode }) {
       mounted = false;
       plannerHydratedRef.current = true;
     };
-  }, [authUserId, currentPairRoomId, isAuthenticated, plannerStorageKey]);
+  }, [authUserId, currentPairRoomId, isAuthenticated]);
 
   const savePlannerToServer = useCallback(async (nextPlannerByDateMine, roomId) => {
     try {
@@ -537,9 +500,6 @@ export default function TripProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     const compactPlannerMine = compactPlannerByDate(plannerByDateMine);
-    try {
-      window.localStorage.setItem(plannerStorageKey, JSON.stringify(compactPlannerMine));
-    } catch { /* ignore */ }
     if (!plannerHydratedRef.current) return;
     if (!isAuthenticated) return;
 
@@ -551,31 +511,12 @@ export default function TripProvider({ children }: { children: ReactNode }) {
     currentPairRoomId,
     isAuthenticated,
     plannerByDateMine,
-    plannerStorageKey,
     savePlannerToServer
   ]);
 
   // ---- Geocode cache ----
-  useEffect(() => {
-    try {
-      const raw = window.localStorage.getItem(GEOCODE_CACHE_STORAGE_KEY);
-      if (!raw) return;
-      const parsed = JSON.parse(raw) as Record<string, any>;
-      if (!parsed || typeof parsed !== 'object') return;
-      const cache = new Map<string, { lat: number; lng: number }>();
-      for (const [k, v] of Object.entries(parsed)) {
-        const lat = Number(v?.lat);
-        const lng = Number(v?.lng);
-        if (Number.isFinite(lat) && Number.isFinite(lng)) cache.set(k, { lat, lng });
-      }
-      geocodeStoreRef.current = cache;
-    } catch { /* ignore */ }
-  }, []);
-
   const saveGeocodeCache = useCallback(() => {
-    const payload = {};
-    for (const [k, v] of geocodeStoreRef.current.entries()) payload[k] = v;
-    try { window.localStorage.setItem(GEOCODE_CACHE_STORAGE_KEY, JSON.stringify(payload)); } catch { /* ignore */ }
+    // Keep geocode cache in-memory only to avoid persisting sensitive location data in browser storage.
   }, []);
 
   const setStatusMessage = useCallback((message, isError = false) => {

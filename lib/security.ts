@@ -1,5 +1,14 @@
+import { isIP } from 'node:net';
+
 const RATE_LIMIT_STATE = new Map<string, { count: number; resetAt: number }>();
 const MAX_RATE_LIMIT_KEYS = 10_000;
+const TRUSTED_CLIENT_IP_HEADERS = [
+  'x-vercel-ip',
+  'cf-connecting-ip',
+  'fly-client-ip',
+  'fastly-client-ip',
+  'true-client-ip'
+];
 
 function normalizeHostname(value: string) {
   return String(value || '')
@@ -240,8 +249,66 @@ export function consumeRateLimit({ key, limit, windowMs, nowMs = Date.now() }: R
 }
 
 export function getRequestRateLimitIp(request: Request) {
+  for (const headerName of TRUSTED_CLIENT_IP_HEADERS) {
+    const trustedIp = normalizeIpCandidate(request.headers.get(headerName) || '');
+    if (trustedIp) {
+      return trustedIp;
+    }
+  }
+
+  if (!shouldTrustProxyHeaders()) {
+    return 'unknown';
+  }
+
   const forwardedFor = request.headers.get('x-forwarded-for') || '';
-  const realIp = request.headers.get('x-real-ip') || '';
-  const candidate = forwardedFor.split(',')[0]?.trim() || realIp.trim();
-  return candidate || 'unknown';
+  const forwardedCandidate = normalizeIpCandidate(forwardedFor.split(',')[0] || '');
+  if (forwardedCandidate) {
+    return forwardedCandidate;
+  }
+
+  const realIp = normalizeIpCandidate(request.headers.get('x-real-ip') || '');
+  return realIp || 'unknown';
+}
+
+function shouldTrustProxyHeaders() {
+  const flag = String(process.env.TRUST_PROXY_IP_HEADERS || '').trim().toLowerCase();
+  if (flag === 'true') {
+    return true;
+  }
+
+  return (
+    process.env.VERCEL === '1' ||
+    process.env.CF_PAGES === '1' ||
+    process.env.NETLIFY === 'true'
+  );
+}
+
+function normalizeIpCandidate(value: string) {
+  let token = String(value || '').trim();
+  if (!token) {
+    return '';
+  }
+
+  if (token.startsWith('for=')) {
+    token = token.slice(4);
+  }
+
+  token = token.replace(/^"+|"+$/g, '');
+
+  const bracketedMatch = token.match(/^\[([^\]]+)\](?::\d+)?$/);
+  if (bracketedMatch?.[1]) {
+    token = bracketedMatch[1];
+  } else {
+    const ipv4WithPortMatch = token.match(/^(\d{1,3}(?:\.\d{1,3}){3}):\d+$/);
+    if (ipv4WithPortMatch?.[1]) {
+      token = ipv4WithPortMatch[1];
+    }
+  }
+
+  const zoneSeparatorIndex = token.indexOf('%');
+  if (zoneSeparatorIndex !== -1) {
+    token = token.slice(0, zoneSeparatorIndex);
+  }
+
+  return isIP(token) ? token : '';
 }
