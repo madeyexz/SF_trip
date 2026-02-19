@@ -21,7 +21,7 @@ export default function CalendarPage() {
       <div className="w-full max-w-[960px]">
         <div className="grid grid-cols-[auto_1fr_auto] items-center gap-2 mb-4">
           <Button type="button" size="sm" variant="secondary" onClick={() => shiftCalendarMonth(-1)}>Prev</Button>
-          <h2 className="text-center m-0 text-xl font-bold">{formatMonthYear(calendarAnchorISO)}</h2>
+          <h2 className="text-center m-0 text-xl font-bold" style={{ fontFamily: "var(--font-space-grotesk, 'Space Grotesk'), sans-serif" }}>{formatMonthYear(calendarAnchorISO)}</h2>
           <Button type="button" size="sm" variant="secondary" onClick={() => shiftCalendarMonth(1)}>Next</Button>
         </div>
         <div className="grid grid-cols-7 gap-1.5 mb-1.5 text-muted text-[0.72rem] font-bold uppercase tracking-wider">
@@ -39,12 +39,12 @@ export default function CalendarPage() {
               <button
                 key={dayISO}
                 type="button"
-                className={`border border-border bg-card rounded-[10px] min-h-[90px] max-sm:min-h-[70px] p-2.5 text-left flex flex-col gap-px cursor-pointer transition-all duration-200 hover:border-accent-border hover:shadow-[0_0_0_3px_var(--color-accent-glow)] ${!isCurrentMonth ? 'opacity-50' : ''} ${isSelected ? 'cal-day-selected' : ''}`}
+                className={`border border-border bg-card rounded-none min-h-[90px] max-sm:min-h-[70px] p-2.5 text-left flex flex-col gap-px cursor-pointer transition-all duration-200 hover:border-accent-border hover:shadow-[0_0_0_3px_var(--color-accent-glow)] ${!isCurrentMonth ? 'opacity-50' : ''} ${isSelected ? 'cal-day-selected' : ''}`}
                 onClick={() => { setSelectedDate(dayISO); setShowAllEvents(false); router.push('/planning'); }}
               >
                 <span className="text-[0.84rem] font-bold text-foreground">{formatDayOfMonth(dayISO)}</span>
                 <span className="text-[0.68rem] text-foreground-secondary leading-tight">{eventCount} events</span>
-                <span className="text-[0.68rem] text-teal-700 leading-tight">{planCount} planned</span>
+                <span className="text-[0.68rem] text-accent leading-tight">{planCount} planned</span>
               </button>
             );
           })}
