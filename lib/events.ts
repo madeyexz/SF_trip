@@ -4,7 +4,7 @@ import path from 'node:path';
 import ical from 'node-ical';
 import { ConvexHttpClient } from 'convex/browser';
 import { getScopedConvexClient } from './convex-client-context.ts';
-import { validateIngestionSourceUrl } from './security.ts';
+import { validateIngestionSourceUrlForFetch } from './security-server.ts';
 
 const DOC_LOCATION_FILE = path.join(process.cwd(), 'docs', 'my_location.md');
 const DATA_DIR = path.join(process.cwd(), 'data');
@@ -245,7 +245,7 @@ export async function createSourcePayload(input) {
     throw new Error('sourceType must be "event" or "spot".');
   }
 
-  assertValidSourceUrl(url);
+  await assertValidSourceUrl(url);
 
   const source = await client.mutation('sources:createSource', {
     sourceType,
@@ -1082,7 +1082,7 @@ async function syncEventsFromSources({ eventSources, rssFallbackStateBySourceUrl
   const rssStateBySourceUrl = {};
 
   for (const source of eventSources) {
-    const sourceValidation = validateIngestionSourceUrl(source?.url);
+    const sourceValidation = await validateIngestionSourceUrlForFetch(source?.url);
     if (!sourceValidation.ok) {
       errors.push(createIngestionError({
         sourceType: 'event',
@@ -1191,7 +1191,7 @@ async function syncSpotsFromSources({ spotSources }) {
 async function syncEventsFromRssSource({ source, rssState = {} }) {
   const errors = [];
   const nextRssState = { ...rssState };
-  const sourceValidation = validateIngestionSourceUrl(source?.url);
+  const sourceValidation = await validateIngestionSourceUrlForFetch(source?.url);
   if (!sourceValidation.ok) {
     errors.push(createIngestionError({
       sourceType: 'event',
@@ -1256,7 +1256,20 @@ async function syncEventsFromRssSource({ source, rssState = {} }) {
 
   for (const item of candidateItems) {
     try {
-      const rawEvents = await extractEventsFromNewsletterPost(item.link, firecrawlApiKey);
+      const postValidation = await validateIngestionSourceUrlForFetch(item.link);
+      if (!postValidation.ok) {
+        errors.push(createIngestionError({
+          sourceType: 'event',
+          sourceId: source.id,
+          sourceUrl: source.url,
+          eventUrl: item.link,
+          stage: 'source_validation',
+          message: postValidation.error
+        }));
+        continue;
+      }
+
+      const rawEvents = await extractEventsFromNewsletterPost(postValidation.url, firecrawlApiKey);
       for (const rawEvent of rawEvents) {
         const normalized = normalizeRssExtractedEvent(rawEvent, {
           source,
@@ -1781,8 +1794,8 @@ function normalizeSourceRecord(source) {
   };
 }
 
-function assertValidSourceUrl(url) {
-  const validation = validateIngestionSourceUrl(url);
+async function assertValidSourceUrl(url) {
+  const validation = await validateIngestionSourceUrlForFetch(url);
   if (!validation.ok) {
     throw new Error(validation.error);
   }

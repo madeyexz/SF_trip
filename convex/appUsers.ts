@@ -1,6 +1,7 @@
 import { getAuthUserId } from '@convex-dev/auth/server';
 import type { MutationCtx, QueryCtx } from './_generated/server';
 import { mutation, query } from './_generated/server';
+import { parseOwnerEmailAllowlist, resolveInitialUserRole } from './owner-role.ts';
 
 type ConvexCtx = MutationCtx | QueryCtx;
 
@@ -44,6 +45,7 @@ export const ensureCurrentUserProfile = mutation({
     const identity = await ctx.auth.getUserIdentity();
     const email = readIdentityEmail(identity);
     const now = new Date().toISOString();
+    const ownerEmailAllowlist = parseOwnerEmailAllowlist(process.env.OWNER_EMAIL_ALLOWLIST);
 
     const existing = await ctx.db
       .query('userProfiles')
@@ -57,16 +59,14 @@ export const ensureCurrentUserProfile = mutation({
       if (email && existing.email !== email) {
         updates.email = email;
       }
+      const shouldBeOwner = resolveInitialUserRole(email, ownerEmailAllowlist) === 'owner';
+      if (shouldBeOwner && existing.role !== 'owner') {
+        updates.role = 'owner';
+      }
       await ctx.db.patch(existing._id, updates);
       return buildProfileResponse({ ...existing, ...updates });
     }
-
-    const anyOwner = await ctx.db
-      .query('userProfiles')
-      .withIndex('by_role', (q) => q.eq('role', 'owner'))
-      .first();
-
-    const role = anyOwner ? 'member' : 'owner';
+    const role = resolveInitialUserRole(email, ownerEmailAllowlist);
     await ctx.db.insert('userProfiles', {
       userId,
       role,

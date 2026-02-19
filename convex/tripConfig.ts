@@ -1,12 +1,13 @@
 import { mutation, query } from './_generated/server';
 import { v } from 'convex/values';
-import { requireOwnerUserId } from './authz';
+import { requireAuthenticatedUserId, requireOwnerUserId } from './authz';
 
 const TRIP_CONFIG_KEY = 'default';
 
 export const getTripConfig = query({
   args: {},
   handler: async (ctx) => {
+    await requireAuthenticatedUserId(ctx);
     const row = await ctx.db
       .query('tripConfig')
       .withIndex('by_key', (q) => q.eq('key', TRIP_CONFIG_KEY))

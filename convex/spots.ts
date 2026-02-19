@@ -1,6 +1,6 @@
 import { mutation, query } from './_generated/server';
 import { v } from 'convex/values';
-import { requireOwnerUserId } from './authz';
+import { requireAuthenticatedUserId, requireOwnerUserId } from './authz';
 
 const spotValidator = v.object({
   id: v.string(),
@@ -22,6 +22,7 @@ const spotValidator = v.object({
 export const listSpots = query({
   args: {},
   handler: async (ctx) => {
+    await requireAuthenticatedUserId(ctx);
     const rows = await ctx.db.query('spots').collect();
 
     return rows
@@ -34,6 +35,7 @@ export const listSpots = query({
 export const getSyncMeta = query({
   args: {},
   handler: async (ctx) => {
+    await requireAuthenticatedUserId(ctx);
     const row = await ctx.db.query('syncMeta').withIndex('by_key', (q) => q.eq('key', 'spots')).first();
 
     if (!row) {

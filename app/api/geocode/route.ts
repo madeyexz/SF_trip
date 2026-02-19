@@ -1,10 +1,30 @@
 import { resolveAddressCoordinates } from '@/lib/events';
 import { runWithAuthenticatedClient } from '@/lib/api-guards';
+import { consumeRateLimit, getRequestRateLimitIp } from '@/lib/security';
 
 export const runtime = 'nodejs';
 
 export async function POST(request) {
   return runWithAuthenticatedClient(async () => {
+    const rateLimit = consumeRateLimit({
+      key: `api:geocode:${getRequestRateLimitIp(request)}`,
+      limit: 25,
+      windowMs: 60_000
+    });
+    if (!rateLimit.ok) {
+      return Response.json(
+        {
+          error: 'Too many geocode requests. Please retry shortly.'
+        },
+        {
+          status: 429,
+          headers: {
+            'Retry-After': String(rateLimit.retryAfterSeconds)
+          }
+        }
+      );
+    }
+
     let body = null;
 
     try {

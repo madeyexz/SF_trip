@@ -1,8 +1,5 @@
-import { loadEventsPayload } from '@/lib/events';
+import { createGetEventsHandler } from '@/lib/events-api';
 
 export const runtime = 'nodejs';
 
-export async function GET() {
-  const payload = await loadEventsPayload();
-  return Response.json(payload);
-}
+export const GET = createGetEventsHandler();

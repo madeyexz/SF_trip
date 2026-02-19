@@ -22,6 +22,7 @@ const eventValidator = v.object({
 export const listEvents = query({
   args: {},
   handler: async (ctx) => {
+    await requireAuthenticatedUserId(ctx);
     const events = await ctx.db.query('events').collect();
 
     return events
@@ -38,6 +39,7 @@ export const listEvents = query({
 export const getSyncMeta = query({
   args: {},
   handler: async (ctx) => {
+    await requireAuthenticatedUserId(ctx);
     const row = await ctx.db.query('syncMeta').withIndex('by_key', (q) => q.eq('key', 'events')).first();
 
     if (!row) {
@@ -54,6 +56,7 @@ export const getGeocodeByAddressKey = query({
     addressKey: v.string()
   },
   handler: async (ctx, args) => {
+    await requireAuthenticatedUserId(ctx);
     const row = await ctx.db
       .query('geocodeCache')
       .withIndex('by_address_key', (q) => q.eq('addressKey', args.addressKey))

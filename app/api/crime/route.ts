@@ -1,3 +1,5 @@
+import { consumeRateLimit, getRequestRateLimitIp } from '@/lib/security';
+
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
@@ -86,6 +88,25 @@ function normalizeIncident(row: any, sinceComparableISO: string) {
 }
 
 export async function GET(request: Request) {
+  const rateLimit = consumeRateLimit({
+    key: `api:crime:${getRequestRateLimitIp(request)}`,
+    limit: 30,
+    windowMs: 60_000
+  });
+  if (!rateLimit.ok) {
+    return Response.json(
+      {
+        error: 'Too many crime data requests. Please retry shortly.'
+      },
+      {
+        status: 429,
+        headers: {
+          'Retry-After': String(rateLimit.retryAfterSeconds)
+        }
+      }
+    );
+  }
+
   const url = new URL(request.url);
   const hours = clampInteger(url.searchParams.get('hours'), DEFAULT_HOURS, 1, MAX_HOURS);
   const limit = clampInteger(url.searchParams.get('limit'), DEFAULT_LIMIT, 200, MAX_LIMIT);

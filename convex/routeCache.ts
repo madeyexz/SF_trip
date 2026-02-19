@@ -7,6 +7,7 @@ export const getRouteByKey = query({
     key: v.string()
   },
   handler: async (ctx, args) => {
+    await requireAuthenticatedUserId(ctx);
     const row = await ctx.db
       .query('routeCache')
       .withIndex('by_key', (q) => q.eq('key', args.key))

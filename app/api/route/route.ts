@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { loadCachedRoutePayload, saveCachedRoutePayload } from '@/lib/events';
 import { runWithAuthenticatedClient } from '@/lib/api-guards';
+import { consumeRateLimit, getRequestRateLimitIp } from '@/lib/security';
 
 export const runtime = 'nodejs';
 
@@ -14,6 +15,25 @@ const MAX_WAYPOINTS = 20;
 
 export async function POST(request) {
   return runWithAuthenticatedClient(async () => {
+    const rateLimit = consumeRateLimit({
+      key: `api:route:${getRequestRateLimitIp(request)}`,
+      limit: 40,
+      windowMs: 60_000
+    });
+    if (!rateLimit.ok) {
+      return Response.json(
+        {
+          error: 'Too many route requests. Please retry shortly.'
+        },
+        {
+          status: 429,
+          headers: {
+            'Retry-After': String(rateLimit.retryAfterSeconds)
+          }
+        }
+      );
+    }
+
     const apiKey =
       process.env.GOOGLE_MAPS_ROUTES_KEY ||
       process.env.GOOGLE_MAPS_SERVER_KEY ||

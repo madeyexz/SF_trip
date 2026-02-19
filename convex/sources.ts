@@ -1,6 +1,6 @@
 import { mutation, query } from './_generated/server';
 import { v } from 'convex/values';
-import { requireOwnerUserId } from './authz';
+import { requireAuthenticatedUserId, requireOwnerUserId } from './authz';
 
 const sourceTypeValidator = v.union(v.literal('event'), v.literal('spot'));
 const sourceStatusValidator = v.union(v.literal('active'), v.literal('paused'));
@@ -64,6 +64,7 @@ function assertPublicSourceUrl(url: string) {
 export const listSources = query({
   args: {},
   handler: async (ctx) => {
+    await requireAuthenticatedUserId(ctx);
     const rows = await ctx.db.query('sources').collect();
 
     return rows
@@ -77,6 +78,7 @@ export const listActiveSources = query({
     sourceType: sourceTypeValidator
   },
   handler: async (ctx, args) => {
+    await requireAuthenticatedUserId(ctx);
     const rows = await ctx.db
       .query('sources')
       .withIndex('by_type_status', (q) => q.eq('sourceType', args.sourceType).eq('status', 'active'))
