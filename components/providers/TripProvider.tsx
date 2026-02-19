@@ -389,7 +389,10 @@ export default function TripProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (uniqueDates.length === 0) { setSelectedDate(''); return; }
-    if (!selectedDate || !uniqueDates.includes(selectedDate)) setSelectedDate(uniqueDates[0]);
+    const todayISO = toISODate(new Date());
+    if (!selectedDate || !uniqueDates.includes(selectedDate)) {
+      setSelectedDate(uniqueDates.includes(todayISO) ? todayISO : uniqueDates[0]);
+    }
   }, [selectedDate, uniqueDates]);
 
   useEffect(() => {
@@ -1167,15 +1170,15 @@ export default function TripProvider({ children }: { children: ReactNode }) {
           const regionStyle = (() => {
             if (pwp.tag === 'avoid') {
               const risk = place.risk || 'medium';
-              if (risk === 'extreme') return { fill: '#FF4444', fillOpacity: 0.30, strokeOpacity: 0.9, strokeWeight: 3 };
-              if (risk === 'high') return { fill: '#FF4444', fillOpacity: 0.22, strokeOpacity: 0.75, strokeWeight: 2.5 };
+              if (risk === 'extreme') return { fill: '#FF4444', fillOpacity: 0.32, strokeOpacity: 0.85, strokeWeight: 3 };
+              if (risk === 'high') return { fill: '#FF4444', fillOpacity: 0.22, strokeOpacity: 0.7, strokeWeight: 2.5 };
               if (risk === 'medium-high') return { fill: '#FF4444', fillOpacity: 0.15, strokeOpacity: 0.55, strokeWeight: 2 };
-              return { fill: '#FF4444', fillOpacity: 0.10, strokeOpacity: 0.4, strokeWeight: 1.5 };
+              return { fill: '#FF4444', fillOpacity: 0.08, strokeOpacity: 0.4, strokeWeight: 1.5 };
             }
             const safetyLevel = place.safetyLevel || 'high';
-            if (safetyLevel === 'very-high') return { fill: '#00FF88', fillOpacity: 0.18, strokeOpacity: 0.8, strokeWeight: 2.5 };
-            if (safetyLevel === 'high') return { fill: '#00FF88', fillOpacity: 0.12, strokeOpacity: 0.6, strokeWeight: 2 };
-            return { fill: '#00FF88', fillOpacity: 0.08, strokeOpacity: 0.45, strokeWeight: 1.8 };
+            if (safetyLevel === 'very-high') return { fill: '#00FF88', fillOpacity: 0.20, strokeOpacity: 0.78, strokeWeight: 2.5 };
+            if (safetyLevel === 'high') return { fill: '#00FF88', fillOpacity: 0.14, strokeOpacity: 0.62, strokeWeight: 2 };
+            return { fill: '#00FF88', fillOpacity: 0.10, strokeOpacity: 0.5, strokeWeight: 1.8 };
           })();
           const polygon = new window.google.maps.Polygon({
             map: mapRef.current,

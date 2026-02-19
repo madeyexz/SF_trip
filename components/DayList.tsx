@@ -156,9 +156,14 @@ export default function DayList() {
           }}
         >
           <div>
-            <span className="block text-[0.65rem] font-bold text-muted uppercase tracking-wider leading-tight">PAST DAYS</span>
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-[0.65rem] font-bold text-muted uppercase tracking-wider leading-tight">PAST DAYS</span>
+              <span aria-hidden="true" className="text-[0.7rem] font-bold text-muted">
+                {isPastExpanded ? '▼' : '▶'}
+              </span>
+            </div>
             <span className="block text-[0.85rem] font-bold text-foreground leading-snug">
-              {`${pastDates.length} DAY(S) ${isPastExpanded ? '[SHOWING]' : '[FOLDED]'}`}
+              {`${pastDates.length} DAY(S) ${isPastExpanded ? '(SHOWING)' : '(FOLDED)'}`}
             </span>
           </div>
           {!isPastExpanded && (pastTotals.events > 0 || pastTotals.plans > 0) && (
@@ -171,7 +176,7 @@ export default function DayList() {
           )}
           {!isPastExpanded && (
             <span className="inline-flex w-fit items-center gap-1 text-[0.62rem] font-semibold text-muted uppercase tracking-wide">
-              {isSelectedPastDate ? 'EXPANDED FOR SELECTION' : 'CLICK TO EXPAND'}
+              CLICK TO TOGGLE
             </span>
           )}
         </button>
