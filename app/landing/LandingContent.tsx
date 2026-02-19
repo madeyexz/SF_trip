@@ -156,7 +156,7 @@ export default function LandingContent() {
         </NavEnter>
 
         {/* ── HERO ── */}
-        <section className="relative flex min-h-[80vh] items-center justify-center overflow-hidden border-b border-border pt-12">
+        <section className="relative flex min-h-[80vh] items-center justify-center overflow-hidden border-b border-border pt-24">
           <div
             className="pointer-events-none absolute inset-0 opacity-[0.04]"
             style={{
