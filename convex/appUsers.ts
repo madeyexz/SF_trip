@@ -1,7 +1,7 @@
 import { getAuthUserId } from '@convex-dev/auth/server';
 import type { MutationCtx, QueryCtx } from './_generated/server';
 import { mutation, query } from './_generated/server';
-import { parseOwnerEmailAllowlist, resolveInitialUserRole } from './owner-role.ts';
+import { parseOwnerEmailAllowlist, resolveInitialUserRole } from './ownerRole.ts';
 
 type ConvexCtx = MutationCtx | QueryCtx;
 

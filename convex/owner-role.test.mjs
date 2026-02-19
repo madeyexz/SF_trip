@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { parseOwnerEmailAllowlist, resolveInitialUserRole } from './owner-role.ts';
+import { parseOwnerEmailAllowlist, resolveInitialUserRole } from './ownerRole.ts';
 
 describe('owner bootstrap policy', () => {
   it('assigns member by default when no allowlist is configured', () => {
