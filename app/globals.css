@@ -1,32 +1,34 @@
 @import 'tailwindcss';
 
 @theme {
-  --color-bg: #fafbfd;
-  --color-bg-subtle: #f1f4f9;
-  --color-card: #ffffff;
-  --color-card-glass: rgba(255, 255, 255, 0.88);
-  --color-foreground: #0c1222;
-  --color-foreground-secondary: #3d4b65;
-  --color-muted: #6b7a94;
-  --color-accent: #3b6cf5;
-  --color-accent-hover: #2b56d4;
-  --color-accent-light: #eef3ff;
-  --color-accent-border: #a3bffa;
-  --color-accent-glow: rgba(59, 108, 245, 0.12);
-  --color-border: #e4e9f1;
-  --color-border-hover: #c8d0df;
-  --color-info: #2a7de1;
-  --color-info-light: #e8f1fd;
-  --color-info-border: #93c0f5;
-  --color-success: #1a9a5b;
-  --color-success-light: #e6f7ef;
-  --color-success-border: #7fd4a8;
+  --color-bg: #0C0C0C;
+  --color-bg-subtle: #1A1A1A;
+  --color-bg-elevated: #141414;
+  --color-bg-sidebar: #080808;
+  --color-card: #0A0A0A;
+  --color-card-glass: rgba(10, 10, 10, 0.92);
+  --color-foreground: #FFFFFF;
+  --color-foreground-secondary: #8a8a8a;
+  --color-muted: #6a6a6a;
+  --color-accent: #00FF88;
+  --color-accent-hover: #00cc6e;
+  --color-accent-light: rgba(0, 255, 136, 0.06);
+  --color-accent-border: rgba(0, 255, 136, 0.25);
+  --color-accent-glow: rgba(0, 255, 136, 0.12);
+  --color-border: #2f2f2f;
+  --color-border-hover: #3f3f3f;
+  --color-warning: #FF8800;
+  --color-warning-light: rgba(255, 136, 0, 0.08);
+  --color-warning-border: rgba(255, 136, 0, 0.3);
+  --color-danger: #FF4444;
+  --color-danger-light: rgba(255, 68, 68, 0.08);
+  --color-danger-border: rgba(255, 68, 68, 0.3);
 }
 
 @layer base {
   body {
     @apply text-foreground bg-bg antialiased;
-    font-family: var(--font-inter, 'Inter'), -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    font-family: var(--font-jetbrains, 'JetBrains Mono'), monospace;
   }
 }
 
@@ -48,29 +50,29 @@
   flex: 1;
   min-height: 0;
   border: 1px solid var(--color-border);
-  border-radius: 14px;
+  border-radius: 0;
   overflow: auto;
-  background: linear-gradient(to right, rgba(230, 236, 248, 0.55) 76px, transparent 76px), var(--color-card);
+  background: linear-gradient(to right, rgba(255, 255, 255, 0.03) 76px, transparent 76px), var(--color-card);
 }
 .planner-time-grid { position: relative; height: calc(24 * 50px); }
-.planner-hour-row { position: absolute; left: 0; right: 0; height: 50px; border-top: 1px solid #ebf0f8; }
+.planner-hour-row { position: absolute; left: 0; right: 0; height: 50px; border-top: 1px solid #1f1f1f; }
 .planner-hour-label { position: absolute; left: 10px; top: -8px; background: var(--color-card); color: var(--color-muted); font-size: 0.7rem; font-weight: 600; padding: 0 4px; }
 .planner-block-layer { position: absolute; inset: 0 0 0 76px; }
 
 .planner-item {
-  position: absolute; border-radius: 10px; box-sizing: border-box;
+  position: absolute; border-radius: 0; box-sizing: border-box;
   border: 1px solid transparent; padding: 14px 28px 12px 10px;
   overflow-x: hidden; overflow-y: auto; cursor: grab;
-  box-shadow: 0 1px 2px rgba(12,18,34,0.04);
+  box-shadow: none;
   transition: box-shadow 0.2s, border-color 0.2s;
 }
 .planner-item:active { cursor: grabbing; }
-.planner-item-active { box-shadow: 0 0 0 3px var(--color-accent-glow), 0 1px 4px rgba(12,18,34,0.05); }
-.planner-item-event { background: linear-gradient(135deg, #ffedd5, #fed7aa); border-color: #fdba74; }
-.planner-item-place { background: linear-gradient(135deg, #dbeafe, #bfdbfe); border-color: #93c5fd; }
+.planner-item-active { box-shadow: 0 0 0 3px var(--color-accent-glow); }
+.planner-item-event { background: rgba(255, 136, 0, 0.10); border-color: rgba(255, 136, 0, 0.3); }
+.planner-item-place { background: rgba(0, 255, 136, 0.06); border-color: rgba(0, 255, 136, 0.2); }
 
 /* Google Maps container needs absolute positioning */
-#map { position: absolute; inset: 0; background: #e5edfc; }
+#map { position: absolute; inset: 0; background: #141414; }
 
 /* Select dropdown animation */
 .select-content-animated { animation: selectSlideIn 0.18s cubic-bezier(0.22, 1, 0.36, 1); }
@@ -92,18 +94,21 @@
 
 /* Calendar day selected state */
 .cal-day-selected {
-  border-color: #8fb0ff;
-  background: linear-gradient(135deg, #eef3ff, #dbe8ff);
+  border-color: var(--color-accent-border);
+  background: rgba(0, 255, 136, 0.06);
   box-shadow: 0 0 0 3px var(--color-accent-glow);
 }
-
-
-
 
 /* Ensure sidebar grid always stays two-column */
 .sidebar-grid-responsive {
   grid-template-columns: 140px minmax(0, 1fr) minmax(0, 1fr) !important;
 }
+
+/* Dark scrollbar */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #2f2f2f; border-radius: 0; }
+::-webkit-scrollbar-thumb:hover { background: #3f3f3f; }
 
 /* Responsive */
 @media (max-width: 1200px) {
