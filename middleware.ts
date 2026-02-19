@@ -6,7 +6,6 @@ import {
 
 const isSignInRoute = createRouteMatcher(['/signin']);
 const isProtectedRoute = createRouteMatcher([
-  '/',
   '/map(.*)',
   '/calendar(.*)',
   '/planning(.*)',

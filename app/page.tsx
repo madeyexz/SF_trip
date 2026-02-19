@@ -1,10 +1,11 @@
-'use client';
+import LandingContent from './landing/LandingContent';
 
-import { useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+export const metadata = {
+  title: 'SF Trip Planner — Turn 50 Open Tabs Into One Trip Plan',
+  description:
+    'See where events are, when they conflict, where it\'s safe, and plan your SF trip with friends. Live crime heatmaps, curated spots, and Google Calendar export.',
+};
 
 export default function HomePage() {
-  const router = useRouter();
-  useEffect(() => { router.replace('/planning'); }, [router]);
-  return null;
+  return <LandingContent />;
 }
