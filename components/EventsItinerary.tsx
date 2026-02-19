@@ -8,11 +8,50 @@ import { useTrip } from '@/components/providers/TripProvider';
 import { formatDateDayMonth } from '@/lib/helpers';
 import { parseEventTimeRange } from '@/lib/planner-helpers';
 
+function EventsItinerarySkeleton() {
+  const titleWidths = ['w-4/5', 'w-3/5', 'w-2/3', 'w-3/4'];
+  return (
+    <div className="flex flex-col p-3 overflow-y-auto min-h-0 scrollbar-thin">
+      {/* Header skeleton */}
+      <div className="flex items-start justify-between gap-2 mb-2.5">
+        <div>
+          <div className="h-[18px] w-24 bg-border/40 rounded-sm animate-pulse" />
+          <div className="flex gap-1.5 mt-1.5">
+            <div className="h-[30px] w-[84px] bg-border/30 rounded-sm animate-pulse" />
+            <div className="h-[30px] w-[84px] bg-border/30 rounded-sm animate-pulse" style={{ animationDelay: '75ms' }} />
+          </div>
+        </div>
+        <div className="flex gap-1.5">
+          <div className="h-5 w-[72px] bg-border/25 rounded-sm animate-pulse" style={{ animationDelay: '100ms' }} />
+          <div className="h-5 w-[60px] bg-border/25 rounded-sm animate-pulse" style={{ animationDelay: '150ms' }} />
+        </div>
+      </div>
+      {/* Card skeletons */}
+      <div className="flex flex-col gap-2">
+        {Array.from({ length: 3 }, (_, i) => (
+          <div key={i} className="rounded-none border border-border bg-bg-elevated p-3.5" style={{ animationDelay: `${i * 100}ms` }}>
+            <div className={`h-[15px] ${titleWidths[i]} bg-border/50 rounded-sm mb-2 animate-pulse`} style={{ animationDelay: `${i * 100}ms` }} />
+            <div className="h-[12px] w-[55%] bg-border/30 rounded-sm mb-1.5 animate-pulse" style={{ animationDelay: `${i * 100 + 50}ms` }} />
+            <div className="h-[12px] w-[65%] bg-border/30 rounded-sm mb-1.5 animate-pulse" style={{ animationDelay: `${i * 100 + 100}ms` }} />
+            <div className="h-[12px] w-[45%] bg-border/30 rounded-sm mb-2.5 animate-pulse" style={{ animationDelay: `${i * 100 + 150}ms` }} />
+            <div className="h-[28px] w-[80px] bg-border/25 rounded-sm animate-pulse" style={{ animationDelay: `${i * 100 + 200}ms` }} />
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export default function EventsItinerary() {
   const {
     selectedDate, showAllEvents, setShowAllEvents,
-    visibleEvents, travelReadyCount, addEventToDayPlan
+    visibleEvents, travelReadyCount, addEventToDayPlan,
+    isInitializing
   } = useTrip();
+
+  if (isInitializing) {
+    return <EventsItinerarySkeleton />;
+  }
 
   return (
     <div className="flex flex-col p-3 overflow-y-auto min-h-0 scrollbar-thin">

@@ -47,6 +47,29 @@ function DayMetricsBars({ eventCount, planCount, maxEvents, maxPlans }) {
   );
 }
 
+function DayListSkeleton() {
+  const widths = ['w-[70%]', 'w-[60%]', 'w-[80%]', 'w-[55%]', 'w-[75%]', 'w-[65%]', 'w-[50%]', 'w-[72%]'];
+  const barWidths = ['w-2/3', 'w-1/2', 'w-3/4', 'w-2/5', 'w-3/5', 'w-1/3', 'w-4/5', 'w-1/2'];
+  return (
+    <div className="flex flex-col gap-1 p-2 overflow-y-auto border-r border-border bg-bg-subtle scrollbar-thin day-list-responsive">
+      {Array.from({ length: 8 }, (_, i) => (
+        <div key={i} className="flex flex-col gap-1 px-3 py-2.5 rounded-none border border-transparent" style={{ animationDelay: `${i * 75}ms` }}>
+          <div>
+            <div className={`h-[10px] ${widths[(i + 1) % 8]} bg-border/40 rounded-sm animate-pulse`} style={{ animationDelay: `${i * 75}ms` }} />
+            <div className={`mt-1.5 h-[14px] ${widths[i % 8]} bg-border/50 rounded-sm animate-pulse`} style={{ animationDelay: `${i * 75}ms` }} />
+          </div>
+          {i % 3 !== 2 && (
+            <div className="flex flex-col gap-1 w-full">
+              <div className={`h-[6px] ${barWidths[i % 8]} bg-[#FF8800]/15 rounded-none animate-pulse`} style={{ animationDelay: `${i * 75}ms` }} />
+              {i % 2 === 0 && <div className={`h-[6px] ${barWidths[(i + 3) % 8]} bg-[#00FF88]/15 rounded-none animate-pulse`} style={{ animationDelay: `${i * 75}ms` }} />}
+            </div>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export default function DayList() {
   const {
     uniqueDates,
@@ -55,6 +78,7 @@ export default function DayList() {
     setShowAllEvents,
     eventsByDate,
     planItemsByDate,
+    isInitializing
   } = useTrip();
 
   const [isPastExpanded, setIsPastExpanded] = useState(false);
@@ -132,6 +156,10 @@ export default function DayList() {
       </button>
     );
   };
+
+  if (isInitializing) {
+    return <DayListSkeleton />;
+  }
 
   if (uniqueDates.length === 0) {
     return (

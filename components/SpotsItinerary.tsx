@@ -8,11 +8,50 @@ import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { useTrip, getTagColor } from '@/components/providers/TripProvider';
 import { formatDateDayMonth, formatTag, normalizePlaceTag, truncate } from '@/lib/helpers';
 
+function SpotsItinerarySkeleton() {
+  const titleWidths = ['w-3/5', 'w-2/3', 'w-1/2', 'w-3/4'];
+  const descWidths = ['w-[85%]', 'w-[70%]', 'w-[78%]', 'w-[65%]'];
+  return (
+    <div className="flex flex-col p-3 overflow-y-auto min-h-0 scrollbar-thin">
+      {/* Header skeleton */}
+      <div className="flex items-start justify-between gap-2 mb-2.5">
+        <div>
+          <div className="h-[18px] w-32 bg-border/40 rounded-sm animate-pulse" />
+          <div className="flex gap-1.5 mt-1.5">
+            {Array.from({ length: 3 }, (_, i) => (
+              <div key={i} className="h-[28px] w-[60px] bg-border/30 rounded-sm animate-pulse" style={{ animationDelay: `${i * 60}ms` }} />
+            ))}
+          </div>
+        </div>
+        <div className="h-5 w-[60px] bg-border/25 rounded-sm animate-pulse" style={{ animationDelay: '100ms' }} />
+      </div>
+      {/* Card skeletons */}
+      <div className="flex flex-col gap-2">
+        {Array.from({ length: 3 }, (_, i) => (
+          <div key={i} className="rounded-none border border-border bg-bg-elevated p-3.5" style={{ animationDelay: `${i * 100}ms` }}>
+            <div className="flex gap-2 justify-between items-start mb-1.5">
+              <div className={`h-[15px] ${titleWidths[i]} bg-border/50 rounded-sm animate-pulse`} style={{ animationDelay: `${i * 100}ms` }} />
+              <div className="h-5 w-[52px] bg-border/25 rounded-sm shrink-0 animate-pulse" style={{ animationDelay: `${i * 100 + 50}ms` }} />
+            </div>
+            <div className="h-[12px] w-[60%] bg-border/30 rounded-sm mb-1.5 animate-pulse" style={{ animationDelay: `${i * 100 + 100}ms` }} />
+            <div className={`h-[12px] ${descWidths[i]} bg-border/30 rounded-sm mb-2.5 animate-pulse`} style={{ animationDelay: `${i * 100 + 150}ms` }} />
+            <div className="h-[28px] w-[80px] bg-border/25 rounded-sm animate-pulse" style={{ animationDelay: `${i * 100 + 200}ms` }} />
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export default function SpotsItinerary() {
   const {
     visiblePlaces, placeTagFilter, setPlaceTagFilter,
-    placeTagOptions, addPlaceToDayPlan, selectedDate
+    placeTagOptions, addPlaceToDayPlan, selectedDate, isInitializing
   } = useTrip();
+
+  if (isInitializing) {
+    return <SpotsItinerarySkeleton />;
+  }
 
   return (
     <div className="flex flex-col p-3 overflow-y-auto min-h-0 scrollbar-thin">
@@ -50,8 +89,8 @@ export default function SpotsItinerary() {
               {place.details ? <p className="my-0.5 text-[0.82rem] text-foreground-secondary leading-relaxed">{truncate(place.details, 220)}</p> : null}
               {normalizePlaceTag(place.tag) === 'avoid' ? (
                 <div className="my-1.5 flex flex-col gap-1">
-                  <p className="my-0 flex items-center gap-1.5 text-[0.82rem] font-semibold text-[#FF4444]"><TriangleAlert className="w-4 h-4 shrink-0" />{place.risk === 'extreme' ? 'DO NOT VISIT' : place.risk === 'high' ? 'High risk — stay away' : 'Exercise caution'}</p>
-                  {place.crimeTypes ? <p className="my-0 text-[0.78rem] text-[#FF4444] font-medium pl-[22px]">{place.crimeTypes}</p> : null}
+                  <p className="my-0 flex items-center gap-1.5 text-[0.82rem] font-semibold text-[#CC3333]"><TriangleAlert className="w-4 h-4 shrink-0" />{place.risk === 'extreme' ? 'DO NOT VISIT' : place.risk === 'high' ? 'High risk — stay away' : 'Exercise caution'}</p>
+                  {place.crimeTypes ? <p className="my-0 text-[0.78rem] text-[#CC3333] font-medium pl-[22px]">{place.crimeTypes}</p> : null}
                 </div>
               ) : normalizePlaceTag(place.tag) === 'safe' ? (
                 <div className="my-1.5 flex flex-col gap-1">

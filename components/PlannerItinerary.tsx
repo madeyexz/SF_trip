@@ -62,6 +62,42 @@ function getCollisions(items) {
   return collisions;
 }
 
+function PlannerItinerarySkeleton() {
+  return (
+    <div className="flex flex-col p-3 min-h-0 h-full overflow-hidden">
+      {/* Header skeleton */}
+      <div className="flex items-start justify-between gap-2 mb-2.5">
+        <div>
+          <div className="h-[18px] w-36 bg-border/40 rounded-sm animate-pulse" />
+          <div className="flex gap-1.5 mt-1.5">
+            <div className="h-[30px] w-[110px] bg-border/30 rounded-sm animate-pulse" style={{ animationDelay: '75ms' }} />
+          </div>
+        </div>
+        <div className="flex gap-1 shrink-0">
+          <div className="h-[28px] w-[52px] bg-border/25 rounded-sm animate-pulse" style={{ animationDelay: '100ms' }} />
+          <div className="h-[28px] w-[36px] bg-border/25 rounded-sm animate-pulse" style={{ animationDelay: '150ms' }} />
+          <div className="h-[28px] w-[44px] bg-border/25 rounded-sm animate-pulse" style={{ animationDelay: '200ms' }} />
+        </div>
+      </div>
+      {/* Time grid skeleton */}
+      <div className="flex-1 min-h-0 overflow-hidden rounded-none border border-border bg-bg-elevated">
+        <div className="flex flex-col">
+          {Array.from({ length: 6 }, (_, i) => (
+            <div key={i} className="flex items-center h-[40px] border-b border-border/30">
+              <div className="w-10 shrink-0 flex justify-end pr-1.5">
+                <div className="h-[10px] w-6 bg-border/25 rounded-sm animate-pulse" style={{ animationDelay: `${250 + i * 60}ms` }} />
+              </div>
+              <div className="flex-1 border-l border-border/20" />
+            </div>
+          ))}
+        </div>
+      </div>
+      {/* Route summary skeleton */}
+      <div className="mt-2 h-[14px] w-[55%] bg-border/30 rounded-sm animate-pulse" style={{ animationDelay: '600ms' }} />
+    </div>
+  );
+}
+
 export default function PlannerItinerary() {
   const {
     selectedDate, travelMode, setTravelMode,
@@ -69,8 +105,13 @@ export default function PlannerItinerary() {
     plannerViewMode, setPlannerViewMode,
     routeSummary, isRouteUpdating,
     clearDayPlan, startPlanDrag, removePlanItem,
-    handleExportPlannerIcs, handleAddDayPlanToGoogleCalendar
+    handleExportPlannerIcs, handleAddDayPlanToGoogleCalendar,
+    isInitializing
   } = useTrip();
+
+  if (isInitializing) {
+    return <PlannerItinerarySkeleton />;
+  }
 
   const routeSummaryText =
     routeSummary || (selectedDate && dayPlanItems.length ? 'Waiting for routable stops...' : 'Add stops to draw route');
