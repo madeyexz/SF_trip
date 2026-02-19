@@ -25,7 +25,20 @@ const spaceGrotesk = Space_Grotesk({
 
 export const metadata = {
   title: 'SF Trip Planner',
-  description: 'See what is happening in SF, what is nearby, and how long it takes from your stay.'
+  description: 'See what is happening in SF, what is nearby, and how long it takes from your stay.',
+  metadataBase: new URL('https://sf.ianhsiao.me'),
+  openGraph: {
+    title: 'SF Travel Planner',
+    description: 'Events, spots, and safety — one map. Plan your SF trip free.',
+    siteName: 'SF Travel Planner',
+    type: 'website',
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: 'SF Travel Planner',
+    description: 'Events, spots, and safety — one map. Plan your SF trip free.',
+    creator: '@ianhsiao',
+  },
 };
 
 export default function RootLayout({ children }) {
