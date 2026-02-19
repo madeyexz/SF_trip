@@ -24,9 +24,63 @@ const DEFAULT_RSS_STATE_MAX_ITEMS = 500;
 const SOURCE_TYPES = new Set(['event', 'spot']);
 const SOURCE_STATUSES = new Set(['active', 'paused']);
 const SPOT_TAGS = ['eat', 'bar', 'cafes', 'go out', 'shops', 'avoid', 'safe'];
+const CONVEX_SPOT_FIELDS = [
+  'id',
+  'name',
+  'tag',
+  'location',
+  'mapLink',
+  'cornerLink',
+  'curatorComment',
+  'description',
+  'details',
+  'lat',
+  'lng',
+  'sourceId',
+  'sourceUrl',
+  'confidence'
+];
 
 let geocodeCacheMapPromise = null;
 let routeCacheMapPromise = null;
+
+function isReadOnlyFilesystemError(error) {
+  const code = cleanText(error?.code).toUpperCase();
+  return code === 'EROFS' || code === 'EACCES' || code === 'EPERM';
+}
+
+async function ensureDataDirWritable() {
+  try {
+    await mkdir(DATA_DIR, { recursive: true });
+    return true;
+  } catch (error) {
+    if (isReadOnlyFilesystemError(error)) {
+      console.warn('Local data directory is read-only; skipping local cache writes.');
+      return false;
+    }
+    throw error;
+  }
+}
+
+async function writeTextFileBestEffort(filePath, contents, { ensureDataDir = false, label = 'local file' } = {}) {
+  if (ensureDataDir) {
+    const canWriteToDataDir = await ensureDataDirWritable();
+    if (!canWriteToDataDir) {
+      return false;
+    }
+  }
+
+  try {
+    await writeFile(filePath, contents, 'utf-8');
+    return true;
+  } catch (error) {
+    if (isReadOnlyFilesystemError(error)) {
+      console.warn(`Skipping ${label} write on read-only filesystem (${filePath}).`);
+      return false;
+    }
+    throw error;
+  }
+}
 
 export function getCalendarUrls() {
   return [
@@ -76,7 +130,7 @@ export async function saveBaseLocation(text) {
       updatedAt: new Date().toISOString()
     });
   }
-  await writeFile(DOC_LOCATION_FILE, trimmed, 'utf-8');
+  await writeTextFileBestEffort(DOC_LOCATION_FILE, trimmed, { label: 'base location' });
 }
 
 export async function loadTripConfig() {
@@ -110,8 +164,10 @@ export async function saveTripConfig({ tripStart, tripEnd }) {
       updatedAt: now
     });
   }
-  await mkdir(DATA_DIR, { recursive: true });
-  await writeFile(TRIP_CONFIG_FILE, JSON.stringify({ tripStart, tripEnd }, null, 2), 'utf-8');
+  await writeTextFileBestEffort(TRIP_CONFIG_FILE, JSON.stringify({ tripStart, tripEnd }, null, 2), {
+    ensureDataDir: true,
+    label: 'trip config'
+  });
 }
 
 export async function resolveAddressCoordinates(addressText) {
@@ -445,7 +501,6 @@ export async function saveCachedRoutePayload(cacheKey, routePayloadInput) {
 }
 
 export async function syncEvents() {
-  await mkdir(DATA_DIR, { recursive: true });
   const nowIso = new Date().toISOString();
   const sourceSnapshot = await getSourceSnapshotForSync();
   const rssFallbackStateBySourceUrl = await loadRssSeenBySourceUrlFromEventsCache();
@@ -476,7 +531,10 @@ export async function syncEvents() {
     places: fallbackPlaces
   };
 
-  await writeFile(EVENTS_CACHE_FILE, JSON.stringify(payload, null, 2), 'utf-8');
+  await writeTextFileBestEffort(EVENTS_CACHE_FILE, JSON.stringify(payload, null, 2), {
+    ensureDataDir: true,
+    label: 'events cache'
+  });
   await Promise.allSettled([
     saveEventsToConvex(payload),
     saveSpotsToConvex({
@@ -708,9 +766,13 @@ async function saveSpotsToConvex({ spots, syncedAt, sourceUrls }) {
     return;
   }
 
+  const sanitizedSpots = Array.isArray(spots)
+    ? spots.map((spot) => sanitizeSpotForConvex(spot))
+    : [];
+
   try {
     await client.mutation('spots:upsertSpots', {
-      spots,
+      spots: sanitizedSpots,
       syncedAt,
       sourceUrls,
       missedSyncThreshold: MISSED_SYNC_THRESHOLD
@@ -718,6 +780,22 @@ async function saveSpotsToConvex({ spots, syncedAt, sourceUrls }) {
   } catch (error) {
     console.error('Convex spots write failed; local cache is still updated.', error);
   }
+}
+
+function sanitizeSpotForConvex(spot) {
+  if (!spot || typeof spot !== 'object') {
+    return spot;
+  }
+
+  const sanitizedSpot = {};
+
+  for (const field of CONVEX_SPOT_FIELDS) {
+    if (Object.prototype.hasOwnProperty.call(spot, field) && spot[field] !== undefined) {
+      sanitizedSpot[field] = spot[field];
+    }
+  }
+
+  return sanitizedSpot;
 }
 
 function getActiveSourceUrls(sources, sourceType) {
@@ -957,8 +1035,10 @@ async function saveRssSeenBySourceUrlToEventsCache(rssStateBySourceUrl) {
     }
   };
 
-  await mkdir(DATA_DIR, { recursive: true });
-  await writeFile(EVENTS_CACHE_FILE, JSON.stringify(payload, null, 2), 'utf-8');
+  await writeTextFileBestEffort(EVENTS_CACHE_FILE, JSON.stringify(payload, null, 2), {
+    ensureDataDir: true,
+    label: 'events cache'
+  });
 }
 
 async function getSourceSnapshotForSync() {
@@ -1717,8 +1797,10 @@ async function ensureStaticPlacesCoordinates(places) {
   }
 
   if (changed) {
-    await mkdir(DATA_DIR, { recursive: true });
-    await writeFile(STATIC_PLACES_FILE, `${JSON.stringify(nextPlaces, null, 2)}\n`, 'utf-8');
+    await writeTextFileBestEffort(STATIC_PLACES_FILE, `${JSON.stringify(nextPlaces, null, 2)}\n`, {
+      ensureDataDir: true,
+      label: 'static places cache'
+    });
   }
 
   return nextPlaces;
@@ -2018,8 +2100,10 @@ async function persistGeocodeCacheMap() {
     };
   }
 
-  await mkdir(DATA_DIR, { recursive: true });
-  await writeFile(GEOCODE_CACHE_FILE, `${JSON.stringify(payload, null, 2)}\n`, 'utf-8');
+  await writeTextFileBestEffort(GEOCODE_CACHE_FILE, `${JSON.stringify(payload, null, 2)}\n`, {
+    ensureDataDir: true,
+    label: 'geocode cache'
+  });
 }
 
 async function loadGeocodeFromConvex(addressKey) {
@@ -2340,6 +2424,8 @@ async function persistRouteCacheMap() {
     payload[cacheKey] = sanitized;
   }
 
-  await mkdir(DATA_DIR, { recursive: true });
-  await writeFile(ROUTE_CACHE_FILE, `${JSON.stringify(payload, null, 2)}\n`, 'utf-8');
+  await writeTextFileBestEffort(ROUTE_CACHE_FILE, `${JSON.stringify(payload, null, 2)}\n`, {
+    ensureDataDir: true,
+    label: 'route cache'
+  });
 }
