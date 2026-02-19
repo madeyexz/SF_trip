@@ -1,5 +1,3 @@
-import { isIP } from 'node:net';
-
 const RATE_LIMIT_STATE = new Map<string, { count: number; resetAt: number }>();
 const MAX_RATE_LIMIT_KEYS = 10_000;
 const TRUSTED_CLIENT_IP_HEADERS = [
@@ -310,5 +308,31 @@ function normalizeIpCandidate(value: string) {
     token = token.slice(0, zoneSeparatorIndex);
   }
 
-  return isIP(token) ? token : '';
+  return isValidIp(token) ? token : '';
+}
+
+function isValidIp(value: string) {
+  const normalized = normalizeHostname(value);
+  if (!normalized) {
+    return false;
+  }
+
+  if (parseIpv4(normalized)) {
+    return true;
+  }
+
+  return isValidIpv6(normalized);
+}
+
+function isValidIpv6(value: string) {
+  const normalized = normalizeHostname(value);
+  if (!normalized.includes(':')) {
+    return false;
+  }
+  if (normalized.includes(':::')) {
+    return false;
+  }
+
+  // Supports compressed IPv6 and IPv4-mapped IPv6 forms.
+  return /^[0-9a-f:.]+$/i.test(normalized);
 }

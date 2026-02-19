@@ -1,4 +1,5 @@
 import { getAuthUserId } from '@convex-dev/auth/server';
+import { v } from 'convex/values';
 import type { MutationCtx, QueryCtx } from './_generated/server';
 import { mutation, query } from './_generated/server';
 import { parseOwnerEmailAllowlist, resolveInitialUserRole } from './ownerRole';
@@ -14,6 +15,12 @@ type UserProfileLike = {
   role: 'owner' | 'member';
   email?: string;
 };
+
+const userProfileResponseValidator = v.object({
+  userId: v.string(),
+  role: v.union(v.literal('owner'), v.literal('member')),
+  email: v.string()
+});
 
 async function requireCurrentUserId(ctx: ConvexCtx) {
   const userId = await getAuthUserId(ctx);
@@ -40,6 +47,7 @@ function buildProfileResponse(profile: UserProfileLike) {
 
 export const ensureCurrentUserProfile = mutation({
   args: {},
+  returns: userProfileResponseValidator,
   handler: async (ctx) => {
     const userId = await requireCurrentUserId(ctx);
     const identity = await ctx.auth.getUserIdentity();
@@ -53,9 +61,11 @@ export const ensureCurrentUserProfile = mutation({
       .first();
 
     if (existing) {
-      const updates: Record<string, any> = {
-        updatedAt: now
-      };
+      const updates: Partial<{
+        email: string;
+        role: 'owner';
+        updatedAt: string;
+      }> = {};
       if (email && existing.email !== email) {
         updates.email = email;
       }
@@ -63,8 +73,12 @@ export const ensureCurrentUserProfile = mutation({
       if (shouldBeOwner && existing.role !== 'owner') {
         updates.role = 'owner';
       }
-      await ctx.db.patch(existing._id, updates);
-      return buildProfileResponse({ ...existing, ...updates });
+      if (updates.email || updates.role) {
+        updates.updatedAt = now;
+        await ctx.db.patch(existing._id, updates);
+        return buildProfileResponse({ ...existing, ...updates });
+      }
+      return buildProfileResponse(existing);
     }
     const role = resolveInitialUserRole(email, ownerEmailAllowlist);
     await ctx.db.insert('userProfiles', {
@@ -85,6 +99,7 @@ export const ensureCurrentUserProfile = mutation({
 
 export const getCurrentUserProfile = query({
   args: {},
+  returns: v.union(v.null(), userProfileResponseValidator),
   handler: async (ctx) => {
     const userId = await requireCurrentUserId(ctx);
     const profile = await ctx.db
