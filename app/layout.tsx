@@ -1,3 +1,4 @@
+import Script from 'next/script';
 import { Inter, JetBrains_Mono, Space_Grotesk } from 'next/font/google';
 import { Analytics } from '@vercel/analytics/next';
 import { ConvexAuthNextjsServerProvider } from '@convex-dev/auth/nextjs/server';
@@ -35,6 +36,19 @@ export default function RootLayout({ children }) {
           <ConvexClientProvider>{children}</ConvexClientProvider>
         </ConvexAuthNextjsServerProvider>
         <Analytics />
+        <Script
+          src="https://cdnjs.buymeacoffee.com/1.0.0/widget.prod.min.js"
+          data-name="BMC-Widget"
+          data-cfasync="false"
+          data-id="ianhsiao"
+          data-description="Support me on Buy me a coffee!"
+          data-message="was it helpful? pay it forward to sustain the website."
+          data-color="#FF813F"
+          data-position="Right"
+          data-x_margin="18"
+          data-y_margin="18"
+          strategy="lazyOnload"
+        />
       </body>
     </html>
   );
