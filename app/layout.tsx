@@ -24,19 +24,27 @@ const spaceGrotesk = Space_Grotesk({
 });
 
 export const metadata = {
-  title: 'SF Trip Planner',
-  description: 'See what is happening in SF, what is nearby, and how long it takes from your stay.',
+  title: {
+    default: 'SF Trip Planner',
+    template: '%s | SF Trip Planner',
+  },
+  description:
+    'Plan your San Francisco trip with events, curated spots, and live crime heatmaps on one map. Free and open source.',
   metadataBase: new URL('https://sf.ianhsiao.me'),
+  alternates: {
+    canonical: '/',
+  },
   openGraph: {
-    title: 'SF Travel Planner',
-    description: 'Events, spots, and safety — one map. Plan your SF trip free.',
-    siteName: 'SF Travel Planner',
+    title: 'SF Trip Planner',
+    description: 'Events, spots, and safety on one map. Plan your SF trip free.',
+    siteName: 'SF Trip Planner',
     type: 'website',
+    locale: 'en_US',
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'SF Travel Planner',
-    description: 'Events, spots, and safety — one map. Plan your SF trip free.',
+    title: 'SF Trip Planner',
+    description: 'Events, spots, and safety on one map. Plan your SF trip free.',
     creator: '@ianhsiao',
   },
 };
