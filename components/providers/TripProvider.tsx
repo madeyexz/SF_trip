@@ -1334,6 +1334,7 @@ export default function TripProvider({ children }: { children: ReactNode }) {
         mapRef.current = new window.google.maps.Map(mapElementRef.current, {
           center: { lat: 37.7749, lng: -122.4194 }, zoom: 12,
           mapId: config.mapsMapId || 'DEMO_MAP_ID',
+          colorScheme: 'DARK',
           mapTypeControl: false, streetViewControl: false, fullscreenControl: false,
           restriction: {
             latLngBounds: { north: 37.85, south: 37.68, west: -122.55, east: -122.33 },

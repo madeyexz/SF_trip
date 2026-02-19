@@ -74,6 +74,25 @@
 /* Google Maps container needs absolute positioning */
 #map { position: absolute; inset: 0; background: #141414; }
 
+/* Google Maps InfoWindow dark overrides */
+.gm-style-iw.gm-style-iw-c {
+  background: #0A0A0A !important;
+  border: 1px solid #2f2f2f !important;
+  border-radius: 0 !important;
+  padding: 0 !important;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6) !important;
+}
+.gm-style-iw-d { overflow: auto !important; }
+.gm-style-iw-tc::after {
+  background: #0A0A0A !important;
+  border: 1px solid #2f2f2f !important;
+  border-radius: 0 !important;
+}
+/* Close button */
+.gm-style-iw button.gm-ui-hover-effect {
+  filter: invert(1) !important;
+}
+
 /* Select dropdown animation */
 .select-content-animated { animation: selectSlideIn 0.18s cubic-bezier(0.22, 1, 0.36, 1); }
 
