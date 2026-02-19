@@ -1545,7 +1545,7 @@ function buildEventIdFromUrl(eventUrl) {
   return text ? `evt-${text}` : `evt-${Date.now()}`;
 }
 
-async function enrichPlacesWithCoordinates(places) {
+async function _enrichPlacesWithCoordinates(places) {
   const nextPlaces = [];
 
   for (const place of places) {
@@ -1584,7 +1584,7 @@ async function enrichPlacesWithCoordinates(places) {
   return nextPlaces;
 }
 
-function normalizeSpots(rawPlaces, source) {
+function _normalizeSpots(rawPlaces, source) {
   const normalized = [];
   const seen = new Set();
 
@@ -1641,7 +1641,7 @@ function normalizeSpots(rawPlaces, source) {
   return normalized;
 }
 
-function dedupeAndSortSpots(spots) {
+function _dedupeAndSortSpots(spots) {
   const bestByKey = new Map();
 
   for (const spot of spots) {
@@ -1659,7 +1659,7 @@ function dedupeAndSortSpots(spots) {
   });
 }
 
-function buildSpotDedupKey(spot) {
+function _buildSpotDedupKey(spot) {
   const cornerLink = cleanText(spot?.cornerLink);
   if (cornerLink) {
     return cornerLink.toLowerCase();
@@ -2198,7 +2198,7 @@ function sleep(ms) {
   });
 }
 
-function normalizeEvent(rawEvent) {
+function _normalizeEvent(rawEvent) {
   if (!rawEvent || typeof rawEvent !== 'object') {
     return null;
   }
@@ -2300,7 +2300,7 @@ function cleanText(value) {
   return value.replace(/\s+/g, ' ').trim();
 }
 
-function cleanTextPreservingNewlines(value) {
+function _cleanTextPreservingNewlines(value) {
   if (typeof value !== 'string') {
     return '';
   }
@@ -2312,7 +2312,7 @@ function cleanTextPreservingNewlines(value) {
     .trim();
 }
 
-function firstMatch(text, regex) {
+function _firstMatch(text, regex) {
   const match = text.match(regex);
   if (!match) {
     return '';
@@ -2321,7 +2321,7 @@ function firstMatch(text, regex) {
   return cleanText(match[1] || match[0] || '');
 }
 
-function extractAboutDescription(markdown) {
+function _extractAboutDescription(markdown) {
   if (!markdown) {
     return '';
   }
@@ -2341,7 +2341,7 @@ function extractAboutDescription(markdown) {
   return '';
 }
 
-function slugToTitle(eventUrl) {
+function _slugToTitle(eventUrl) {
   const slug = cleanText(eventUrl).replace('https://luma.com/', '');
   if (!slug) {
     return '';

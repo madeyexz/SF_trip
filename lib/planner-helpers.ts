@@ -7,8 +7,7 @@ import {
   normalizePlaceTag,
   formatMinuteLabel,
   formatDate,
-  toDateOnlyISO,
-  toISODate
+  toDateOnlyISO
 } from './helpers';
 
 export const PLAN_SNAP_MINUTES = 15;
