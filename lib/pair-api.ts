@@ -35,10 +35,19 @@ export function parsePairActionBody(body: unknown) {
     };
   }
 
+  if (action === 'leave') {
+    return {
+      ok: true,
+      action: 'leave' as const,
+      roomCode: '',
+      error: ''
+    };
+  }
+
   return {
     ok: false,
     action: '' as const,
     roomCode: '',
-    error: 'Unsupported action. Use "create" or "join".'
+    error: 'Unsupported action. Use "create", "join", or "leave".'
   };
 }

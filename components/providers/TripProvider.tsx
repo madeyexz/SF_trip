@@ -532,9 +532,44 @@ export default function TripProvider({ children }: { children: ReactNode }) {
     return false;
   }, [canManageGlobal, setStatusMessage]);
 
+  const leavePairRoomMembership = useCallback(async (
+    { silent = false, keepalive = false }: { silent?: boolean; keepalive?: boolean } = {}
+  ) => {
+    if (!isAuthenticated) {
+      return true;
+    }
+
+    const requestBody = JSON.stringify({ action: 'leave' });
+    try {
+      if (keepalive && typeof navigator !== 'undefined' && typeof navigator.sendBeacon === 'function') {
+        const body = new Blob([requestBody], { type: 'application/json' });
+        navigator.sendBeacon('/api/pair', body);
+        return true;
+      }
+
+      const response = await fetch('/api/pair', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: requestBody,
+        ...(keepalive ? { keepalive: true } : {})
+      });
+      if (!response.ok) {
+        const payload = await response.json().catch(() => null);
+        throw new Error(payload?.error || `Failed to leave pair room (${response.status}).`);
+      }
+      return true;
+    } catch (error) {
+      if (!silent) {
+        setStatusMessage(error instanceof Error ? error.message : 'Failed to leave pair room.', true);
+      }
+      return false;
+    }
+  }, [isAuthenticated, setStatusMessage]);
+
   const handleSignOut = useCallback(async () => {
     setIsSigningOut(true);
     try {
+      await leavePairRoomMembership({ silent: true, keepalive: true });
       await signOut();
       setStatusMessage('Signed out.');
       if (typeof window !== 'undefined') {
@@ -545,7 +580,7 @@ export default function TripProvider({ children }: { children: ReactNode }) {
     } finally {
       setIsSigningOut(false);
     }
-  }, [setStatusMessage, signOut]);
+  }, [leavePairRoomMembership, setStatusMessage, signOut]);
 
   const loadPairRooms = useCallback(async () => {
     if (!isAuthenticated) {
@@ -566,17 +601,43 @@ export default function TripProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!isAuthenticated) {
       setPairRooms([]);
+      setCurrentPairRoomId('');
+      setPairMemberCount(1);
+      setPlannerViewMode('mine');
       return;
     }
-    void loadPairRooms();
-  }, [isAuthenticated, loadPairRooms]);
+    setPairRooms([]);
+  }, [isAuthenticated]);
 
-  const handleUsePersonalPlanner = useCallback(() => {
+  useEffect(() => {
+    if (!isAuthenticated || typeof window === 'undefined') {
+      return;
+    }
+
+    const handlePageHide = () => {
+      void leavePairRoomMembership({ silent: true, keepalive: true });
+      setCurrentPairRoomId('');
+      setPairMemberCount(1);
+      setPlannerViewMode('mine');
+      setPairRooms([]);
+    };
+
+    window.addEventListener('pagehide', handlePageHide);
+    return () => {
+      window.removeEventListener('pagehide', handlePageHide);
+    };
+  }, [isAuthenticated, leavePairRoomMembership]);
+
+  const handleUsePersonalPlanner = useCallback(async () => {
+    setIsPairActionPending(true);
+    await leavePairRoomMembership({ silent: true });
     setCurrentPairRoomId('');
     setPairMemberCount(1);
     setPlannerViewMode('mine');
+    setPairRooms([]);
+    setIsPairActionPending(false);
     setStatusMessage('Switched to your personal planner.');
-  }, [setStatusMessage]);
+  }, [leavePairRoomMembership, setStatusMessage]);
 
   const handleCreatePairRoom = useCallback(async () => {
     setIsPairActionPending(true);

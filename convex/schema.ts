@@ -47,8 +47,11 @@ export default defineSchema({
     roomCode: v.string(),
     createdByUserId: v.string(),
     createdAt: v.string(),
-    updatedAt: v.string()
-  }).index('by_room_code', ['roomCode']),
+    updatedAt: v.string(),
+    expiredAt: v.optional(v.string())
+  })
+    .index('by_room_code', ['roomCode'])
+    .index('by_created_by', ['createdByUserId']),
   pairMembers: defineTable({
     roomCode: v.string(),
     userId: v.string(),

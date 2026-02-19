@@ -10,7 +10,7 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "test:backend": "node --test lib/events.test.mjs lib/events.planner.test.mjs lib/events-api.test.mjs lib/pair-api.test.mjs lib/planner-api.test.mjs lib/security.test.mjs convex/authz.test.mjs convex/owner-role.test.mjs lib/next-config-security.test.mjs lib/layout-security.test.mjs lib/trip-provider-storage.test.mjs lib/api-guards.test.mjs",
+    "test:backend": "node --test lib/events.test.mjs lib/events.planner.test.mjs lib/events-api.test.mjs lib/pair-api.test.mjs lib/planner-api.test.mjs lib/security.test.mjs convex/authz.test.mjs convex/owner-role.test.mjs convex/pair-policy.test.mjs lib/next-config-security.test.mjs lib/layout-security.test.mjs lib/trip-provider-storage.test.mjs lib/api-guards.test.mjs",
     "lint": "node node_modules/eslint/bin/eslint.js .",
     "lint:fix": "node node_modules/eslint/bin/eslint.js . --fix",
     "typecheck": "tsc --noEmit",

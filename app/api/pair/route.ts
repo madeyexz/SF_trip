@@ -59,6 +59,10 @@ export async function POST(request) {
       const payload = await auth.client.mutation('planner:joinPairRoom', { roomCode: pairAction.roomCode });
       return Response.json(payload);
     }
+    if (pairAction.action === 'leave') {
+      const payload = await auth.client.mutation('planner:leavePairRoom', {});
+      return Response.json(payload);
+    }
   } catch (error) {
     return Response.json(
       {
