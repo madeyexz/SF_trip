@@ -15,7 +15,7 @@ React.ComponentPropsWithoutRef<typeof SelectPrimitive.Trigger>
   <SelectPrimitive.Trigger
     ref={ref}
     className={cn(
-      'w-full inline-flex items-center justify-between border border-border bg-card text-foreground rounded-[10px] min-h-[38px] px-3 py-2 text-sm cursor-pointer transition-all duration-200 hover:border-accent-border hover:shadow-[0_0_0_3px_var(--color-accent-glow)] focus-visible:outline-2 focus-visible:outline-accent-border focus-visible:outline-offset-2',
+      'w-full inline-flex items-center justify-between border border-border bg-card text-foreground rounded-none min-h-[38px] px-3 py-2 text-sm cursor-pointer transition-all duration-200 hover:border-accent-border focus-visible:outline-2 focus-visible:outline-accent-border focus-visible:outline-offset-2',
       className
     )}
     {...props}
@@ -55,7 +55,7 @@ React.ComponentPropsWithoutRef<typeof SelectPrimitive.Content>
   <SelectPrimitive.Portal>
     <SelectPrimitive.Content
       ref={ref}
-      className={cn('z-70 overflow-hidden border border-border rounded-[10px] bg-card shadow-lg select-content-animated', className)}
+      className={cn('z-70 overflow-hidden border border-border rounded-none bg-card shadow-lg select-content-animated', className)}
       position={position}
       {...props}
     >
@@ -75,7 +75,7 @@ React.ComponentPropsWithoutRef<typeof SelectPrimitive.Item>
 >(({ className, children, ...props }, ref) => (
   <SelectPrimitive.Item
     ref={ref}
-    className={cn('min-h-[34px] flex items-center gap-2 rounded-lg py-1.5 pl-2 pr-2.5 text-sm cursor-pointer transition-colors duration-200 select-item-styled', className)}
+    className={cn('min-h-[34px] flex items-center gap-2 rounded-none py-1.5 pl-2 pr-2.5 text-sm cursor-pointer transition-colors duration-200 select-item-styled', className)}
     {...props}
   >
     <span className="w-4 inline-flex">
