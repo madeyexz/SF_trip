@@ -183,7 +183,7 @@ export function loadGoogleMapsScript(apiKey) {
 export function buildInfoWindowAddButton(plannerAction) {
   if (!plannerAction) return '';
   if (!plannerAction.enabled || !plannerAction.id) {
-    return `<p style="margin:6px 0;color:#64748b;font-size:12px;">Pick a planner date first to add this stop.</p>`;
+    return `<p style="margin:6px 0;color:#6a6a6a;font-size:12px;font-family:'JetBrains Mono',monospace;">Pick a planner date first to add this stop.</p>`;
   }
   return `
     <button id="${escapeHtml(plannerAction.id)}" type="button"

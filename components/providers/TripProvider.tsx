@@ -903,7 +903,7 @@ export default function TripProvider({ children }: { children: ReactNode }) {
     if (baseMarkerRef.current) baseMarkerRef.current.map = null;
     baseMarkerRef.current = new window.google.maps.marker.AdvancedMarkerElement({
       map: hiddenCategoriesRef.current.has('home') ? null : mapRef.current, position: latLng, title,
-      content: createLucidePinIcon(houseIconNode, '#111827')
+      content: createLucidePinIcon(houseIconNode, '#FFFFFF')
     });
   }, []);
 
@@ -1075,7 +1075,7 @@ export default function TripProvider({ children }: { children: ReactNode }) {
     const daysLabel = days === 0 ? 'Today' : days === 1 ? 'Tomorrow' : days > 0 ? `In ${days} days` : `${Math.abs(days)} days ago`;
     const sourceLabel = formatSourceLabel(event.sourceUrl);
     const sourceLine = sourceLabel ? `<p style="margin:4px 0"><strong>Source:</strong> ${escapeHtml(sourceLabel)}</p>` : '';
-    return `<div style="max-width:330px"><h3 style="margin:0 0 6px;font-size:16px">${escapeHtml(event.name)}</h3><p style="margin:4px 0"><strong>Time:</strong> ${escapeHtml(time)} <span style="color:#6b7280;font-size:12px">(${escapeHtml(daysLabel)})</span></p><p style="margin:4px 0"><strong>Location:</strong> ${escapeHtml(location)}</p><p style="margin:4px 0"><strong>Travel time:</strong> ${escapeHtml(travel)}</p>${sourceLine}<p style="margin:4px 0">${escapeHtml(truncate(event.description || '', 220))}</p>${buildInfoWindowAddButton(plannerAction)}<a href="${escapeHtml(event.eventUrl)}" target="_blank" rel="noreferrer">Open event</a></div>`;
+    return `<div style="max-width:330px;background:#0A0A0A;color:#FFFFFF;padding:12px;font-family:'JetBrains Mono',monospace;font-size:13px"><h3 style="margin:0 0 6px;font-size:16px;color:#FFFFFF">${escapeHtml(event.name)}</h3><p style="margin:4px 0;color:#8a8a8a"><strong style="color:#FFFFFF">Time:</strong> ${escapeHtml(time)} <span style="color:#6a6a6a;font-size:12px">(${escapeHtml(daysLabel)})</span></p><p style="margin:4px 0;color:#8a8a8a"><strong style="color:#FFFFFF">Location:</strong> ${escapeHtml(location)}</p><p style="margin:4px 0;color:#8a8a8a"><strong style="color:#FFFFFF">Travel time:</strong> ${escapeHtml(travel)}</p>${sourceLine}<p style="margin:4px 0;color:#8a8a8a">${escapeHtml(truncate(event.description || '', 220))}</p>${buildInfoWindowAddButton(plannerAction)}<a href="${escapeHtml(event.eventUrl)}" target="_blank" rel="noreferrer" style="color:#00FF88;text-decoration:none;font-weight:600;font-size:12px;text-transform:uppercase;letter-spacing:0.05em">Open event</a></div>`;
   }, []);
 
   const buildPlaceInfoWindowHtml = useCallback((place, plannerAction) => {
@@ -1086,21 +1086,21 @@ export default function TripProvider({ children }: { children: ReactNode }) {
     const risk = place.risk || 'medium';
     const isExtreme = risk === 'extreme';
     const isHigh = risk === 'high';
-    const avoidBannerBg = isExtreme ? '#7f1d1d' : isHigh ? '#991b1b' : '#fef2f2';
-    const avoidBannerColor = isExtreme || isHigh ? '#fff' : '#991b1b';
-    const avoidBannerBorder = isExtreme ? '#450a0a' : isHigh ? '#7f1d1d' : '#fca5a5';
+    const avoidBannerBg = isExtreme ? 'rgba(255,68,68,0.2)' : isHigh ? 'rgba(255,68,68,0.15)' : 'rgba(255,68,68,0.08)';
+    const avoidBannerColor = '#FF4444';
+    const avoidBannerBorder = 'rgba(255,68,68,0.3)';
     const avoidBannerText = isExtreme ? 'DO NOT VISIT: extremely dangerous area' : isHigh ? 'High-risk area: avoid if possible' : risk === 'medium-high' ? 'Medium-high risk: be cautious' : 'Exercise caution in this area';
     const avoidCrimeTypeLine = place.crimeTypes ? `<div style="margin-top:4px;font-size:12px;font-weight:500;opacity:0.9">Common crimes: ${escapeHtml(place.crimeTypes)}</div>` : '';
     const safeHighlightsLine = place.safetyHighlights ? `<div style="margin-top:4px;font-size:12px;font-weight:500;opacity:0.9">${escapeHtml(place.safetyHighlights)}</div>` : '<div style="margin-top:4px;font-size:12px;font-weight:500;opacity:0.9">Generally lower violent-crime profile than city average.</div>';
     const safeCrimeTypeLine = place.crimeTypes ? `<div style="margin-top:4px;font-size:12px;font-weight:500;opacity:0.9">Still watch for: ${escapeHtml(place.crimeTypes)}</div>` : '';
     const safeBanner = isSafe
-      ? `<div style="background:#ecfdf3;border:1px solid #86efac;border-radius:6px;padding:8px 10px;margin-bottom:8px;color:#166534;font-size:13px;font-weight:600">Safer area${safeHighlightsLine}${safeCrimeTypeLine}</div>`
+      ? `<div style="background:rgba(0,255,136,0.06);border:1px solid rgba(0,255,136,0.25);border-radius:0;padding:8px 10px;margin-bottom:8px;color:#00FF88;font-size:13px;font-weight:600">Safer area${safeHighlightsLine}${safeCrimeTypeLine}</div>`
       : '';
     const avoidBanner = isAvoid
-      ? `<div style="background:${avoidBannerBg};border:1px solid ${avoidBannerBorder};border-radius:6px;padding:8px 10px;margin-bottom:8px;color:${avoidBannerColor};font-size:13px;font-weight:600">${avoidBannerText}${avoidCrimeTypeLine}</div>`
+      ? `<div style="background:${avoidBannerBg};border:1px solid ${avoidBannerBorder};border-radius:0;padding:8px 10px;margin-bottom:8px;color:${avoidBannerColor};font-size:13px;font-weight:600">${avoidBannerText}${avoidCrimeTypeLine}</div>`
       : '';
     const addButton = isAvoid || isSafe ? '' : buildInfoWindowAddButton(plannerAction);
-    return `<div style="max-width:340px">${avoidBanner}${safeBanner}<h3 style="margin:0 0 6px;font-size:16px">${escapeHtml(place.name)}</h3><p style="margin:4px 0"><strong>Tag:</strong> ${escapeHtml(displayTag)}</p><p style="margin:4px 0"><strong>Location:</strong> ${escapeHtml(place.location || 'Unknown')}</p>${place.curatorComment ? `<p style="margin:4px 0"><strong>Curator:</strong> ${escapeHtml(place.curatorComment)}</p>` : ''}${place.description ? `<p style="margin:4px 0">${escapeHtml(place.description)}</p>` : ''}${place.details ? `<p style="margin:4px 0">${escapeHtml(place.details)}</p>` : ''}${addButton}<div style="display:flex;gap:10px;flex-wrap:wrap"><a href="${escapeHtml(place.mapLink)}" target="_blank" rel="noreferrer">Open map</a>${place.cornerLink ? `<a href="${escapeHtml(place.cornerLink)}" target="_blank" rel="noreferrer">Corner page</a>` : ''}</div></div>`;
+    return `<div style="max-width:340px;background:#0A0A0A;color:#FFFFFF;padding:12px;font-family:'JetBrains Mono',monospace;font-size:13px">${avoidBanner}${safeBanner}<h3 style="margin:0 0 6px;font-size:16px;color:#FFFFFF">${escapeHtml(place.name)}</h3><p style="margin:4px 0;color:#8a8a8a"><strong style="color:#FFFFFF">Tag:</strong> ${escapeHtml(displayTag)}</p><p style="margin:4px 0;color:#8a8a8a"><strong style="color:#FFFFFF">Location:</strong> ${escapeHtml(place.location || 'Unknown')}</p>${place.curatorComment ? `<p style="margin:4px 0;color:#8a8a8a"><strong style="color:#FFFFFF">Curator:</strong> ${escapeHtml(place.curatorComment)}</p>` : ''}${place.description ? `<p style="margin:4px 0;color:#8a8a8a">${escapeHtml(place.description)}</p>` : ''}${place.details ? `<p style="margin:4px 0;color:#8a8a8a">${escapeHtml(place.details)}</p>` : ''}${addButton}<div style="display:flex;gap:10px;flex-wrap:wrap"><a href="${escapeHtml(place.mapLink)}" target="_blank" rel="noreferrer" style="color:#00FF88;text-decoration:none;font-weight:600;font-size:12px;text-transform:uppercase;letter-spacing:0.05em">Open map</a>${place.cornerLink ? `<a href="${escapeHtml(place.cornerLink)}" target="_blank" rel="noreferrer" style="color:#00FF88;text-decoration:none;font-weight:600;font-size:12px;text-transform:uppercase;letter-spacing:0.05em">Corner page</a>` : ''}</div></div>`;
   }, []);
 
   const renderCurrentSelection = useCallback(
@@ -1124,7 +1124,7 @@ export default function TripProvider({ children }: { children: ReactNode }) {
           const dayLabel = days === 0 ? 'today' : `${days}d`;
           const marker = new window.google.maps.marker.AdvancedMarkerElement({
             map: mapRef.current, position, title: event.name,
-            content: createLucidePinIconWithLabel(calendarIconNode, '#ea580c', dayLabel),
+            content: createLucidePinIconWithLabel(calendarIconNode, '#FF8800', dayLabel),
             gmpClickable: true
           });
           marker.addEventListener('gmp-click', () => {
@@ -1205,16 +1205,12 @@ export default function TripProvider({ children }: { children: ReactNode }) {
             const isExtreme = risk === 'extreme';
             const isHighRisk = risk === 'high';
             const bgColor = isAvoidTag
-              ? (isExtreme ? 'rgba(127,29,29,0.92)' : isHighRisk ? 'rgba(153,27,27,0.88)' : 'rgba(254,242,242,0.88)')
-              : 'rgba(220,252,231,0.92)';
-            const textColor = isAvoidTag
-              ? (isExtreme || isHighRisk ? '#fff' : '#991b1b')
-              : '#166534';
-            const borderColor = isAvoidTag
-              ? (isExtreme ? '#450a0a' : isHighRisk ? '#7f1d1d' : '#fca5a5')
-              : '#4ade80';
+              ? (isExtreme ? 'rgba(255,68,68,0.25)' : isHighRisk ? 'rgba(255,68,68,0.18)' : 'rgba(255,68,68,0.10)')
+              : 'rgba(0,255,136,0.10)';
+            const textColor = isAvoidTag ? '#FF4444' : '#00FF88';
+            const borderColor = isAvoidTag ? 'rgba(255,68,68,0.4)' : 'rgba(0,255,136,0.3)';
             const labelPrefix = isAvoidTag ? '⚠' : '✓';
-            labelEl.style.cssText = `font-size:11px;font-weight:700;color:${textColor};background:${bgColor};padding:3px 7px;border-radius:4px;border:1px solid ${borderColor};white-space:nowrap;pointer-events:none;text-align:center;line-height:1.4;`;
+            labelEl.style.cssText = `font-size:11px;font-weight:700;font-family:'JetBrains Mono',monospace;color:${textColor};background:${bgColor};padding:3px 7px;border-radius:0;border:1px solid ${borderColor};white-space:nowrap;pointer-events:none;text-align:center;line-height:1.4;`;
             labelEl.innerHTML = `${labelPrefix} ${escapeHtml(place.name)}${detailText ? `<br><span style="font-size:10px;font-weight:500;opacity:0.9">${escapeHtml(detailText)}</span>` : ''}`;
             const labelMarker = new window.google.maps.marker.AdvancedMarkerElement({
               map: mapRef.current, position, content: labelEl, gmpClickable: false, zIndex: isAvoidTag ? 40 : 25
@@ -1440,7 +1436,7 @@ export default function TripProvider({ children }: { children: ReactNode }) {
         if (cancelled) return;
 
         if (!routePolylineRef.current) {
-          routePolylineRef.current = new window.google.maps.Polyline({ path: route.path, strokeColor: '#1d4ed8', strokeOpacity: 0.86, strokeWeight: 5 });
+          routePolylineRef.current = new window.google.maps.Polyline({ path: route.path, strokeColor: '#00FF88', strokeOpacity: 0.86, strokeWeight: 5 });
           routePolylineRef.current.setMap(mapRef.current);
         } else {
           routePolylineRef.current.setPath(route.path);
