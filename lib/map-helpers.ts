@@ -187,7 +187,7 @@ export function buildInfoWindowAddButton(plannerAction) {
   }
   return `
     <button id="${escapeHtml(plannerAction.id)}" type="button"
-      style="margin:6px 0 8px;padding:6px 10px;border:1px solid #93c5fd;background:#eff6ff;color:#1d4ed8;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;">
+      style="margin:6px 0 8px;padding:6px 10px;border:1px solid rgba(0,255,136,0.25);background:rgba(0,255,136,0.06);color:#00FF88;border-radius:0;font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:600;cursor:pointer;text-transform:uppercase;letter-spacing:0.05em;">
       ${escapeHtml(plannerAction.label || 'Add to selected date')}
     </button>
   `;

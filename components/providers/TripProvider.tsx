@@ -38,13 +38,13 @@ import {
 } from '@/lib/map-helpers';
 
 const TAG_COLORS = {
-  eat: '#d97706',
-  bar: '#7c3aed',
-  cafes: '#2563eb',
-  'go out': '#db2777',
-  shops: '#0f766e',
-  avoid: '#dc2626',
-  safe: '#16a34a'
+  eat: '#FF8800',
+  bar: '#A78BFA',
+  cafes: '#60A5FA',
+  'go out': '#F472B6',
+  shops: '#2DD4BF',
+  avoid: '#FF4444',
+  safe: '#00FF88'
 };
 
 const CRIME_HEATMAP_HOURS = 72;
