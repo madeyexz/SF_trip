@@ -33,14 +33,14 @@ export default function AppShell({ children }) {
 
   return (
     <main className="min-h-dvh h-dvh flex flex-col w-full overflow-hidden">
-      <header className="flex items-center gap-3 px-5 h-[52px] min-h-[52px] border-b border-border bg-card shadow-[0_1px_2px_rgba(12,18,34,0.04)] relative z-30 topbar-responsive">
-        <h1 className="m-0 text-lg font-extrabold tracking-tight shrink-0 bg-gradient-to-br from-foreground from-40% to-accent bg-clip-text text-transparent">SF Trip Planner</h1>
+      <header className="flex items-center gap-3 px-5 h-[52px] min-h-[52px] border-b border-border bg-[#080808] relative z-30 topbar-responsive">
+        <h1 className="m-0 text-lg font-extrabold tracking-tight shrink-0 text-foreground uppercase" style={{ fontFamily: "var(--font-space-grotesk, 'Space Grotesk'), sans-serif" }}>SF TRIP PLANNER</h1>
         <nav className="flex items-center gap-0.5 mx-auto overflow-x-auto scrollbar-none topbar-nav-responsive" aria-label="App navigator">
           {NAV_ITEMS.map(({ id, href, icon: Icon, label }) => (
             <button
               key={id}
               type="button"
-              className={`inline-flex items-center gap-1 px-3.5 py-1.5 border-none rounded-full text-[0.82rem] font-medium cursor-pointer transition-all duration-200 whitespace-nowrap shrink-0 topbar-nav-item-responsive ${activeId === id ? 'bg-accent-light text-accent font-semibold' : 'bg-transparent text-muted hover:bg-bg-subtle hover:text-foreground'}`}
+              className={`inline-flex items-center gap-1 px-3.5 py-1.5 border-none rounded-none text-[0.72rem] font-bold uppercase tracking-wider cursor-pointer transition-all duration-200 whitespace-nowrap shrink-0 topbar-nav-item-responsive ${activeId === id ? 'text-accent border-b-2 border-b-accent' : 'bg-transparent text-muted hover:text-foreground'}`}
               onClick={() => router.push(href)}
             >
               <Icon size={14} />
