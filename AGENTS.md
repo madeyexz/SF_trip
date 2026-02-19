@@ -9,16 +9,16 @@ This project is a Next.js 15 app for SF event mapping.
 - `docs/`: local operational docs such as base location input (`docs/my_location.md`).
 
 ## Build, Test, and Development Commands
-- `pnpm install`: install dependencies.
-- `pnpm dev`: run Next.js locally at `http://localhost:3000`.
-- `pnpm build`: create production build.
-- `pnpm start`: run the production build locally.
-- `pnpm lint`: run ESLint (use as primary pre-PR validation).
-- `pnpm lint:fix`: auto-fix ESLint issues.
-- `pnpm format`: format all files with Prettier.
-- `pnpm format:check`: check formatting without writing.
-- `pnpm convex:dev`: initialize/dev-connect Convex.
-- `pnpm convex:deploy`: deploy Convex schema/functions.
+- `bun install`: install dependencies.
+- `bun dev`: run Next.js locally at `http://localhost:3000`.
+- `bun build`: create production build.
+- `bun start`: run the production build locally.
+- `bun lint`: run ESLint (use as primary pre-PR validation).
+- `bun lint:fix`: auto-fix ESLint issues.
+- `bun format`: format all files with Prettier.
+- `bun format:check`: check formatting without writing.
+- `bun convex:dev`: initialize/dev-connect Convex.
+- `bun convex:deploy`: deploy Convex schema/functions.
 
 ## Design System
 Follow the design guide at `docs/design-guide.md` when implementing any UI component. Key rules:
@@ -42,7 +42,7 @@ Follow the design guide at `docs/design-guide.md` when implementing any UI compo
 
 ## Testing Guidelines
 No automated test suite is currently configured (no Jest/Vitest/Playwright scripts yet).
-- Minimum check before opening a PR: `pnpm lint` must pass.
+- Minimum check before opening a PR: `bun lint` must pass.
 - For feature changes, manually verify:
   - map rendering and controls in `app/EventMapClient.jsx`
   - `/api/events` and `/api/sync` behavior

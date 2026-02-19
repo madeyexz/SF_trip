@@ -2,7 +2,7 @@
   "name": "sf-trip-events-map",
   "version": "0.1.0",
   "private": true,
-  "packageManager": "pnpm@9.14.2",
+  "packageManager": "bun@1.2.22",
   "scripts": {
     "dev": "next dev",
     "build": "next build",

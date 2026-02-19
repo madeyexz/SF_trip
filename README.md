@@ -38,7 +38,7 @@ Next.js 15 · React 19 · TypeScript · Convex · Google Maps API · Tailwind CS
 ```bash
 git clone https://github.com/madeyexz/SF_trip.git
 cd SF_trip
-pnpm install
+bun install
 ```
 
 2. Copy env template and fill in your keys:
@@ -63,14 +63,14 @@ Key environment variables:
 3. Set up Convex:
 
 ```bash
-pnpm convex:dev     # initialize / dev-connect
-pnpm convex:deploy  # deploy schema and functions
+bun convex:dev     # initialize / dev-connect
+bun convex:deploy  # deploy schema and functions
 ```
 
 4. Run:
 
 ```bash
-pnpm dev
+bun dev
 ```
 
 Open `http://localhost:3000`.
@@ -79,14 +79,14 @@ Open `http://localhost:3000`.
 
 | Command | What it does |
 |---------|-------------|
-| `pnpm dev` | Start dev server |
-| `pnpm build` | Production build |
-| `pnpm start` | Run production build |
-| `pnpm lint` | Run ESLint |
-| `pnpm lint:fix` | Auto-fix lint issues |
-| `pnpm format` | Format with Prettier |
-| `pnpm convex:dev` | Connect to Convex dev |
-| `pnpm convex:deploy` | Deploy Convex functions |
+| `bun dev` | Start dev server |
+| `bun build` | Production build |
+| `bun start` | Run production build |
+| `bun lint` | Run ESLint |
+| `bun lint:fix` | Auto-fix lint issues |
+| `bun format` | Format with Prettier |
+| `bun convex:dev` | Connect to Convex dev |
+| `bun convex:deploy` | Deploy Convex functions |
 
 ## Deploy
 
