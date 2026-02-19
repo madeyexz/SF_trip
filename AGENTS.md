@@ -20,6 +20,16 @@ This project is a Next.js 15 app for SF event mapping.
 - `pnpm convex:dev`: initialize/dev-connect Convex.
 - `pnpm convex:deploy`: deploy Convex schema/functions.
 
+## Design System
+Follow the design guide at `docs/design-guide.md` when implementing any UI component. Key rules:
+- **Dark mode only** — near-black backgrounds (`#0C0C0C`, `#0A0A0A`, `#141414`), never light.
+- **Neon green accent** `#00FF88` for CTAs, active states, success. Orange `#FF8800` for warnings only.
+- **JetBrains Mono** (`--font-jetbrains`) for all UI text. **Space Grotesk** (`--font-space-grotesk`) for headlines/metrics only.
+- **0px border-radius** everywhere. No rounded corners.
+- **No shadows, no gradients.** Use 1px `#2f2f2f` borders for structure.
+- **UPPERCASE** for labels, nav items, buttons, badges. Use code-style patterns: `// SECTION`, `[STATUS]`, `FIELD_NAME`.
+- Read the full guide before building new pages or components.
+
 ## Coding Style & Naming Conventions
 - Use modern ES modules and React function components.
 - Follow existing formatting: 2-space indentation, semicolons, single quotes in JS/TS.
