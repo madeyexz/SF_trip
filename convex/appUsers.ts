@@ -5,6 +5,7 @@ import { mutation, query } from './_generated/server';
 import { parseOwnerEmailAllowlist, resolveInitialUserRole } from './ownerRole';
 
 type ConvexCtx = MutationCtx | QueryCtx;
+type UserRole = 'owner' | 'member';
 
 type UserIdentityLike = {
   email?: unknown;
@@ -12,7 +13,7 @@ type UserIdentityLike = {
 
 type UserProfileLike = {
   userId: string;
-  role: 'owner' | 'member';
+  role: UserRole;
   email?: string;
 };
 
@@ -40,9 +41,13 @@ function readIdentityEmail(identity: UserIdentityLike) {
 function buildProfileResponse(profile: UserProfileLike) {
   return {
     userId: profile.userId,
-    role: profile.role,
+    role: normalizeUserRole(profile.role),
     email: profile.email || ''
   };
+}
+
+function normalizeUserRole(value: unknown): UserRole {
+  return value === 'owner' ? 'owner' : 'member';
 }
 
 export const ensureCurrentUserProfile = mutation({
@@ -63,7 +68,7 @@ export const ensureCurrentUserProfile = mutation({
     if (existing) {
       const updates: Partial<{
         email: string;
-        role: 'owner';
+        role: UserRole;
         updatedAt: string;
       }> = {};
       if (email && existing.email !== email) {
@@ -76,11 +81,15 @@ export const ensureCurrentUserProfile = mutation({
       if (updates.email || updates.role) {
         updates.updatedAt = now;
         await ctx.db.patch(existing._id, updates);
-        return buildProfileResponse({ ...existing, ...updates });
+        return buildProfileResponse({
+          ...existing,
+          ...updates,
+          role: normalizeUserRole(updates.role ?? existing.role)
+        });
       }
       return buildProfileResponse(existing);
     }
-    const role = resolveInitialUserRole(email, ownerEmailAllowlist);
+    const role = normalizeUserRole(resolveInitialUserRole(email, ownerEmailAllowlist));
     await ctx.db.insert('userProfiles', {
       userId,
       role,
