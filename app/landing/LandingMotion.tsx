@@ -1,6 +1,6 @@
 'use client';
 
-import type { ReactNode } from 'react';
+import { useState, useEffect, type ReactNode } from 'react';
 import {
   LazyMotion,
   domAnimation,
@@ -206,5 +206,74 @@ export function ArrowNudge({ children }: { children: ReactNode }) {
     >
       {children}
     </m.span>
+  );
+}
+
+export function TextScramble({
+  children,
+  className,
+}: {
+  children: string;
+  className?: string;
+}) {
+  const shouldReduceMotion = useReducedMotion();
+  const [text, setText] = useState(shouldReduceMotion ? children : '');
+
+  useEffect(() => {
+    if (shouldReduceMotion) return;
+
+    const chars = '!<>-_\\\\/[]{}—=+*^?#_';
+    let frame = 0;
+    let timeout: NodeJS.Timeout;
+
+    const animate = () => {
+      let output = '';
+      let complete = 0;
+      
+      for (let i = 0; i < children.length; i++) {
+        if (frame >= children.length * 2 + i * 2) {
+          output += children[i];
+          complete++;
+        } else if (frame >= i * 2) {
+          output += chars[Math.floor(Math.random() * chars.length)];
+        } else {
+          output += '';
+        }
+      }
+      
+      setText(output);
+      
+      if (complete === children.length) {
+        return;
+      }
+      
+      frame++;
+      timeout = setTimeout(animate, 30);
+    };
+    
+    timeout = setTimeout(animate, 100);
+    return () => clearTimeout(timeout);
+  }, [children, shouldReduceMotion]);
+
+  return <span className={className}>{text}</span>;
+}
+
+export function PulseGlow({
+  className,
+}: {
+  className?: string;
+}) {
+  const shouldReduceMotion = useReducedMotion();
+  
+  if (shouldReduceMotion) {
+    return <div className={className} />;
+  }
+
+  return (
+    <m.div
+      className={className}
+      animate={{ opacity: [0.02, 0.06, 0.02] }}
+      transition={{ duration: 4, repeat: Infinity, ease: 'easeInOut' }}
+    />
   );
 }

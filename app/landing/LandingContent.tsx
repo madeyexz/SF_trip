@@ -23,13 +23,15 @@ import {
   MotionProvider,
   NavEnter,
   ScrollProgressBar,
+  TextScramble,
+  PulseGlow,
 } from './LandingMotion';
 
 const MAP_FEATURE_BULLETS = [
-  'Color-coded pins: events, eat, bar, cafes, shops, avoid',
-  'Live crime heatmap overlay from SFPD incident data',
-  'Route lines between planned stops with time estimates',
-  'Days-remaining countdown so you prioritize what\'s soon',
+  '[OK] Color-coded pins: events, eat, bar, cafes, shops, avoid',
+  '[ACTIVE] Live crime heatmap overlay from SFPD incident data',
+  '[OK] Route lines between planned stops with time estimates',
+  '[OK] Days-remaining countdown so you prioritize what\'s soon',
 ];
 
 const SAFETY_SOURCES = [
@@ -95,14 +97,14 @@ function FeatureCard({
   accent?: 'green' | 'warning' | 'danger';
 }) {
   const colors = {
-    green: { icon: 'text-accent', border: 'border-accent/20' },
-    warning: { icon: 'text-warning', border: 'border-warning/20' },
-    danger: { icon: 'text-danger', border: 'border-danger/20' },
+    green: { icon: 'text-accent', border: 'border-accent/20', hoverBorder: 'hover:border-accent/60' },
+    warning: { icon: 'text-warning', border: 'border-warning/20', hoverBorder: 'hover:border-warning/60' },
+    danger: { icon: 'text-danger', border: 'border-danger/20', hoverBorder: 'hover:border-danger/60' },
   };
   const c = colors[accent || 'green'];
 
   return (
-    <div className={`border ${c.border} bg-card p-5`}>
+    <div className={`border ${c.border} bg-card p-5 transition-colors duration-300 ${c.hoverBorder}`}>
       <div className="mb-3 flex items-center gap-3">
         <Icon size={16} className={c.icon} />
         <h3 className="text-[13px] font-semibold uppercase tracking-[0.5px] text-foreground">
@@ -149,7 +151,7 @@ export default function LandingContent() {
                 href="/signin"
                 className="bg-accent px-4 py-1.5 text-[11px] font-bold uppercase tracking-[0.5px] text-[#0C0C0C] transition-colors hover:bg-accent-hover"
               >
-                Plan Your Trip Free
+                [ RUN: PLAN_TRIP ]
               </Link>
             </HoverLift>
           </div>
@@ -157,15 +159,14 @@ export default function LandingContent() {
 
         {/* ── HERO ── */}
         <section className="relative flex min-h-[80vh] items-center justify-center overflow-hidden border-b border-border pt-24">
-          <div
-            className="pointer-events-none absolute inset-0 opacity-[0.04]"
+          <div className="pointer-events-none absolute inset-0 opacity-[0.04]"
             style={{
               backgroundImage:
                 'linear-gradient(#fff 1px, transparent 1px), linear-gradient(90deg, #fff 1px, transparent 1px)',
               backgroundSize: '40px 40px',
             }}
           />
-          <div className="pointer-events-none absolute left-1/2 top-1/3 h-[400px] w-[600px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-accent/[0.04] blur-[100px]" />
+          <PulseGlow className="pointer-events-none absolute left-1/2 top-1/3 h-[400px] w-[600px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-accent/[0.04] blur-[100px]" />
 
           <InViewStagger className="relative z-10 mx-auto max-w-[1200px] px-6 text-center" amount={0.25}>
             <FadeItem>
@@ -177,9 +178,9 @@ export default function LandingContent() {
                 className="mt-6 text-[42px] font-bold leading-tight tracking-[-1px] text-foreground"
                 style={{ fontFamily: 'var(--font-space-grotesk)' }}
               >
-                Turn 50 Open Tabs
+                <TextScramble>Turn 50 Open Tabs</TextScramble>
                 <br />
-                Into One Trip Plan
+                <TextScramble>Into One Trip Plan</TextScramble>
               </h1>
             </FadeItem>
 
@@ -200,7 +201,7 @@ export default function LandingContent() {
                   className="inline-flex items-center gap-2 bg-accent px-6 py-3 text-[11px] font-bold uppercase tracking-[0.5px] text-[#0C0C0C] transition-colors hover:bg-accent-hover"
                 >
                   <Terminal size={14} />
-                  Plan Your Trip Free
+                  [ RUN: PLAN_TRIP ]
                 </Link>
               </HoverLift>
 
@@ -211,7 +212,8 @@ export default function LandingContent() {
                   rel="noopener noreferrer"
                   className="inline-flex items-center gap-2 border border-border bg-card px-6 py-3 text-[11px] font-bold uppercase tracking-[0.5px] text-foreground transition-colors hover:border-accent"
                 >
-                  View on GitHub
+                  <Terminal size={14} />
+                  ./VIEW_SOURCE
                   <ArrowNudge>
                     <ArrowRight size={12} />
                   </ArrowNudge>
@@ -221,19 +223,22 @@ export default function LandingContent() {
 
             <FadeItem>
               <HeroParallax className="relative mx-auto mt-12 max-w-[960px] border border-border">
-                <div className="flex h-8 items-center gap-2 border-b border-border bg-card px-4">
-                  <span className="text-[10px] font-semibold uppercase tracking-[0.5px] text-muted">
-                    {'// PLANNING_VIEW'}
+                <div className="flex h-8 items-center gap-2 border-b border-border bg-[#080808] px-4">
+                  <span className="font-mono text-[10px] font-semibold text-muted">
+                    root@sf-trip:~/system/planning-view $ ./render --high-res
                   </span>
                 </div>
-                <Image
-                  src="/screenshots/planning.png"
-                  alt="SF Trip Planner — Planning View with map, events list, and day planner"
-                  width={1920}
-                  height={1080}
-                  className="block w-full"
-                  priority
-                />
+                <div className="group relative">
+                  <div className="pointer-events-none absolute inset-0 z-10 bg-accent/[0.02] mix-blend-screen opacity-100 transition-opacity duration-500 group-hover:opacity-0" />
+                  <Image
+                    src="/screenshots/planning.png"
+                    alt="SF Trip Planner — Planning View with map, events list, and day planner"
+                    width={1920}
+                    height={1080}
+                    className="block w-full"
+                    priority
+                  />
+                </div>
               </HeroParallax>
             </FadeItem>
           </InViewStagger>
@@ -366,12 +371,21 @@ export default function LandingContent() {
                     and off. Zoom into a neighborhood and see exactly what&apos;s there.
                   </p>
                   <ul className="mt-6 space-y-2">
-                    {MAP_FEATURE_BULLETS.map((item) => (
-                      <li key={item} className="flex items-center gap-2 text-[12px] text-foreground-secondary">
-                        <Zap size={10} className="text-accent" />
-                        {item}
-                      </li>
-                    ))}
+                    {MAP_FEATURE_BULLETS.map((item) => {
+                      const isOk = item.startsWith('[OK]');
+                      return (
+                        <li key={item} className="flex items-start gap-2 text-[12px] font-mono text-foreground-secondary">
+                          <span className="mt-0.5 text-muted">{'>'}</span>
+                          <span>
+                            <span className={isOk ? 'text-accent' : 'text-warning'}>
+                              {item.split(' ')[0]}
+                            </span>
+                            {' '}
+                            {item.split(' ').slice(1).join(' ')}
+                          </span>
+                        </li>
+                      );
+                    })}
                   </ul>
                 </div>
               </FadeItem>
@@ -379,18 +393,21 @@ export default function LandingContent() {
               <FadeItem>
                 <HoverLift y={-4}>
                   <div className="border border-border">
-                    <div className="flex h-8 items-center gap-2 border-b border-border bg-card px-4">
-                      <span className="text-[10px] font-semibold uppercase tracking-[0.5px] text-muted">
-                        {'// MAP_VIEW'}
+                    <div className="flex h-8 items-center gap-2 border-b border-border bg-[#080808] px-4">
+                      <span className="font-mono text-[10px] font-semibold text-muted">
+                        root@sf-trip:~/system/map-view $ ./render --high-res
                       </span>
                     </div>
-                    <Image
-                      src="/screenshots/map.png"
-                      alt="Interactive map with color-coded event markers, spot pins, and crime heatmap"
-                      width={1280}
-                      height={720}
-                      className="block w-full"
-                    />
+                    <div className="group relative">
+                      <div className="pointer-events-none absolute inset-0 z-10 bg-accent/[0.02] mix-blend-screen opacity-100 transition-opacity duration-500 group-hover:opacity-0" />
+                      <Image
+                        src="/screenshots/map.png"
+                        alt="Interactive map with color-coded event markers, spot pins, and crime heatmap"
+                        width={1280}
+                        height={720}
+                        className="block w-full"
+                      />
+                    </div>
                   </div>
                 </HoverLift>
               </FadeItem>
@@ -399,8 +416,9 @@ export default function LandingContent() {
         </section>
 
         {/* ── SAFETY ── */}
-        <section className="border-b border-border py-20">
-          <InViewStagger className="mx-auto max-w-[1200px] px-6">
+        <section className="relative overflow-hidden border-b border-border py-20">
+          <PulseGlow className="pointer-events-none absolute right-0 top-1/2 h-[500px] w-[500px] -translate-y-1/2 rounded-full bg-danger/[0.04] blur-[120px]" />
+          <InViewStagger className="relative z-10 mx-auto max-w-[1200px] px-6">
             <div className="grid grid-cols-1 items-center gap-12 lg:grid-cols-2">
               <FadeItem>
                 <div className="order-2 lg:order-1">
@@ -490,18 +508,21 @@ export default function LandingContent() {
               <FadeItem>
                 <HoverLift y={-4}>
                   <div className="border border-border">
-                    <div className="flex h-8 items-center gap-2 border-b border-border bg-card px-4">
-                      <span className="text-[10px] font-semibold uppercase tracking-[0.5px] text-muted">
-                        {'// SPOTS_VIEW'}
+                    <div className="flex h-8 items-center gap-2 border-b border-border bg-[#080808] px-4">
+                      <span className="font-mono text-[10px] font-semibold text-muted">
+                        root@sf-trip:~/system/spots-view $ ./render --high-res
                       </span>
                     </div>
-                    <Image
-                      src="/screenshots/spots.png"
-                      alt="Spots view with curated places organized by category"
-                      width={1280}
-                      height={720}
-                      className="block w-full"
-                    />
+                    <div className="group relative">
+                      <div className="pointer-events-none absolute inset-0 z-10 bg-accent/[0.02] mix-blend-screen opacity-100 transition-opacity duration-500 group-hover:opacity-0" />
+                      <Image
+                        src="/screenshots/spots.png"
+                        alt="Spots view with curated places organized by category"
+                        width={1280}
+                        height={720}
+                        className="block w-full"
+                      />
+                    </div>
                   </div>
                 </HoverLift>
               </FadeItem>
@@ -557,18 +578,21 @@ export default function LandingContent() {
               <FadeItem>
                 <HoverLift y={-4}>
                   <div className="border border-border">
-                    <div className="flex h-8 items-center gap-2 border-b border-border bg-card px-4">
-                      <span className="text-[10px] font-semibold uppercase tracking-[0.5px] text-muted">
-                        {'// CALENDAR_VIEW'}
+                    <div className="flex h-8 items-center gap-2 border-b border-border bg-[#080808] px-4">
+                      <span className="font-mono text-[10px] font-semibold text-muted">
+                        root@sf-trip:~/system/calendar-view $ ./render --high-res
                       </span>
                     </div>
-                    <Image
-                      src="/screenshots/calendar.png"
-                      alt="Month calendar view showing event and plan counts per day"
-                      width={1280}
-                      height={720}
-                      className="block w-full"
-                    />
+                    <div className="group relative">
+                      <div className="pointer-events-none absolute inset-0 z-10 bg-accent/[0.02] mix-blend-screen opacity-100 transition-opacity duration-500 group-hover:opacity-0" />
+                      <Image
+                        src="/screenshots/calendar.png"
+                        alt="Month calendar view showing event and plan counts per day"
+                        width={1280}
+                        height={720}
+                        className="block w-full"
+                      />
+                    </div>
                   </div>
                 </HoverLift>
               </FadeItem>
@@ -617,8 +641,8 @@ export default function LandingContent() {
               {TECH_STACK.map((tech) => (
                 <FadeItem key={tech}>
                   <HoverLift y={-2} className="inline-flex">
-                    <span className="border border-border bg-card px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.5px] text-foreground-secondary">
-                      {tech}
+                    <span className="border border-border bg-card px-3 py-1.5 font-mono text-[11px] font-semibold uppercase tracking-[0.5px] text-foreground-secondary transition-colors hover:border-accent/40">
+                      <span className="text-accent">[OK]</span> {tech}
                     </span>
                   </HoverLift>
                 </FadeItem>
@@ -656,7 +680,7 @@ export default function LandingContent() {
                   className="inline-flex items-center gap-2 bg-accent px-8 py-3 text-[11px] font-bold uppercase tracking-[0.5px] text-[#0C0C0C] transition-colors hover:bg-accent-hover"
                 >
                   <Terminal size={14} />
-                  Plan Your Trip Free
+                  [ RUN: PLAN_TRIP ]
                 </Link>
               </HoverLift>
             </FadeItem>
