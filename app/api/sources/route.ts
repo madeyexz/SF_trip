@@ -1,11 +1,11 @@
 import { createSourcePayload, loadSourcesPayload } from '@/lib/events';
-import { runWithOwnerClient } from '@/lib/api-guards';
+import { runWithAuthenticatedClient, runWithOwnerClient } from '@/lib/api-guards';
 import { getPlannerRoomCodeFromUrl } from '@/lib/planner-api';
 
 export const runtime = 'nodejs';
 
 export async function GET(request: Request) {
-  return runWithOwnerClient(async () => {
+  return runWithAuthenticatedClient(async () => {
     const roomCode = getPlannerRoomCodeFromUrl(request.url);
     const payload = await loadSourcesPayload(roomCode);
     return Response.json(payload);
