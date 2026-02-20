@@ -193,6 +193,8 @@ export default function SignInPage() {
                 <span style={{ color: '#00FF88', fontWeight: 500 }}>{email}</span>.
                 <br />
                 Click the link in the email to sign in.
+                <br />
+                Don&apos;t see it? Check your spam or junk folder.
               </p>
 
               <button
