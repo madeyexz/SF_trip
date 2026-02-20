@@ -84,6 +84,21 @@ export default defineSchema({
     lastSeenAt: v.optional(v.string()),
     updatedAt: v.optional(v.string())
   }),
+  sources: defineTable({
+    roomCode: v.string(),
+    sourceType: v.union(v.literal('event'), v.literal('spot')),
+    url: v.string(),
+    label: v.string(),
+    status: v.union(v.literal('active'), v.literal('paused')),
+    createdAt: v.string(),
+    updatedAt: v.string(),
+    lastSyncedAt: v.optional(v.string()),
+    lastError: v.optional(v.string()),
+    rssStateJson: v.optional(v.string())
+  })
+    .index('by_room_type_status', ['roomCode', 'sourceType', 'status'])
+    .index('by_room_url', ['roomCode', 'url'])
+    .index('by_room_updated_at', ['roomCode', 'updatedAt']),
   geocodeCache: defineTable({
     addressKey: v.string(),
     addressText: v.string(),

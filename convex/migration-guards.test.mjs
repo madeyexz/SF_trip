@@ -12,7 +12,14 @@ describe('schema migration guards', () => {
     assert.equal(schemaSource.includes('pairMembers: defineTable'), false);
     assert.equal(schemaSource.includes('userProfiles: defineTable'), false);
     assert.equal(schemaSource.includes('tripConfig: defineTable'), false);
-    assert.equal(schemaSource.includes('sources: defineTable'), false);
+  });
+
+  it('keeps room-scoped sources table in schema', async () => {
+    const schemaSource = await readConvexFile('./schema.ts');
+    assert.equal(schemaSource.includes('sources: defineTable({'), true);
+    assert.equal(schemaSource.includes('roomCode: v.string()'), true);
+    assert.equal(schemaSource.includes(".index('by_room_type_status', ['roomCode', 'sourceType', 'status'])"), true);
+    assert.equal(schemaSource.includes(".index('by_room_url', ['roomCode', 'url'])"), true);
   });
 
   it('keeps deprecated users fields removed from schema', async () => {

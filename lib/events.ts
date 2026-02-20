@@ -4,6 +4,7 @@ import path from 'node:path';
 import ical from 'node-ical';
 import { ConvexHttpClient } from 'convex/browser';
 import { getScopedConvexClient } from './convex-client-context.ts';
+import { normalizePlannerRoomCode } from './planner-api.ts';
 import { validateIngestionSourceUrlForFetch } from './security-server.ts';
 
 const DOC_LOCATION_FILE = path.join(process.cwd(), 'docs', 'my_location.md');
@@ -21,6 +22,8 @@ const FIRECRAWL_BASE_URL = 'https://api.firecrawl.dev';
 const DEFAULT_RSS_INITIAL_ITEMS = 1;
 const DEFAULT_RSS_MAX_ITEMS_PER_SYNC = 3;
 const DEFAULT_RSS_STATE_MAX_ITEMS = 500;
+const SOURCE_TYPES = new Set(['event', 'spot']);
+const SOURCE_STATUSES = new Set(['active', 'paused']);
 const SPOT_TAGS = ['eat', 'bar', 'cafes', 'go out', 'shops', 'avoid', 'safe'];
 const CONVEX_EVENT_FIELDS = [
   'id',
@@ -188,9 +191,16 @@ export async function resolveAddressCoordinates(addressText) {
   };
 }
 
-export async function loadSourcesPayload() {
+function normalizeSourceRoomCode(roomCodeInput) {
+  return normalizePlannerRoomCode(roomCodeInput);
+}
+
+export async function loadSourcesPayload(roomCodeInput = '') {
+  const roomCode = normalizeSourceRoomCode(roomCodeInput);
+  const sources = await loadSourcesFromConvex(roomCode);
   const fallbackEventSources = getCalendarUrls().map((url) => ({
     id: `fallback-event-${url}`,
+    roomCode,
     sourceType: 'event',
     url,
     label: url,
@@ -201,6 +211,7 @@ export async function loadSourcesPayload() {
   const fallbackSpotSources = (fallbackSpotUrls.length > 0 ? fallbackSpotUrls : [DEFAULT_CORNER_LIST_URL]).map(
     (url) => ({
       id: `fallback-spot-${url}`,
+      roomCode,
       sourceType: 'spot',
       url,
       label: url,
@@ -212,35 +223,121 @@ export async function loadSourcesPayload() {
   // Firecrawl/RSS disabled: do not force Beehiiv as a required event source.
   // const requiredEventSources = [makeFallbackSource('event', DEFAULT_BEEHIIV_RSS_URL)];
 
+  if (Array.isArray(sources) && sources.length > 0) {
+    const hasEventSources = sources.some((source) => source.sourceType === 'event');
+    const hasSpotSources = sources.some((source) => source.sourceType === 'spot');
+    const withFallbacks = [
+      ...sources,
+      ...(hasEventSources ? [] : fallbackEventSources),
+      ...(hasSpotSources ? [] : fallbackSpotSources)
+    ];
+
+    return {
+      sources: withFallbacks,
+      source: 'convex'
+    };
+  }
+
   return {
     sources: fallbackSources,
     source: 'fallback'
   };
 }
 
-export async function createSourcePayload(input) {
+export async function createSourcePayload(input, roomCodeInput = '') {
+  const roomCode = normalizeSourceRoomCode(roomCodeInput);
+  const client = createConvexClient();
+  if (!client) {
+    throw new Error('CONVEX_URL is missing. Configure Convex to persist room sources.');
+  }
+
   const sourceType = cleanText(input?.sourceType).toLowerCase();
   const url = cleanText(input?.url);
+  const label = cleanText(input?.label);
   if (sourceType !== 'event' && sourceType !== 'spot') {
     throw new Error('sourceType must be "event" or "spot".');
   }
 
   await assertValidSourceUrl(url);
-  throw new Error('Source management is disabled. Configure sources via environment variables.');
+
+  const source = await client.mutation('sources:createSource', {
+    roomCode: roomCode || undefined,
+    sourceType,
+    url,
+    label: label || url
+  });
+  const normalized = normalizeSourceRecord(source);
+  if (!normalized) {
+    throw new Error('Could not create source.');
+  }
+
+  return normalized;
 }
 
-export async function updateSourcePayload(_sourceId, _input) {
-  throw new Error('Source management is disabled. Configure sources via environment variables.');
+export async function updateSourcePayload(sourceId, input, roomCodeInput = '') {
+  const roomCode = normalizeSourceRoomCode(roomCodeInput);
+  const client = createConvexClient();
+  if (!client) {
+    throw new Error('CONVEX_URL is missing. Configure Convex to persist room sources.');
+  }
+
+  const patch = {};
+  if (typeof input?.label === 'string') {
+    patch.label = cleanText(input.label);
+  }
+  if (typeof input?.status === 'string') {
+    const nextStatus = cleanText(input.status).toLowerCase();
+    if (!SOURCE_STATUSES.has(nextStatus)) {
+      throw new Error('status must be "active" or "paused".');
+    }
+    patch.status = nextStatus;
+  }
+  if (Object.keys(patch).length === 0) {
+    throw new Error('Nothing to update. Provide "label" and/or "status".');
+  }
+
+  const source = await client.mutation('sources:updateSource', {
+    sourceId,
+    roomCode: roomCode || undefined,
+    ...patch
+  });
+  if (!source) {
+    throw new Error('Source not found.');
+  }
+
+  const normalized = normalizeSourceRecord(source);
+  if (!normalized) {
+    throw new Error('Could not update source.');
+  }
+
+  return normalized;
 }
 
-export async function deleteSourcePayload(_sourceId) {
-  throw new Error('Source management is disabled. Configure sources via environment variables.');
+export async function deleteSourcePayload(sourceId, roomCodeInput = '') {
+  const roomCode = normalizeSourceRoomCode(roomCodeInput);
+  const client = createConvexClient();
+  if (!client) {
+    throw new Error('CONVEX_URL is missing. Configure Convex to persist room sources.');
+  }
+
+  const result = await client.mutation('sources:deleteSource', {
+    sourceId,
+    roomCode: roomCode || undefined
+  });
+  if (!result?.deleted) {
+    throw new Error('Source not found.');
+  }
+
+  return { deleted: true };
 }
 
-export async function loadEventsPayload() {
+export async function loadEventsPayload(roomCodeInput = '') {
+  const roomCode = normalizeSourceRoomCode(roomCodeInput);
   const fallbackCalendars = getCalendarUrls();
   const fallbackPlaces = await loadStaticPlaces();
-  const calendars = fallbackCalendars;
+  const sources = await loadSourcesFromConvex(roomCode);
+  const sourceCalendars = getActiveSourceUrls(sources, 'event');
+  const calendars = sourceCalendars.length > 0 ? sourceCalendars : fallbackCalendars;
   const spotsPayload = await loadSpotsFromConvex();
   const placesFromConvex = Array.isArray(spotsPayload?.spots) ? spotsPayload.spots : [];
   const places = mergeStaticRegionPlaces(
@@ -371,9 +468,10 @@ export async function saveCachedRoutePayload(cacheKey, routePayloadInput) {
   }
 }
 
-export async function syncEvents() {
+export async function syncEvents(roomCodeInput = '') {
+  const roomCode = normalizeSourceRoomCode(roomCodeInput);
   const nowIso = new Date().toISOString();
-  const sourceSnapshot = await getSourceSnapshotForSync();
+  const sourceSnapshot = await getSourceSnapshotForSync(roomCode);
   const rssFallbackStateBySourceUrl = await loadRssSeenBySourceUrlFromEventsCache();
   const eventSyncResult = await syncEventsFromSources({
     eventSources: sourceSnapshot.eventSources,
@@ -413,17 +511,50 @@ export async function syncEvents() {
       syncedAt: nowIso,
       sourceUrls: spotSyncResult.sourceUrls
     }),
+    saveSourceSyncStatus(
+      sourceSnapshot.eventSources,
+      eventSyncResult.errors,
+      nowIso,
+      eventSyncResult.rssStateBySourceUrl,
+      roomCode
+    ),
+    saveSourceSyncStatus(sourceSnapshot.spotSources, spotSyncResult.errors, nowIso, {}, roomCode),
     saveRssSeenBySourceUrlToEventsCache(eventSyncResult.rssStateBySourceUrl)
   ]);
 
   return payload;
 }
 
-export async function syncSingleSource(sourceId) {
-  if (cleanText(sourceId)) {
-    throw new Error('Single-source sync is disabled. Run global sync instead.');
+export async function syncSingleSource(sourceId, roomCodeInput = '') {
+  const roomCode = normalizeSourceRoomCode(roomCodeInput);
+  const sourcesPayload = await loadSourcesPayload(roomCode);
+  const allSources = Array.isArray(sourcesPayload?.sources) ? sourcesPayload.sources : [];
+  const source = allSources.find((s) => s.id === sourceId);
+
+  if (!source) {
+    throw new Error('Source not found.');
   }
-  throw new Error('Single-source sync is disabled. Run global sync instead.');
+
+  const nowIso = new Date().toISOString();
+
+  if (source.sourceType === 'event') {
+    const rssFallbackStateBySourceUrl = await loadRssSeenBySourceUrlFromEventsCache();
+    const result = await syncEventsFromSources({
+      eventSources: [source],
+      rssFallbackStateBySourceUrl
+    });
+    await Promise.allSettled([
+      saveSourceSyncStatus([source], result.errors, nowIso, result.rssStateBySourceUrl, roomCode),
+      saveRssSeenBySourceUrlToEventsCache(result.rssStateBySourceUrl)
+    ]);
+    return { syncedAt: nowIso, events: result.events.length, errors: result.errors };
+  }
+
+  const result = await syncSpotsFromSources({
+    spotSources: [source]
+  });
+  await saveSourceSyncStatus([source], result.errors, nowIso, {}, roomCode);
+  return { syncedAt: nowIso, spots: result.places.length, errors: result.errors };
 }
 
 async function loadStaticPlaces() {
@@ -514,6 +645,30 @@ async function saveEventsToConvex(payload) {
   }
 }
 
+async function loadSourcesFromConvex(roomCode = '') {
+  const client = createConvexClient();
+
+  if (!client) {
+    return null;
+  }
+
+  try {
+    const rows = await client.query('sources:listSources', {
+      roomCode: roomCode || undefined
+    });
+    if (!Array.isArray(rows)) {
+      return [];
+    }
+
+    return rows
+      .map((row) => normalizeSourceRecord(row))
+      .filter(Boolean);
+  } catch (error) {
+    console.error('Convex source read failed, falling back to env sources.', error);
+    return null;
+  }
+}
+
 async function loadSpotsFromConvex() {
   const client = createConvexClient();
 
@@ -599,6 +754,35 @@ function sanitizeObjectForConvex(row, allowedFields) {
   }
 
   return sanitizedRow;
+}
+
+function getActiveSourceUrls(sources, sourceType) {
+  if (!Array.isArray(sources)) {
+    return [];
+  }
+
+  return Array.from(new Set(
+    sources
+      .filter((source) => source?.sourceType === sourceType)
+      .filter((source) => source?.status === 'active')
+      .map((source) => cleanText(source.url))
+      .filter(Boolean)
+  ));
+}
+
+function getActiveSourcesByType(sources, sourceType) {
+  if (!Array.isArray(sources)) {
+    return [];
+  }
+
+  return sources
+    .filter((source) => source?.sourceType === sourceType && source?.status === 'active')
+    .map((source) => ({
+      ...source,
+      url: cleanText(source.url),
+      label: cleanText(source.label) || cleanText(source.url)
+    }))
+    .filter((source) => source.url);
 }
 
 function makeFallbackSource(sourceType, url) {
@@ -815,18 +999,27 @@ async function saveRssSeenBySourceUrlToEventsCache(rssStateBySourceUrl) {
   });
 }
 
-async function getSourceSnapshotForSync() {
+async function getSourceSnapshotForSync(roomCode = '') {
+  const convexSources = await loadSourcesFromConvex(roomCode);
+  const eventSourcesFromConvex = getActiveSourcesByType(convexSources, 'event');
+  const spotSourcesFromConvex = getActiveSourcesByType(convexSources, 'spot');
   const eventFallbackUrls = getCalendarUrls();
   const spotFallbackUrls = getDefaultSpotSourceUrls();
 
-  const eventSources = eventFallbackUrls.map((url) => makeFallbackSource('event', url));
+  const eventSources =
+    eventSourcesFromConvex.length > 0
+      ? eventSourcesFromConvex
+      : eventFallbackUrls.map((url) => makeFallbackSource('event', url));
   // Firecrawl/RSS disabled: do not force Beehiiv as a required sync source.
   // const eventSourcesWithRequired = appendMissingEventSources(
   //   eventSources,
   //   [makeFallbackSource('event', DEFAULT_BEEHIIV_RSS_URL)]
   // );
-  const spotSources = (spotFallbackUrls.length > 0 ? spotFallbackUrls : [DEFAULT_CORNER_LIST_URL])
-    .map((url) => makeFallbackSource('spot', url));
+  const spotSources =
+    spotSourcesFromConvex.length > 0
+      ? spotSourcesFromConvex
+      : (spotFallbackUrls.length > 0 ? spotFallbackUrls : [DEFAULT_CORNER_LIST_URL])
+          .map((url) => makeFallbackSource('spot', url));
 
   return {
     eventSources,
@@ -1479,6 +1672,42 @@ function scoreSpot(spot) {
   return score;
 }
 
+async function saveSourceSyncStatus(sources, errors, syncedAt, rssStateBySourceUrl = {}, roomCode = '') {
+  const client = createConvexClient();
+
+  if (!client || !Array.isArray(sources) || sources.length === 0) {
+    return;
+  }
+
+  const firstErrorBySource = new Map();
+  for (const error of errors || []) {
+    const sourceId = cleanText(error?.sourceId);
+    if (!sourceId || firstErrorBySource.has(sourceId)) {
+      continue;
+    }
+    firstErrorBySource.set(sourceId, cleanText(error?.message));
+  }
+
+  const updateTasks = sources
+    .filter((source) => !source?.readonly && cleanText(source?.id))
+    .map((source) => {
+      const sourceUrlKey = buildRssSourceStateKey(source.url);
+      const rssStateJson = serializeRssSeenState(rssStateBySourceUrl?.[sourceUrlKey]);
+      const patch = {
+        sourceId: source.id,
+        roomCode: roomCode || undefined,
+        lastSyncedAt: syncedAt,
+        lastError: firstErrorBySource.get(source.id) || ''
+      };
+      if (rssStateJson) {
+        patch.rssStateJson = rssStateJson;
+      }
+      return client.mutation('sources:updateSource', patch);
+    });
+
+  await Promise.allSettled(updateTasks);
+}
+
 function createIngestionError({ sourceType, sourceId, sourceUrl, eventUrl, stage, message }) {
   return {
     sourceType,
@@ -1487,6 +1716,34 @@ function createIngestionError({ sourceType, sourceId, sourceUrl, eventUrl, stage
     eventUrl: cleanText(eventUrl),
     stage: cleanText(stage),
     message: cleanText(message)
+  };
+}
+
+function normalizeSourceRecord(source) {
+  if (!source || typeof source !== 'object') {
+    return null;
+  }
+
+  const sourceType = cleanText(source.sourceType).toLowerCase();
+  const status = cleanText(source.status).toLowerCase();
+  const url = cleanText(source.url);
+
+  if (!SOURCE_TYPES.has(sourceType) || !SOURCE_STATUSES.has(status) || !url) {
+    return null;
+  }
+
+  return {
+    id: cleanText(source._id || source.id),
+    roomCode: cleanText(source.roomCode),
+    sourceType,
+    url,
+    label: cleanText(source.label) || url,
+    status,
+    createdAt: cleanText(source.createdAt),
+    updatedAt: cleanText(source.updatedAt),
+    lastSyncedAt: cleanText(source.lastSyncedAt),
+    lastError: cleanText(source.lastError),
+    rssStateJson: cleanText(source.rssStateJson)
   };
 }
 

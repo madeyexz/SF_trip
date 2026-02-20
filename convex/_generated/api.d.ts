@@ -19,6 +19,7 @@ import type * as pairPolicy from "../pairPolicy.js";
 import type * as pairRoomMembers from "../pairRoomMembers.js";
 import type * as planner from "../planner.js";
 import type * as routeCache from "../routeCache.js";
+import type * as sources from "../sources.js";
 import type * as spots from "../spots.js";
 import type * as tripConfig from "../tripConfig.js";
 
@@ -40,6 +41,7 @@ declare const fullApi: ApiFromModules<{
   pairRoomMembers: typeof pairRoomMembers;
   planner: typeof planner;
   routeCache: typeof routeCache;
+  sources: typeof sources;
   spots: typeof spots;
   tripConfig: typeof tripConfig;
 }>;

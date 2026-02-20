@@ -267,6 +267,12 @@ export default function TripProvider({ children }: { children: ReactNode }) {
   const [routeSummary, setRouteSummary] = useState('');
   const [isRouteUpdating, setIsRouteUpdating] = useState(false);
   const [baseLocationVersion, setBaseLocationVersion] = useState(0);
+  const [sources, setSources] = useState<any[]>([]);
+  const [newSourceType, setNewSourceType] = useState('event');
+  const [newSourceUrl, setNewSourceUrl] = useState('');
+  const [newSourceLabel, setNewSourceLabel] = useState('');
+  const [isSavingSource, setIsSavingSource] = useState(false);
+  const [syncingSourceId, setSyncingSourceId] = useState('');
   const [tripStart, setTripStart] = useState('');
   const [tripEnd, setTripEnd] = useState('');
   const [currentPairRoomId, setCurrentPairRoomId] = useState('');
@@ -324,6 +330,15 @@ export default function TripProvider({ children }: { children: ReactNode }) {
     for (const p of visiblePlaces) map.set(getPlaceSourceKey(p), p);
     return map;
   }, [visiblePlaces]);
+
+  const groupedSources = useMemo(() => {
+    const groups = { event: [], spot: [] };
+    for (const source of sources) {
+      const key = source?.sourceType === 'spot' ? 'spot' : 'event';
+      groups[key].push(source);
+    }
+    return groups;
+  }, [sources]);
 
   useEffect(() => {
     hiddenCategoriesRef.current = hiddenCategories;
@@ -691,6 +706,18 @@ export default function TripProvider({ children }: { children: ReactNode }) {
     setPairMemberCount(Number(selectedRoom?.memberCount) || 2);
     setStatusMessage(`Switched to pair room "${roomCode}".`);
   }, [pairRooms, setStatusMessage]);
+
+  const loadSourcesFromServer = useCallback(async (roomCodeInput = '') => {
+    try {
+      const roomCode = normalizePlannerRoomId(roomCodeInput);
+      const queryString = roomCode ? `?roomCode=${encodeURIComponent(roomCode)}` : '';
+      const payload = await fetchJson(`/api/sources${queryString}`);
+      setSources(Array.isArray(payload?.sources) ? payload.sources : []);
+    } catch (error) {
+      console.error('Failed to load sources.', error);
+      setSources([]);
+    }
+  }, []);
 
   const clearMapMarkers = useCallback(() => {
     for (const m of markersRef.current) m.map = null;
@@ -1277,6 +1304,7 @@ export default function TripProvider({ children }: { children: ReactNode }) {
 
         const ingestionErrors = Array.isArray(payload?.meta?.ingestionErrors) ? payload.meta.ingestionErrors : [];
         if (ingestionErrors.length > 0) console.error('Sync ingestion errors:', ingestionErrors);
+        await loadSourcesFromServer();
 
         const errSuffix = ingestionErrors.length > 0 ? ` (${ingestionErrors.length} ingestion errors)` : '';
         setStatusMessage(`Synced ${syncedEvents.length} events at ${new Date().toLocaleTimeString('en-US', { timeZone: 'America/Los_Angeles' })}${errSuffix}.`, ingestionErrors.length > 0);
@@ -1290,9 +1318,10 @@ export default function TripProvider({ children }: { children: ReactNode }) {
   async function bootstrap() {
     setIsInitializing(true);
     try {
-      const [config, eventsPayload, mePayload] = await Promise.all([
+      const [config, eventsPayload, sourcesPayload, mePayload] = await Promise.all([
         fetchJson('/api/config'),
         fetchJson('/api/events'),
+        fetchJson('/api/sources').catch(() => ({ sources: [] })),
         fetchJson('/api/me').catch(() => null)
       ]);
       if (!mounted) return;
@@ -1305,8 +1334,10 @@ export default function TripProvider({ children }: { children: ReactNode }) {
       setBaseLocationText(config.baseLocation || '');
       const loadedEvents = Array.isArray(eventsPayload.events) ? eventsPayload.events : [];
       const loadedPlaces = Array.isArray(eventsPayload.places) ? eventsPayload.places : [];
+      const loadedSources = Array.isArray(sourcesPayload?.sources) ? sourcesPayload.sources : [];
       setAllEvents(loadedEvents);
       setAllPlaces(loadedPlaces);
+      setSources(loadedSources);
       void loadPairRooms();
 
       if (nextProfile?.role === 'owner') {
@@ -1346,7 +1377,46 @@ export default function TripProvider({ children }: { children: ReactNode }) {
   }
     void bootstrap();
     return () => { mounted = false; clearMapMarkers(); clearRoute(); if (baseMarkerRef.current) baseMarkerRef.current.map = null; };
-  }, [clearMapMarkers, clearRoute, geocode, loadPairRooms, setBaseMarker, setStatusMessage]);
+  }, [clearMapMarkers, clearRoute, geocode, loadPairRooms, loadSourcesFromServer, setBaseMarker, setStatusMessage]);
+
+  useEffect(() => {
+    if (!isAuthenticated) {
+      setSources([]);
+      return;
+    }
+
+    let cancelled = false;
+    const roomCode = normalizePlannerRoomId(currentPairRoomId);
+    const queryString = roomCode ? `?roomCode=${encodeURIComponent(roomCode)}` : '';
+
+    async function loadRoomScopedData() {
+      try {
+        const [eventsPayload, sourcesPayload] = await Promise.all([
+          fetchJson(`/api/events${queryString}`),
+          fetchJson(`/api/sources${queryString}`).catch(() => ({ sources: [] }))
+        ]);
+        if (cancelled) {
+          return;
+        }
+
+        const loadedEvents = Array.isArray(eventsPayload?.events) ? eventsPayload.events : [];
+        const loadedPlaces = Array.isArray(eventsPayload?.places) ? eventsPayload.places : [];
+        const loadedSources = Array.isArray(sourcesPayload?.sources) ? sourcesPayload.sources : [];
+        setAllEvents(loadedEvents);
+        setAllPlaces(loadedPlaces);
+        setSources(loadedSources);
+      } catch (error) {
+        if (!cancelled) {
+          console.error('Failed to load room-scoped events/sources.', error);
+        }
+      }
+    }
+
+    void loadRoomScopedData();
+    return () => {
+      cancelled = true;
+    };
+  }, [currentPairRoomId, isAuthenticated]);
 
   useEffect(() => {
     if (!mapsReady || !window.google?.maps?.visualization || !mapRef.current) return;
@@ -1456,7 +1526,9 @@ export default function TripProvider({ children }: { children: ReactNode }) {
     setIsSyncing(true);
     setStatusMessage('Syncing latest events...');
     try {
-      const response = await fetch('/api/sync', { method: 'POST' });
+      const roomCode = normalizePlannerRoomId(currentPairRoomId);
+      const queryString = roomCode ? `?roomCode=${encodeURIComponent(roomCode)}` : '';
+      const response = await fetch(`/api/sync${queryString}`, { method: 'POST' });
       const payload = await response.json();
       if (!response.ok) {
         throw new Error(payload.error || 'Sync failed');
@@ -1466,6 +1538,7 @@ export default function TripProvider({ children }: { children: ReactNode }) {
       if (Array.isArray(payload.places)) setAllPlaces(payload.places);
       const ingestionErrors = Array.isArray(payload?.meta?.ingestionErrors) ? payload.meta.ingestionErrors : [];
       if (ingestionErrors.length > 0) console.error('Sync ingestion errors:', ingestionErrors);
+      await loadSourcesFromServer(roomCode);
       const errSuffix = ingestionErrors.length > 0 ? ` (${ingestionErrors.length} ingestion errors)` : '';
       setStatusMessage(`Synced ${syncedEvents.length} events at ${new Date().toLocaleTimeString('en-US', { timeZone: 'America/Los_Angeles' })}${errSuffix}.`, ingestionErrors.length > 0);
     } catch (error) {
@@ -1473,7 +1546,7 @@ export default function TripProvider({ children }: { children: ReactNode }) {
     } finally {
       setIsSyncing(false);
     }
-  }, [requireOwnerClient, setStatusMessage]);
+  }, [currentPairRoomId, loadSourcesFromServer, requireOwnerClient, setStatusMessage]);
 
   const handleDeviceLocation = useCallback(() => {
     if (!navigator.geolocation || !window.google?.maps) { setStatusMessage('Geolocation is not supported in this browser.', true); return; }
@@ -1488,6 +1561,121 @@ export default function TripProvider({ children }: { children: ReactNode }) {
       (error) => { setStatusMessage(error.message || 'Could not get device location.', true); }
     );
   }, [allEvents, effectiveDateFilter, filteredPlaces, renderCurrentSelection, setBaseMarker, setStatusMessage, travelMode]);
+
+  const handleCreateSource = useCallback(async (event) => {
+    event.preventDefault();
+    if (!requireOwnerClient()) {
+      return;
+    }
+
+    const url = newSourceUrl.trim();
+    const label = newSourceLabel.trim();
+    if (!url) {
+      setStatusMessage('Source URL is required.', true);
+      return;
+    }
+
+    const roomCode = normalizePlannerRoomId(currentPairRoomId);
+    const queryString = roomCode ? `?roomCode=${encodeURIComponent(roomCode)}` : '';
+    setIsSavingSource(true);
+    try {
+      const response = await fetch(`/api/sources${queryString}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sourceType: newSourceType, url, label })
+      });
+      const payload = await response.json();
+      if (!response.ok) {
+        throw new Error(payload?.error || 'Failed to add source.');
+      }
+      await loadSourcesFromServer(roomCode);
+      setNewSourceUrl('');
+      setNewSourceLabel('');
+      setStatusMessage('Added source. Run Sync to ingest data.');
+    } catch (error) {
+      setStatusMessage(error instanceof Error ? error.message : 'Failed to add source.', true);
+    } finally {
+      setIsSavingSource(false);
+    }
+  }, [
+    currentPairRoomId,
+    loadSourcesFromServer,
+    newSourceLabel,
+    newSourceType,
+    newSourceUrl,
+    requireOwnerClient,
+    setStatusMessage
+  ]);
+
+  const handleToggleSourceStatus = useCallback(async (source) => {
+    if (!requireOwnerClient()) {
+      return;
+    }
+
+    const roomCode = normalizePlannerRoomId(currentPairRoomId);
+    const queryString = roomCode ? `?roomCode=${encodeURIComponent(roomCode)}` : '';
+    const nextStatus = source?.status === 'active' ? 'paused' : 'active';
+    try {
+      const response = await fetch(`/api/sources/${encodeURIComponent(source.id)}${queryString}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: nextStatus })
+      });
+      const payload = await response.json();
+      if (!response.ok) {
+        throw new Error(payload?.error || 'Failed to update source.');
+      }
+      await loadSourcesFromServer(roomCode);
+      setStatusMessage(`Source ${nextStatus === 'active' ? 'activated' : 'paused'}.`);
+    } catch (error) {
+      setStatusMessage(error instanceof Error ? error.message : 'Failed to update source.', true);
+    }
+  }, [currentPairRoomId, loadSourcesFromServer, requireOwnerClient, setStatusMessage]);
+
+  const handleDeleteSource = useCallback(async (source) => {
+    if (!requireOwnerClient()) {
+      return;
+    }
+
+    const roomCode = normalizePlannerRoomId(currentPairRoomId);
+    const queryString = roomCode ? `?roomCode=${encodeURIComponent(roomCode)}` : '';
+    try {
+      const response = await fetch(`/api/sources/${encodeURIComponent(source.id)}${queryString}`, { method: 'DELETE' });
+      const payload = await response.json();
+      if (!response.ok) {
+        throw new Error(payload?.error || 'Failed to delete source.');
+      }
+      await loadSourcesFromServer(roomCode);
+      setStatusMessage('Source deleted.');
+    } catch (error) {
+      setStatusMessage(error instanceof Error ? error.message : 'Failed to delete source.', true);
+    }
+  }, [currentPairRoomId, loadSourcesFromServer, requireOwnerClient, setStatusMessage]);
+
+  const handleSyncSource = useCallback(async (source) => {
+    if (!requireOwnerClient()) {
+      return;
+    }
+
+    const roomCode = normalizePlannerRoomId(currentPairRoomId);
+    const queryString = roomCode ? `?roomCode=${encodeURIComponent(roomCode)}` : '';
+    setSyncingSourceId(source.id);
+    setStatusMessage(`Syncing "${source.label || source.url}"...`);
+    try {
+      const response = await fetch(`/api/sources/${encodeURIComponent(source.id)}${queryString}`, { method: 'POST' });
+      const payload = await response.json();
+      if (!response.ok) {
+        throw new Error(payload?.error || 'Failed to sync source.');
+      }
+      await loadSourcesFromServer(roomCode);
+      const count = payload.events ?? payload.spots ?? 0;
+      setStatusMessage(`Synced ${count} items from "${source.label || source.url}".`);
+    } catch (error) {
+      setStatusMessage(error instanceof Error ? error.message : 'Failed to sync source.', true);
+    } finally {
+      setSyncingSourceId('');
+    }
+  }, [currentPairRoomId, loadSourcesFromServer, requireOwnerClient, setStatusMessage]);
 
   const handleExportPlannerIcs = useCallback(() => {
     if (!selectedDate || dayPlanItems.length === 0) { setStatusMessage('Add planner stops before exporting iCal.', true); return; }
@@ -1580,6 +1768,9 @@ export default function TripProvider({ children }: { children: ReactNode }) {
     routeSummary, isRouteUpdating,
     currentPairRoomId, pairRooms, pairMemberCount, isPairActionPending,
     isSigningOut,
+    sources, groupedSources,
+    newSourceType, setNewSourceType, newSourceUrl, setNewSourceUrl,
+    newSourceLabel, setNewSourceLabel, isSavingSource, syncingSourceId,
     tripStart, setTripStart, tripEnd, setTripEnd,
     // Derived
     placeTagOptions, filteredPlaces, eventLookup, placeLookup,
@@ -1591,6 +1782,7 @@ export default function TripProvider({ children }: { children: ReactNode }) {
     handleSignOut,
     handleUsePersonalPlanner, handleCreatePairRoom, handleJoinPairRoom, handleSelectPairRoom,
     handleSync, handleDeviceLocation,
+    handleCreateSource, handleToggleSourceStatus, handleDeleteSource, handleSyncSource,
     handleSaveTripDates, handleSaveBaseLocation,
     handleExportPlannerIcs, handleAddDayPlanToGoogleCalendar,
     addEventToDayPlan, addPlaceToDayPlan, removePlanItem, clearDayPlan, startPlanDrag,
