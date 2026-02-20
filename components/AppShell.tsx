@@ -34,7 +34,12 @@ export default function AppShell({ children }) {
   return (
     <main className="min-h-dvh h-dvh flex flex-col w-full overflow-hidden">
       <header className="flex items-center gap-3 px-5 h-[52px] min-h-[52px] border-b border-border bg-[#080808] relative z-30 topbar-responsive">
-        <h1 className="m-0 text-lg font-extrabold tracking-tight shrink-0 text-foreground uppercase" style={{ fontFamily: "var(--font-space-grotesk, 'Space Grotesk'), sans-serif" }}>SF TRIP PLANNER</h1>
+        <div className="flex items-center gap-2 shrink-0">
+          <MapPin size={14} className="text-accent" />
+          <h1 className="m-0 text-[13px] font-semibold uppercase tracking-[1px] text-foreground">
+            SF Trip Planner
+          </h1>
+        </div>
         <nav className="flex items-center gap-0.5 mx-auto overflow-x-auto scrollbar-none topbar-nav-responsive" aria-label="App navigator">
           {NAV_ITEMS.map(({ id, href, icon: Icon, label }) => (
             <button

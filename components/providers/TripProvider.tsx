@@ -910,7 +910,7 @@ export default function TripProvider({ children }: { children: ReactNode }) {
     if (baseMarkerRef.current) baseMarkerRef.current.map = null;
     baseMarkerRef.current = new window.google.maps.marker.AdvancedMarkerElement({
       map: hiddenCategoriesRef.current.has('home') ? null : mapRef.current, position: latLng, title,
-      content: createLucidePinIcon(houseIconNode, '#FFFFFF')
+      content: createLucidePinIcon(houseIconNode, '#00FF88')
     });
   }, []);
 

@@ -36,6 +36,7 @@
     "node-ical": "^0.25.1",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
+    "react-resizable-panels": "^4.6.4",
     "tailwind-merge": "^3.4.0"
   },
   "devDependencies": {

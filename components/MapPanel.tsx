@@ -6,7 +6,7 @@ import { formatTag } from '@/lib/helpers';
 import StatusBar from '@/components/StatusBar';
 
 const EVENT_COLOR = '#FF8800';
-const HOME_COLOR = '#FFFFFF';
+const HOME_COLOR = '#00FF88';
 const CRIME_COLOR = '#FF4444';
 
 function formatCrimeUpdatedAt(isoTimestamp) {

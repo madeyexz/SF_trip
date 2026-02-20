@@ -162,7 +162,7 @@
   }
   .layout-sidebar > .map-panel-shell { min-height: 40vh; }
   .sidebar-grid-responsive { grid-template-columns: 1fr !important; height: auto; min-height: 50vh; }
-  .day-list-responsive { flex-direction: column; overflow-y: auto; overflow-x: hidden; border-right: 1px solid var(--color-border); border-bottom: none; }
+  .day-list-responsive { flex-direction: column; overflow-y: auto; overflow-x: hidden; border-right: none; border-bottom: none; }
   .day-list-item-responsive { min-width: 112px; flex-shrink: 0; }
   .map-container-responsive { height: 40vh; min-height: 40vh; }
   .planner-calendar { flex: 1; min-height: 300px; }

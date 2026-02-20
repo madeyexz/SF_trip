@@ -20,18 +20,17 @@ export function renderLucideIconNode(iconNode) {
 export function createLucidePinIcon(iconNode, color) {
   const iconSvg = renderLucideIconNode(iconNode);
   const svg = `
-    <svg xmlns="http://www.w3.org/2000/svg" width="38" height="48" viewBox="0 0 38 48">
-      <path d="M19 1C9.6 1 2 8.6 2 18c0 11.7 14.1 26.9 16.2 29.1a1.2 1.2 0 0 0 1.6 0C21.9 44.9 36 29.7 36 18 36 8.6 28.4 1 19 1z" fill="${color}" stroke="#ffffff" stroke-width="2" />
-      <circle cx="19" cy="18" r="10" fill="rgba(255,255,255,0.16)" />
-      <g transform="translate(7 6)" fill="none" stroke="#ffffff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+    <svg xmlns="http://www.w3.org/2000/svg" width="36" height="42" viewBox="0 0 36 42">
+      <path d="M 1,1 L 35,1 L 35,33 L 22,33 L 18,39 L 14,33 L 1,33 Z" fill="#0C0C0C" stroke="${color}" stroke-width="2" stroke-linejoin="miter" />
+      <g transform="translate(6 5)" fill="none" stroke="${color}" stroke-width="2" stroke-linecap="square" stroke-linejoin="miter">
         ${iconSvg}
       </g>
     </svg>
   `;
 
   const wrapper = document.createElement('div');
-  wrapper.style.width = '38px';
-  wrapper.style.height = '48px';
+  wrapper.style.width = '36px';
+  wrapper.style.height = '42px';
   wrapper.innerHTML = svg.trim();
   return wrapper;
 }
@@ -39,10 +38,9 @@ export function createLucidePinIcon(iconNode, color) {
 export function createLucidePinIconWithLabel(iconNode, color, label) {
   const iconSvg = renderLucideIconNode(iconNode);
   const svg = `
-    <svg xmlns="http://www.w3.org/2000/svg" width="38" height="48" viewBox="0 0 38 48">
-      <path d="M19 1C9.6 1 2 8.6 2 18c0 11.7 14.1 26.9 16.2 29.1a1.2 1.2 0 0 0 1.6 0C21.9 44.9 36 29.7 36 18 36 8.6 28.4 1 19 1z" fill="${color}" stroke="#ffffff" stroke-width="2" />
-      <circle cx="19" cy="18" r="10" fill="rgba(255,255,255,0.16)" />
-      <g transform="translate(7 6)" fill="none" stroke="#ffffff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+    <svg xmlns="http://www.w3.org/2000/svg" width="36" height="42" viewBox="0 0 36 42">
+      <path d="M 1,1 L 35,1 L 35,33 L 22,33 L 18,39 L 14,33 L 1,33 Z" fill="#0C0C0C" stroke="${color}" stroke-width="2" stroke-linejoin="miter" />
+      <g transform="translate(6 5)" fill="none" stroke="${color}" stroke-width="2" stroke-linecap="square" stroke-linejoin="miter">
         ${iconSvg}
       </g>
     </svg>
@@ -51,14 +49,14 @@ export function createLucidePinIconWithLabel(iconNode, color, label) {
   const wrapper = document.createElement('div');
   wrapper.style.cssText = 'display:flex;flex-direction:column;align-items:center;';
   const pinDiv = document.createElement('div');
-  pinDiv.style.cssText = 'width:38px;height:48px;';
+  pinDiv.style.cssText = 'width:36px;height:42px;';
   pinDiv.innerHTML = svg.trim();
   wrapper.appendChild(pinDiv);
 
   if (label) {
     const badge = document.createElement('span');
     badge.textContent = label;
-    badge.style.cssText = `margin-top:-6px;padding:1px 5px;font-size:10px;font-weight:700;line-height:14px;color:#fff;background:${color};border-radius:6px;white-space:nowrap;border:1.5px solid #fff;`;
+    badge.style.cssText = `margin-top:-6px;padding:2px 6px;font-size:10px;font-weight:700;line-height:1;color:#0C0C0C;background:${color};border-radius:0px;white-space:nowrap;font-family:'JetBrains Mono',monospace;text-transform:uppercase;letter-spacing:0.05em;`;
     wrapper.appendChild(badge);
   }
 
