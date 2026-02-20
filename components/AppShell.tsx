@@ -60,7 +60,7 @@ export default function AppShell({ children }) {
             size="sm"
             onClick={handleSync}
             disabled={isSyncing || !canSync}
-            title={canSync ? 'Sync events and spots' : 'Owner role required'}
+            title={canSync ? 'Sync events and spots' : 'Owner role required for pair-room sync'}
           >
             <RefreshCw size={14} className={isSyncing ? 'animate-spin' : ''} />
             {syncLabel}

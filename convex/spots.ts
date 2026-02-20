@@ -1,6 +1,6 @@
 import { mutation, query } from './_generated/server';
 import { v } from 'convex/values';
-import { requireAuthenticatedUserId, requireOwnerUserId } from './authz';
+import { requireAuthenticatedUserId } from './authz';
 
 const spotValidator = v.object({
   id: v.string(),
@@ -98,7 +98,7 @@ export const upsertSpots = mutation({
   },
   returns: upsertSpotsResultValidator,
   handler: async (ctx, args) => {
-    await requireOwnerUserId(ctx);
+    await requireAuthenticatedUserId(ctx);
 
     const missedSyncThreshold = Math.max(1, Number(args.missedSyncThreshold) || 2);
     const keepIds = new Set(args.spots.map((spot) => spot.id));

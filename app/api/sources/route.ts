@@ -13,8 +13,10 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
-  return runWithOwnerClient(async () => {
-    const roomCode = getPlannerRoomCodeFromUrl(request.url);
+  const roomCode = getPlannerRoomCodeFromUrl(request.url);
+  const runGuarded = roomCode ? runWithOwnerClient : runWithAuthenticatedClient;
+
+  return runGuarded(async () => {
     let body = null;
 
     try {

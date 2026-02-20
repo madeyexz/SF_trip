@@ -1,6 +1,6 @@
 import { mutation, query } from './_generated/server';
 import { v } from 'convex/values';
-import { requireAuthenticatedUserId, requireOwnerUserId } from './authz';
+import { requireAuthenticatedUserId } from './authz';
 
 const eventValidator = v.object({
   id: v.string(),
@@ -186,7 +186,7 @@ export const upsertEvents = mutation({
   },
   returns: upsertEventsResultValidator,
   handler: async (ctx, args) => {
-    await requireOwnerUserId(ctx);
+    await requireAuthenticatedUserId(ctx);
 
     const missedSyncThreshold = Math.max(1, Number(args.missedSyncThreshold) || 2);
     const keepUrls = new Set(args.events.map((event) => event.eventUrl));

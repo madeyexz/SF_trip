@@ -1,5 +1,5 @@
 import { deleteSourcePayload, syncSingleSource, updateSourcePayload } from '@/lib/events';
-import { runWithOwnerClient } from '@/lib/api-guards';
+import { runWithAuthenticatedClient, runWithOwnerClient } from '@/lib/api-guards';
 import { getPlannerRoomCodeFromUrl } from '@/lib/planner-api';
 
 export const runtime = 'nodejs';
@@ -9,9 +9,11 @@ type RouteContext = {
 };
 
 export async function PATCH(request: Request, context: RouteContext) {
-  return runWithOwnerClient(async () => {
+  const roomCode = getPlannerRoomCodeFromUrl(request.url);
+  const runGuarded = roomCode ? runWithOwnerClient : runWithAuthenticatedClient;
+
+  return runGuarded(async () => {
     const { sourceId } = await context.params;
-    const roomCode = getPlannerRoomCodeFromUrl(request.url);
     let body = null;
 
     try {
@@ -40,9 +42,11 @@ export async function PATCH(request: Request, context: RouteContext) {
 }
 
 export async function POST(request: Request, context: RouteContext) {
-  return runWithOwnerClient(async () => {
+  const roomCode = getPlannerRoomCodeFromUrl(request.url);
+  const runGuarded = roomCode ? runWithOwnerClient : runWithAuthenticatedClient;
+
+  return runGuarded(async () => {
     const { sourceId } = await context.params;
-    const roomCode = getPlannerRoomCodeFromUrl(request.url);
 
     try {
       const result = await syncSingleSource(sourceId, roomCode);
@@ -59,9 +63,11 @@ export async function POST(request: Request, context: RouteContext) {
 }
 
 export async function DELETE(request: Request, context: RouteContext) {
-  return runWithOwnerClient(async () => {
+  const roomCode = getPlannerRoomCodeFromUrl(request.url);
+  const runGuarded = roomCode ? runWithOwnerClient : runWithAuthenticatedClient;
+
+  return runGuarded(async () => {
     const { sourceId } = await context.params;
-    const roomCode = getPlannerRoomCodeFromUrl(request.url);
 
     try {
       const result = await deleteSourcePayload(sourceId, roomCode);

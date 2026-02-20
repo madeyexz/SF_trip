@@ -1,7 +1,7 @@
 import { mutation, query } from './_generated/server';
 import type { Id } from './_generated/dataModel';
 import { v } from 'convex/values';
-import { requireAuthenticatedUserId, requireOwnerUserId } from './authz';
+import { requireAuthenticatedUserId } from './authz';
 
 const ROOM_CODE_PATTERN = /^[a-z0-9_-]{2,64}$/;
 
@@ -84,6 +84,20 @@ function resolveRoomCode(userId: string, roomCodeInput: unknown) {
     return normalized;
   }
   return toPersonalRoomCode(userId);
+}
+
+async function resolveManagedRoomCode(ctx: any, userId: string, roomCodeInput: unknown) {
+  const normalizedRoomCode = normalizeRoomCode(roomCodeInput);
+  if (!normalizedRoomCode) {
+    return toPersonalRoomCode(userId);
+  }
+
+  const user = await ctx.db.get(userId as Id<'users'>);
+  if (user?.role !== 'owner') {
+    throw new Error('Owner role required.');
+  }
+
+  return normalizedRoomCode;
 }
 
 function buildSourceResponse(row: SourceRecordLike) {
@@ -206,9 +220,8 @@ export const createSource = mutation({
   },
   returns: sourceRecordValidator,
   handler: async (ctx, args) => {
-    const ownerUserId = await requireOwnerUserId(ctx);
-
-    const roomCode = resolveRoomCode(ownerUserId, args.roomCode);
+    const userId = await requireAuthenticatedUserId(ctx);
+    const roomCode = await resolveManagedRoomCode(ctx, userId, args.roomCode);
     const now = new Date().toISOString();
     const nextUrl = args.url.trim();
     const nextLabel = (args.label || '').trim() || nextUrl;
@@ -271,8 +284,8 @@ export const updateSource = mutation({
   },
   returns: v.union(v.null(), sourceRecordValidator),
   handler: async (ctx, args) => {
-    const ownerUserId = await requireOwnerUserId(ctx);
-    const roomCode = resolveRoomCode(ownerUserId, args.roomCode);
+    const userId = await requireAuthenticatedUserId(ctx);
+    const roomCode = await resolveManagedRoomCode(ctx, userId, args.roomCode);
 
     const existing = await ctx.db.get(args.sourceId);
     if (!existing || existing.roomCode !== roomCode) {
@@ -348,8 +361,8 @@ export const deleteSource = mutation({
   },
   returns: deleteSourceResultValidator,
   handler: async (ctx, args) => {
-    const ownerUserId = await requireOwnerUserId(ctx);
-    const roomCode = resolveRoomCode(ownerUserId, args.roomCode);
+    const userId = await requireAuthenticatedUserId(ctx);
+    const roomCode = await resolveManagedRoomCode(ctx, userId, args.roomCode);
 
     const existing = await ctx.db.get(args.sourceId);
     if (!existing || existing.roomCode !== roomCode) {

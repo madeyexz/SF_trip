@@ -210,13 +210,13 @@ export default function ConfigPage() {
         <div className="flex items-center justify-between gap-4">
           <div>
             <h2 className="m-0 text-xl font-extrabold tracking-tight uppercase" style={{ fontFamily: "var(--font-space-grotesk, 'Space Grotesk'), sans-serif" }}>Pair Planner</h2>
-            <p className="mt-0.5 text-muted text-[0.82rem]">Personal mode shows only your plans. Pair mode shows both people, and you can edit only yours.</p>
+            <p className="mt-0.5 text-muted text-[0.82rem]">Single-person mode shows only your plans. Pair mode shows both people, and you can edit only yours.</p>
           </div>
         </div>
         <Card className="p-3 flex flex-col gap-3">
           <div className="flex items-center gap-2 flex-wrap">
             <Badge variant={currentPairRoomId ? 'default' : 'secondary'}>
-              {currentPairRoomId ? `Pair room: ${currentPairRoomId}` : 'Personal planner'}
+              {currentPairRoomId ? `Pair room: ${currentPairRoomId}` : 'Single-person mode'}
             </Badge>
             {currentPairRoomId ? (
               <Badge variant="secondary">{pairMemberCount} member{pairMemberCount === 1 ? '' : 's'}</Badge>
@@ -225,7 +225,15 @@ export default function ConfigPage() {
           </div>
 
           <div className="flex gap-2 flex-wrap">
-            <Button type="button" size="sm" variant="secondary" onClick={onUsePersonal} disabled={isPairActionPending || !currentPairRoomId}>Use Personal</Button>
+            <Button
+              type="button"
+              size="sm"
+              variant={!currentPairRoomId ? 'default' : 'secondary'}
+              onClick={onUsePersonal}
+              disabled={isPairActionPending}
+            >
+              Single Mode
+            </Button>
             <Button type="button" size="sm" onClick={() => { void onCreateRoom(); }} disabled={isPairActionPending}>
               {isPairActionPending ? 'Working...' : 'Create Pair Room'}
             </Button>
@@ -307,7 +315,7 @@ export default function ConfigPage() {
           <div>
             <h2 className="m-0 text-xl font-extrabold tracking-tight uppercase" style={{ fontFamily: "var(--font-space-grotesk, 'Space Grotesk'), sans-serif" }}>Sources</h2>
             <p className="mt-0.5 text-muted text-[0.82rem]">
-              Manage event and spot feeds for {currentPairRoomId ? `pair room "${currentPairRoomId}"` : 'your personal room'}.
+              Manage event and spot feeds for {currentPairRoomId ? `pair room "${currentPairRoomId}"` : 'single-person mode'}.
             </p>
           </div>
         </div>

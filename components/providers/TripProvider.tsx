@@ -307,7 +307,7 @@ export default function TripProvider({ children }: { children: ReactNode }) {
     plannerViewMode
   ]);
 
-  const canManageGlobal = profile?.role === 'owner';
+  const canManageGlobal = profile?.role === 'owner' || !currentPairRoomId;
 
   const placeTagOptions = useMemo(() => {
     const tags = new Set<string>();
@@ -639,7 +639,7 @@ export default function TripProvider({ children }: { children: ReactNode }) {
     setPlannerViewMode('mine');
     setPairRooms([]);
     setIsPairActionPending(false);
-    setStatusMessage('Switched to your personal planner.');
+    setStatusMessage('Switched to single-person mode.');
   }, [leavePairRoomMembership, setStatusMessage]);
 
   const handleCreatePairRoom = useCallback(async () => {
@@ -1370,7 +1370,7 @@ export default function TripProvider({ children }: { children: ReactNode }) {
       const sampleNote = eventsPayload?.meta?.sampleData ? ' Showing sample data until you sync.' : '';
       const roleNote = nextProfile?.role === 'owner'
         ? ''
-        : ' Signed in as member: sync, trip config, and source management are owner-only.';
+        : ' Signed in as member: pair-room sync and shared-room source edits require owner role.';
       setStatusMessage(`Loaded ${loadedEvents.length} events and ${loadedPlaces.length} curated places.${sampleNote}${roleNote}`);
     } catch (error) {
       setStatusMessage(error instanceof Error ? error.message : 'Failed to initialize app.', true);
