@@ -591,12 +591,34 @@ export default function TripProvider({ children }: { children: ReactNode }) {
       const payload = await fetchJson('/api/pair');
       const rooms = Array.isArray(payload?.rooms) ? payload.rooms : [];
       setPairRooms(rooms);
+      const normalizedCurrentRoom = normalizePlannerRoomId(currentPairRoomId);
+      const firstRoom = rooms
+        .map((room) => ({
+          roomCode: normalizePlannerRoomId(room?.roomCode),
+          memberCount: Number(room?.memberCount) || 1
+        }))
+        .find((room) => room.roomCode);
+
+      if (firstRoom) {
+        const currentRoomExists = normalizedCurrentRoom
+          ? rooms.some((room) => normalizePlannerRoomId(room?.roomCode) === normalizedCurrentRoom)
+          : false;
+        if (!currentRoomExists) {
+          setCurrentPairRoomId(firstRoom.roomCode);
+          setPairMemberCount(firstRoom.memberCount);
+          setPlannerViewMode('merged');
+        }
+      } else if (normalizedCurrentRoom) {
+        setCurrentPairRoomId('');
+        setPairMemberCount(1);
+        setPlannerViewMode('mine');
+      }
       return rooms;
     } catch (error) {
       console.error('Failed to load pair rooms.', error);
       return [];
     }
-  }, [isAuthenticated]);
+  }, [currentPairRoomId, isAuthenticated]);
 
   useEffect(() => {
     if (!isAuthenticated) {
@@ -608,25 +630,6 @@ export default function TripProvider({ children }: { children: ReactNode }) {
     }
     setPairRooms([]);
   }, [isAuthenticated]);
-
-  useEffect(() => {
-    if (!isAuthenticated || typeof window === 'undefined') {
-      return;
-    }
-
-    const handlePageHide = () => {
-      void leavePairRoomMembership({ silent: true, keepalive: true });
-      setCurrentPairRoomId('');
-      setPairMemberCount(1);
-      setPlannerViewMode('mine');
-      setPairRooms([]);
-    };
-
-    window.addEventListener('pagehide', handlePageHide);
-    return () => {
-      window.removeEventListener('pagehide', handlePageHide);
-    };
-  }, [isAuthenticated, leavePairRoomMembership]);
 
   const handleUsePersonalPlanner = useCallback(async () => {
     setIsPairActionPending(true);
