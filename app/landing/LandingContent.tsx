@@ -8,7 +8,6 @@ import {
   ArrowRight,
   Terminal,
   Layers,
-  Zap,
   ShieldAlert,
   CalendarSync,
   GripVertical,
