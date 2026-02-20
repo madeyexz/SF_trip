@@ -38,6 +38,10 @@ function readIdentityEmail(identity: UserIdentityLike) {
   return typeof identity.email === 'string' ? identity.email.trim().toLowerCase() : '';
 }
 
+function readStoredEmail(value: unknown) {
+  return typeof value === 'string' ? value.trim().toLowerCase() : '';
+}
+
 function buildProfileResponse(profile: UserProfileLike, email = '') {
   return {
     userId: profile.userId,
@@ -56,13 +60,15 @@ export const ensureCurrentUserProfile = mutation({
   handler: async (ctx) => {
     const userId = await requireCurrentUserId(ctx);
     const identity = await ctx.auth.getUserIdentity();
-    const email = readIdentityEmail(identity);
     const ownerEmailAllowlist = parseOwnerEmailAllowlist(process.env.OWNER_EMAIL_ALLOWLIST);
 
     const userDoc = await ctx.db.get(userId as Id<'users'>);
     if (!userDoc) {
       throw new Error('Authenticated user record not found.');
     }
+    const identityEmail = readIdentityEmail(identity);
+    const storedEmail = readStoredEmail(userDoc.email);
+    const email = identityEmail || storedEmail;
 
     const shouldBeOwner = resolveInitialUserRole(email, ownerEmailAllowlist) === 'owner';
     const currentRole = userDoc.role
@@ -93,11 +99,13 @@ export const getCurrentUserProfile = query({
   handler: async (ctx) => {
     const userId = await requireCurrentUserId(ctx);
     const identity = await ctx.auth.getUserIdentity();
-    const email = readIdentityEmail(identity);
     const userDoc = await ctx.db.get(userId as Id<'users'>);
     if (!userDoc?.role) {
       return null;
     }
+    const identityEmail = readIdentityEmail(identity);
+    const storedEmail = readStoredEmail(userDoc.email);
+    const email = identityEmail || storedEmail;
     return buildProfileResponse({ userId, role: normalizeUserRole(userDoc.role) }, email);
   }
 });

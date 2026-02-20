@@ -203,7 +203,6 @@ export default function ConfigPage() {
           <div className="flex items-center justify-between gap-3 max-sm:flex-col max-sm:items-start">
             <div>
               <div className="text-sm font-semibold text-foreground">{profile?.email || 'No email returned'}</div>
-              <div className="text-[0.78rem] text-muted">User ID: {profile?.userId || 'Unknown'}</div>
             </div>
           </div>
         </Card>
