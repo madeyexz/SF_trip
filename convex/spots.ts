@@ -13,10 +13,7 @@ const spotValidator = v.object({
   description: v.string(),
   details: v.string(),
   lat: v.optional(v.number()),
-  lng: v.optional(v.number()),
-  sourceId: v.optional(v.string()),
-  sourceUrl: v.optional(v.string()),
-  confidence: v.optional(v.number())
+  lng: v.optional(v.number())
 });
 const spotRecordValidator = v.object({
   id: v.string(),
@@ -30,9 +27,6 @@ const spotRecordValidator = v.object({
   details: v.string(),
   lat: v.optional(v.number()),
   lng: v.optional(v.number()),
-  sourceId: v.optional(v.string()),
-  sourceUrl: v.optional(v.string()),
-  confidence: v.optional(v.number()),
   missedSyncCount: v.optional(v.number()),
   isDeleted: v.optional(v.boolean()),
   lastSeenAt: v.optional(v.string()),
@@ -58,7 +52,23 @@ export const listSpots = query({
 
     return rows
       .filter((spot) => !spot.isDeleted)
-      .map(({ _creationTime, _id, ...spot }) => spot)
+      .map((spot) => ({
+        id: spot.id,
+        name: spot.name,
+        tag: spot.tag,
+        location: spot.location,
+        mapLink: spot.mapLink,
+        cornerLink: spot.cornerLink,
+        curatorComment: spot.curatorComment,
+        description: spot.description,
+        details: spot.details,
+        lat: spot.lat,
+        lng: spot.lng,
+        missedSyncCount: spot.missedSyncCount,
+        isDeleted: spot.isDeleted,
+        lastSeenAt: spot.lastSeenAt,
+        updatedAt: spot.updatedAt
+      }))
       .sort((left, right) => `${left.tag}|${left.name}`.localeCompare(`${right.tag}|${right.name}`));
   }
 });
@@ -98,13 +108,14 @@ export const upsertSpots = mutation({
     for (const row of existingRows) {
       if (!keepIds.has(row.id)) {
         const nextMissedSyncCount = (Number(row.missedSyncCount) || 0) + 1;
-        const isDeleted = nextMissedSyncCount >= missedSyncThreshold;
-
-        await ctx.db.patch(row._id, {
-          missedSyncCount: nextMissedSyncCount,
-          isDeleted,
-          updatedAt: args.syncedAt
-        });
+        if (nextMissedSyncCount >= missedSyncThreshold) {
+          await ctx.db.delete(row._id);
+        } else {
+          await ctx.db.patch(row._id, {
+            missedSyncCount: nextMissedSyncCount,
+            updatedAt: args.syncedAt
+          });
+        }
       }
     }
 
@@ -113,13 +124,12 @@ export const upsertSpots = mutation({
       const nextSpot = {
         ...spot,
         missedSyncCount: 0,
-        isDeleted: false,
         lastSeenAt: args.syncedAt,
         updatedAt: args.syncedAt
       };
 
       if (existing) {
-        await ctx.db.patch(existing._id, nextSpot);
+        await ctx.db.replace(existing._id, nextSpot);
       } else {
         await ctx.db.insert('spots', nextSpot);
       }

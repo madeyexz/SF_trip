@@ -14,8 +14,6 @@ const STATIC_PLACES_FILE = path.join(DATA_DIR, 'static-places.json');
 const GEOCODE_CACHE_FILE = path.join(DATA_DIR, 'geocode-cache.json');
 const ROUTE_CACHE_FILE = path.join(DATA_DIR, 'route-cache.json');
 const TRIP_CONFIG_FILE = path.join(DATA_DIR, 'trip-config.json');
-const MINUTES_IN_DAY = 24 * 60;
-const MIN_PLAN_BLOCK_MINUTES = 30;
 const MISSED_SYNC_THRESHOLD = 2;
 const DEFAULT_CORNER_LIST_URL = 'https://www.corner.inc/list/e65af393-70dd-46d5-948a-d774f472d2ee';
 // const DEFAULT_BEEHIIV_RSS_URL = 'https://rss.beehiiv.com/feeds/9B98D9gG4C.xml';
@@ -23,9 +21,21 @@ const FIRECRAWL_BASE_URL = 'https://api.firecrawl.dev';
 const DEFAULT_RSS_INITIAL_ITEMS = 1;
 const DEFAULT_RSS_MAX_ITEMS_PER_SYNC = 3;
 const DEFAULT_RSS_STATE_MAX_ITEMS = 500;
-const SOURCE_TYPES = new Set(['event', 'spot']);
-const SOURCE_STATUSES = new Set(['active', 'paused']);
 const SPOT_TAGS = ['eat', 'bar', 'cafes', 'go out', 'shops', 'avoid', 'safe'];
+const CONVEX_EVENT_FIELDS = [
+  'id',
+  'name',
+  'description',
+  'eventUrl',
+  'startDateTimeText',
+  'startDateISO',
+  'locationText',
+  'lat',
+  'lng',
+  'sourceId',
+  'sourceUrl',
+  'confidence'
+];
 const CONVEX_SPOT_FIELDS = [
   'id',
   'name',
@@ -37,10 +47,7 @@ const CONVEX_SPOT_FIELDS = [
   'description',
   'details',
   'lat',
-  'lng',
-  'sourceId',
-  'sourceUrl',
-  'confidence'
+  'lng'
 ];
 
 let geocodeCacheMapPromise = null;
@@ -128,8 +135,7 @@ export async function saveBaseLocation(text) {
     await client.mutation('tripConfig:saveTripConfig', {
       tripStart: existing?.tripStart || '',
       tripEnd: existing?.tripEnd || '',
-      baseLocation: trimmed,
-      updatedAt: new Date().toISOString()
+      baseLocation: trimmed
     });
   }
   await writeTextFileBestEffort(DOC_LOCATION_FILE, trimmed, { label: 'base location' });
@@ -157,13 +163,11 @@ export async function loadTripConfig() {
 }
 
 export async function saveTripConfig({ tripStart, tripEnd }) {
-  const now = new Date().toISOString();
   const client = createConvexClient();
   if (client) {
     await client.mutation('tripConfig:saveTripConfig', {
       tripStart: tripStart || '',
-      tripEnd: tripEnd || '',
-      updatedAt: now
+      tripEnd: tripEnd || ''
     });
   }
   await writeTextFileBestEffort(TRIP_CONFIG_FILE, JSON.stringify({ tripStart, tripEnd }, null, 2), {
@@ -185,7 +189,6 @@ export async function resolveAddressCoordinates(addressText) {
 }
 
 export async function loadSourcesPayload() {
-  const sources = await loadSourcesFromConvex();
   const fallbackEventSources = getCalendarUrls().map((url) => ({
     id: `fallback-event-${url}`,
     sourceType: 'event',
@@ -209,21 +212,6 @@ export async function loadSourcesPayload() {
   // Firecrawl/RSS disabled: do not force Beehiiv as a required event source.
   // const requiredEventSources = [makeFallbackSource('event', DEFAULT_BEEHIIV_RSS_URL)];
 
-  if (Array.isArray(sources) && sources.length > 0) {
-    const hasEventSources = sources.some((source) => source.sourceType === 'event');
-    const hasSpotSources = sources.some((source) => source.sourceType === 'spot');
-    const withFallbacks = [
-      ...sources,
-      ...(hasEventSources ? [] : fallbackEventSources),
-      ...(hasSpotSources ? [] : fallbackSpotSources)
-    ];
-
-    return {
-      sources: withFallbacks,
-      source: 'convex'
-    };
-  }
-
   return {
     sources: fallbackSources,
     source: 'fallback'
@@ -231,100 +219,28 @@ export async function loadSourcesPayload() {
 }
 
 export async function createSourcePayload(input) {
-  const client = createConvexClient();
-
-  if (!client) {
-    throw new Error('CONVEX_URL is missing. Configure Convex to persist global sources.');
-  }
-
   const sourceType = cleanText(input?.sourceType).toLowerCase();
   const url = cleanText(input?.url);
-  const label = cleanText(input?.label);
-
-  if (!SOURCE_TYPES.has(sourceType)) {
+  if (sourceType !== 'event' && sourceType !== 'spot') {
     throw new Error('sourceType must be "event" or "spot".');
   }
 
   await assertValidSourceUrl(url);
-
-  const source = await client.mutation('sources:createSource', {
-    sourceType,
-    url,
-    label: label || url
-  });
-  const normalized = normalizeSourceRecord(source);
-  if (!normalized) {
-    throw new Error('Could not create source.');
-  }
-
-  return normalized;
+  throw new Error('Source management is disabled. Configure sources via environment variables.');
 }
 
-export async function updateSourcePayload(sourceId, input) {
-  const client = createConvexClient();
-
-  if (!client) {
-    throw new Error('CONVEX_URL is missing. Configure Convex to persist global sources.');
-  }
-
-  const patch = {};
-
-  if (typeof input?.label === 'string') {
-    patch.label = cleanText(input.label);
-  }
-
-  if (typeof input?.status === 'string') {
-    const nextStatus = cleanText(input.status).toLowerCase();
-    if (!SOURCE_STATUSES.has(nextStatus)) {
-      throw new Error('status must be "active" or "paused".');
-    }
-    patch.status = nextStatus;
-  }
-
-  if (Object.keys(patch).length === 0) {
-    throw new Error('Nothing to update. Provide "label" and/or "status".');
-  }
-
-  const source = await client.mutation('sources:updateSource', {
-    sourceId,
-    ...patch
-  });
-
-  if (!source) {
-    throw new Error('Source not found.');
-  }
-
-  const normalized = normalizeSourceRecord(source);
-  if (!normalized) {
-    throw new Error('Could not update source.');
-  }
-
-  return normalized;
+export async function updateSourcePayload(_sourceId, _input) {
+  throw new Error('Source management is disabled. Configure sources via environment variables.');
 }
 
-export async function deleteSourcePayload(sourceId) {
-  const client = createConvexClient();
-
-  if (!client) {
-    throw new Error('CONVEX_URL is missing. Configure Convex to persist global sources.');
-  }
-
-  const result = await client.mutation('sources:deleteSource', { sourceId });
-  if (!result?.deleted) {
-    throw new Error('Source not found.');
-  }
-
-  return {
-    deleted: true
-  };
+export async function deleteSourcePayload(_sourceId) {
+  throw new Error('Source management is disabled. Configure sources via environment variables.');
 }
 
 export async function loadEventsPayload() {
   const fallbackCalendars = getCalendarUrls();
   const fallbackPlaces = await loadStaticPlaces();
-  const sources = await loadSourcesFromConvex();
-  const sourceCalendars = getActiveSourceUrls(sources, 'event');
-  const calendars = sourceCalendars.length > 0 ? sourceCalendars : fallbackCalendars;
+  const calendars = fallbackCalendars;
   const spotsPayload = await loadSpotsFromConvex();
   const placesFromConvex = Array.isArray(spotsPayload?.spots) ? spotsPayload.spots : [];
   const places = mergeStaticRegionPlaces(
@@ -382,53 +298,6 @@ export async function loadEventsPayload() {
       };
     }
   }
-}
-
-export function normalizePlannerRoomId(value) {
-  const nextValue = cleanText(value).toLowerCase().replace(/[^a-z0-9_-]/g, '');
-  if (nextValue.length < 2 || nextValue.length > 64) {
-    return '';
-  }
-  return nextValue;
-}
-
-export async function loadPlannerPayload(roomIdInput = '') {
-  const roomId = normalizePlannerRoomId(roomIdInput);
-  if (!roomId) {
-    return {
-      plannerByDate: {},
-      source: 'local',
-      roomId: ''
-    };
-  }
-
-  const plannerByDate = await loadPlannerFromConvex(roomId);
-
-  return {
-    plannerByDate: plannerByDate || {},
-    source: plannerByDate ? 'convex' : 'local',
-    roomId
-  };
-}
-
-export async function savePlannerPayload(plannerByDateInput, roomIdInput = '') {
-  const plannerByDate = sanitizePlannerByDateInput(plannerByDateInput);
-  const roomId = normalizePlannerRoomId(roomIdInput);
-  if (!roomId) {
-    return {
-      plannerByDate,
-      persisted: 'local',
-      roomId: ''
-    };
-  }
-
-  const persisted = await savePlannerToConvex(plannerByDate, roomId);
-
-  return {
-    plannerByDate,
-    persisted: persisted ? 'convex' : 'local',
-    roomId
-  };
 }
 
 export async function loadCachedRoutePayload(cacheKey) {
@@ -544,47 +413,17 @@ export async function syncEvents() {
       syncedAt: nowIso,
       sourceUrls: spotSyncResult.sourceUrls
     }),
-    saveSourceSyncStatus(
-      sourceSnapshot.eventSources,
-      eventSyncResult.errors,
-      nowIso,
-      eventSyncResult.rssStateBySourceUrl
-    ),
-    saveSourceSyncStatus(sourceSnapshot.spotSources, spotSyncResult.errors, nowIso)
+    saveRssSeenBySourceUrlToEventsCache(eventSyncResult.rssStateBySourceUrl)
   ]);
 
   return payload;
 }
 
 export async function syncSingleSource(sourceId) {
-  const sourcesPayload = await loadSourcesPayload();
-  const allSources = Array.isArray(sourcesPayload?.sources) ? sourcesPayload.sources : [];
-  const source = allSources.find((s) => s.id === sourceId);
-
-  if (!source) {
-    throw new Error('Source not found.');
+  if (cleanText(sourceId)) {
+    throw new Error('Single-source sync is disabled. Run global sync instead.');
   }
-
-  const nowIso = new Date().toISOString();
-
-  if (source.sourceType === 'event') {
-    const rssFallbackStateBySourceUrl = await loadRssSeenBySourceUrlFromEventsCache();
-    const result = await syncEventsFromSources({
-      eventSources: [source],
-      rssFallbackStateBySourceUrl
-    });
-    await Promise.allSettled([
-      saveSourceSyncStatus([source], result.errors, nowIso, result.rssStateBySourceUrl),
-      saveRssSeenBySourceUrlToEventsCache(result.rssStateBySourceUrl)
-    ]);
-    return { syncedAt: nowIso, events: result.events.length, errors: result.errors };
-  }
-
-  const result = await syncSpotsFromSources({
-    spotSources: [source]
-  });
-  await saveSourceSyncStatus([source], result.errors, nowIso);
-  return { syncedAt: nowIso, spots: result.places.length, errors: result.errors };
+  throw new Error('Single-source sync is disabled. Run global sync instead.');
 }
 
 async function loadStaticPlaces() {
@@ -659,74 +498,19 @@ async function saveEventsToConvex(payload) {
     return;
   }
 
+  const sanitizedEvents = Array.isArray(payload?.events)
+    ? payload.events.map((event) => sanitizeEventForConvex(event))
+    : [];
+
   try {
     await client.mutation('events:upsertEvents', {
-      events: payload.events,
+      events: sanitizedEvents,
       syncedAt: payload.meta.syncedAt,
       calendars: payload.meta.calendars,
       missedSyncThreshold: MISSED_SYNC_THRESHOLD
     });
   } catch (error) {
     console.error('Convex write failed; local cache is still updated.', error);
-  }
-}
-
-async function loadPlannerFromConvex(roomId) {
-  const client = createConvexClient();
-
-  if (!client || !roomId) {
-    return null;
-  }
-
-  try {
-    const payload = await client.query('planner:getPlannerState', { roomId });
-    return sanitizePlannerByDateInput(payload?.plannerByDate || {});
-  } catch (error) {
-    console.error('Convex planner read failed, falling back to local planner cache.', error);
-    return null;
-  }
-}
-
-async function savePlannerToConvex(plannerByDate, roomId) {
-  const client = createConvexClient();
-
-  if (!client || !roomId) {
-    return false;
-  }
-
-  try {
-    await client.mutation('planner:replacePlannerState', {
-      roomId,
-      plannerByDate,
-      updatedAt: new Date().toISOString()
-    });
-
-    return true;
-  } catch (error) {
-    console.error('Convex planner write failed; local planner cache is still used.', error);
-    return false;
-  }
-}
-
-async function loadSourcesFromConvex() {
-  const client = createConvexClient();
-
-  if (!client) {
-    return null;
-  }
-
-  try {
-    const rows = await client.query('sources:listSources', {});
-    if (!Array.isArray(rows)) {
-      return [];
-    }
-
-    return rows
-      .map((row) => normalizeSourceRecord(row))
-      .filter(Boolean);
-  } catch (error) {
-    console.error('Convex source read failed, falling back to env sources.', error);
-    return null;
   }
 }
 
@@ -794,44 +578,27 @@ function sanitizeSpotForConvex(spot) {
     return spot;
   }
 
-  const sanitizedSpot = {};
+  return sanitizeObjectForConvex(spot, CONVEX_SPOT_FIELDS);
+}
 
-  for (const field of CONVEX_SPOT_FIELDS) {
-    if (Object.prototype.hasOwnProperty.call(spot, field) && spot[field] !== undefined) {
-      sanitizedSpot[field] = spot[field];
+function sanitizeEventForConvex(event) {
+  if (!event || typeof event !== 'object') {
+    return event;
+  }
+
+  return sanitizeObjectForConvex(event, CONVEX_EVENT_FIELDS);
+}
+
+function sanitizeObjectForConvex(row, allowedFields) {
+  const sanitizedRow = {};
+
+  for (const field of allowedFields) {
+    if (Object.prototype.hasOwnProperty.call(row, field) && row[field] !== undefined) {
+      sanitizedRow[field] = row[field];
     }
   }
 
-  return sanitizedSpot;
-}
-
-function getActiveSourceUrls(sources, sourceType) {
-  if (!Array.isArray(sources)) {
-    return [];
-  }
-
-  return Array.from(new Set(
-    sources
-      .filter((source) => source?.sourceType === sourceType)
-      .filter((source) => source?.status === 'active')
-      .map((source) => cleanText(source.url))
-      .filter(Boolean)
-  ));
-}
-
-function getActiveSourcesByType(sources, sourceType) {
-  if (!Array.isArray(sources)) {
-    return [];
-  }
-
-  return sources
-    .filter((source) => source?.sourceType === sourceType && source?.status === 'active')
-    .map((source) => ({
-      ...source,
-      url: cleanText(source.url),
-      label: cleanText(source.label) || cleanText(source.url)
-    }))
-    .filter((source) => source.url);
+  return sanitizedRow;
 }
 
 function makeFallbackSource(sourceType, url) {
@@ -1049,26 +816,17 @@ async function saveRssSeenBySourceUrlToEventsCache(rssStateBySourceUrl) {
 }
 
 async function getSourceSnapshotForSync() {
-  const convexSources = await loadSourcesFromConvex();
-  const eventSourcesFromConvex = getActiveSourcesByType(convexSources, 'event');
-  const spotSourcesFromConvex = getActiveSourcesByType(convexSources, 'spot');
   const eventFallbackUrls = getCalendarUrls();
   const spotFallbackUrls = getDefaultSpotSourceUrls();
 
-  const eventSources =
-    eventSourcesFromConvex.length > 0
-      ? eventSourcesFromConvex
-      : eventFallbackUrls.map((url) => makeFallbackSource('event', url));
+  const eventSources = eventFallbackUrls.map((url) => makeFallbackSource('event', url));
   // Firecrawl/RSS disabled: do not force Beehiiv as a required sync source.
   // const eventSourcesWithRequired = appendMissingEventSources(
   //   eventSources,
   //   [makeFallbackSource('event', DEFAULT_BEEHIIV_RSS_URL)]
   // );
-  const spotSources =
-    spotSourcesFromConvex.length > 0
-      ? spotSourcesFromConvex
-      : (spotFallbackUrls.length > 0 ? spotFallbackUrls : [DEFAULT_CORNER_LIST_URL])
-          .map((url) => makeFallbackSource('spot', url));
+  const spotSources = (spotFallbackUrls.length > 0 ? spotFallbackUrls : [DEFAULT_CORNER_LIST_URL])
+    .map((url) => makeFallbackSource('spot', url));
 
   return {
     eventSources,
@@ -1721,41 +1479,6 @@ function scoreSpot(spot) {
   return score;
 }
 
-async function saveSourceSyncStatus(sources, errors, syncedAt, rssStateBySourceUrl = {}) {
-  const client = createConvexClient();
-
-  if (!client || !Array.isArray(sources) || sources.length === 0) {
-    return;
-  }
-
-  const firstErrorBySource = new Map();
-  for (const error of errors || []) {
-    const sourceId = cleanText(error?.sourceId);
-    if (!sourceId || firstErrorBySource.has(sourceId)) {
-      continue;
-    }
-    firstErrorBySource.set(sourceId, cleanText(error?.message));
-  }
-
-  const updateTasks = sources
-    .filter((source) => !source?.readonly && cleanText(source?.id))
-    .map((source) => {
-      const sourceUrlKey = buildRssSourceStateKey(source.url);
-      const rssStateJson = serializeRssSeenState(rssStateBySourceUrl?.[sourceUrlKey]);
-      const patch = {
-        sourceId: source.id,
-        lastSyncedAt: syncedAt,
-        lastError: firstErrorBySource.get(source.id) || ''
-      };
-      if (rssStateJson) {
-        patch.rssStateJson = rssStateJson;
-      }
-      return client.mutation('sources:updateSource', patch);
-    });
-
-  await Promise.allSettled(updateTasks);
-}
-
 function createIngestionError({ sourceType, sourceId, sourceUrl, eventUrl, stage, message }) {
   return {
     sourceType,
@@ -1764,33 +1487,6 @@ function createIngestionError({ sourceType, sourceId, sourceUrl, eventUrl, stage
     eventUrl: cleanText(eventUrl),
     stage: cleanText(stage),
     message: cleanText(message)
-  };
-}
-
-function normalizeSourceRecord(source) {
-  if (!source || typeof source !== 'object') {
-    return null;
-  }
-
-  const sourceType = cleanText(source.sourceType).toLowerCase();
-  const status = cleanText(source.status).toLowerCase();
-  const url = cleanText(source.url);
-
-  if (!SOURCE_TYPES.has(sourceType) || !SOURCE_STATUSES.has(status) || !url) {
-    return null;
-  }
-
-  return {
-    id: cleanText(source._id || source.id),
-    sourceType,
-    url,
-    label: cleanText(source.label) || url,
-    status,
-    createdAt: cleanText(source.createdAt),
-    updatedAt: cleanText(source.updatedAt),
-    lastSyncedAt: cleanText(source.lastSyncedAt),
-    lastError: cleanText(source.lastError),
-    rssStateJson: cleanText(source.rssStateJson)
   };
 }
 
@@ -2352,62 +2048,6 @@ function _slugToTitle(eventUrl) {
     .filter(Boolean)
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
     .join(' ');
-}
-
-function sanitizePlannerByDateInput(value) {
-  if (!value || typeof value !== 'object') {
-    return {};
-  }
-
-  const cleaned = {};
-
-  for (const [dateISO, items] of Object.entries(value)) {
-    if (!dateISO || !Array.isArray(items)) {
-      continue;
-    }
-
-    const cleanedItems = items
-      .filter((item) => item && typeof item === 'object')
-      .map((item) => {
-        const startMinutes = clampMinutes(Number(item.startMinutes), 0, MINUTES_IN_DAY);
-        const endMinutes = clampMinutes(
-          Number(item.endMinutes),
-          startMinutes + MIN_PLAN_BLOCK_MINUTES,
-          MINUTES_IN_DAY
-        );
-
-        return {
-          id: cleanText(item.id) || createPlannerItemId(),
-          kind: item.kind === 'event' ? 'event' : 'place',
-          sourceKey: cleanText(item.sourceKey),
-          title: cleanText(item.title) || 'Untitled stop',
-          locationText: cleanText(item.locationText),
-          link: cleanText(item.link),
-          tag: cleanText(item.tag),
-          startMinutes,
-          endMinutes
-        };
-      })
-      .filter((item) => item.sourceKey);
-
-    if (cleanedItems.length > 0) {
-      cleaned[dateISO] = cleanedItems;
-    }
-  }
-
-  return cleaned;
-}
-
-function clampMinutes(value, min, max) {
-  if (!Number.isFinite(value)) {
-    return min;
-  }
-
-  return Math.min(max, Math.max(min, Math.round(value)));
-}
-
-function createPlannerItemId() {
-  return `plan-${Math.random().toString(36).slice(2, 9)}`;
 }
 
 function sanitizeRoutePayload(value) {

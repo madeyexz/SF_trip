@@ -1,5 +1,5 @@
 import { loadBaseLocation, saveBaseLocation, getCalendarUrls, loadTripConfig, saveTripConfig } from '@/lib/events';
-import { runWithAuthenticatedClient, runWithOwnerClient } from '@/lib/api-guards';
+import { runWithAuthenticatedClient } from '@/lib/api-guards';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -23,7 +23,7 @@ export async function GET() {
 }
 
 export async function POST(request) {
-  return runWithOwnerClient(async () => {
+  return runWithAuthenticatedClient(async () => {
     try {
       const body = await request.json();
       const tripStart = typeof body.tripStart === 'string' ? body.tripStart.trim() : '';

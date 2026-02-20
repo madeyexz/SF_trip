@@ -2,7 +2,8 @@ import { getAuthUserId } from '@convex-dev/auth/server';
 import type { MutationCtx, QueryCtx } from './_generated/server';
 import { mutation, query } from './_generated/server';
 import { v } from 'convex/values';
-import { computePairRoomTransitions } from './pair-policy';
+import { computePairRoomTransitions } from './pairPolicy';
+import { hasPairRoomUser, mergePairRoomMembers, normalizePairRoomMembers } from './pairRoomMembers';
 
 const MINUTES_IN_DAY = 24 * 60;
 const MIN_PLAN_BLOCK_MINUTES = 30;
@@ -194,18 +195,13 @@ async function ensureRoomMembership(
     };
   }
 
-  const membership = await ctx.db
-    .query('pairMembers')
-    .withIndex('by_room_user', (q) => q.eq('roomCode', normalizedRoomCode).eq('userId', userId))
-    .first();
-
-  if (!membership) {
-    throw new Error('Join this pair room before viewing or editing it.');
-  }
-
   const room = await getPairRoomByCode(ctx, normalizedRoomCode);
   if (!room || room.expiredAt) {
     throw new Error('This pair room is no longer active.');
+  }
+  const members = normalizePairRoomMembers(room.members || []);
+  if (!hasPairRoomUser(members, userId)) {
+    throw new Error('Join this pair room before viewing or editing it.');
   }
 
   return {
@@ -223,6 +219,21 @@ async function getPairRoomByCode(ctx: ConvexCtx, roomCode: string) {
     return null;
   }
   return rooms.find((room) => !room.expiredAt) || rooms[0];
+}
+
+async function getActiveMembershipRoomCodes(ctx: MutationCtx, userId: string) {
+  const rooms = await ctx.db.query('pairRooms').collect();
+  const membershipRoomCodes: string[] = [];
+  for (const room of rooms) {
+    if (room.expiredAt) {
+      continue;
+    }
+    const members = normalizePairRoomMembers(room.members || []);
+    if (hasPairRoomUser(members, userId)) {
+      membershipRoomCodes.push(room.roomCode);
+    }
+  }
+  return membershipRoomCodes;
 }
 
 async function getActiveOwnedRoomCodes(ctx: MutationCtx, userId: string) {
@@ -243,25 +254,30 @@ async function removeUserMembershipsForRoomCodes(
   ctx: MutationCtx,
   userId: string,
   roomCodes: string[],
+  now: string,
 ) {
   const roomCodeSet = new Set(roomCodes);
   if (roomCodeSet.size === 0) {
     return 0;
   }
-  const memberships = await ctx.db
-    .query('pairMembers')
-    .withIndex('by_user', (q) => q.eq('userId', userId))
-    .collect();
-
-  let deletedCount = 0;
-  for (const membership of memberships) {
-    if (!roomCodeSet.has(membership.roomCode)) {
+  const rooms = await ctx.db.query('pairRooms').collect();
+  let patchedCount = 0;
+  for (const room of rooms) {
+    if (!roomCodeSet.has(room.roomCode) || room.expiredAt) {
       continue;
     }
-    await ctx.db.delete(membership._id);
-    deletedCount += 1;
+    const members = normalizePairRoomMembers(room.members || []);
+    const nextMembers = members.filter((member) => member.userId !== userId);
+    if (nextMembers.length === members.length) {
+      continue;
+    }
+    await ctx.db.patch(room._id, {
+      members: nextMembers,
+      updatedAt: now
+    });
+    patchedCount += 1;
   }
-  return deletedCount;
+  return patchedCount;
 }
 
 async function expireOwnedRooms(ctx: MutationCtx, roomCodes: string[], now: string) {
@@ -277,18 +293,11 @@ async function expireOwnedRooms(ctx: MutationCtx, roomCodes: string[], now: stri
       continue;
     }
     await ctx.db.patch(room._id, {
+      members: [],
       expiredAt: now,
       updatedAt: now
     });
     expiredCount += 1;
-
-    const memberships = await ctx.db
-      .query('pairMembers')
-      .withIndex('by_room_code', (q) => q.eq('roomCode', roomCode))
-      .collect();
-    for (const membership of memberships) {
-      await ctx.db.delete(membership._id);
-    }
   }
 
   return expiredCount;
@@ -301,19 +310,14 @@ async function applyPairTransition(
   nextRoomCode: string,
   now: string,
 ) {
-  const memberships = await ctx.db
-    .query('pairMembers')
-    .withIndex('by_user', (q) => q.eq('userId', userId))
-    .collect();
-
   const transition = computePairRoomTransitions({
     action,
     nextRoomCode,
-    membershipRoomCodes: memberships.map((membership) => membership.roomCode),
+    membershipRoomCodes: await getActiveMembershipRoomCodes(ctx, userId),
     ownedRoomCodes: await getActiveOwnedRoomCodes(ctx, userId)
   });
 
-  await removeUserMembershipsForRoomCodes(ctx, userId, transition.membershipRoomCodesToRemove);
+  await removeUserMembershipsForRoomCodes(ctx, userId, transition.membershipRoomCodesToRemove, now);
   await expireOwnedRooms(ctx, transition.ownedRoomCodesToExpire, now);
 
   return transition;
@@ -388,53 +392,6 @@ function plannerByDateFromRows(rows: PlannerEntryLike[]) {
   return finalizePlannerByDate(plannerByDate);
 }
 
-async function maybeMigrateLegacyPlanner(
-  ctx: MutationCtx,
-  roomCode: string,
-  ownerUserId: string,
-) {
-  const existingAnyRow = await ctx.db
-    .query('plannerEntries')
-    .withIndex('by_room_code', (q) => q.eq('roomCode', roomCode))
-    .first();
-  if (existingAnyRow) {
-    return 0;
-  }
-
-  const legacy = await ctx.db
-    .query('plannerState')
-    .withIndex('by_key', (q) => q.eq('key', roomCode))
-    .first();
-  if (!legacy || !legacy.plannerByDate) {
-    return 0;
-  }
-
-  const sanitized = sanitizePlannerByDate(legacy.plannerByDate);
-  const now = new Date().toISOString();
-  let inserted = 0;
-  for (const [dateISO, items] of Object.entries(sanitized)) {
-    for (const item of items) {
-      await ctx.db.insert('plannerEntries', {
-        roomCode,
-        ownerUserId,
-        dateISO,
-        itemId: item.id,
-        kind: item.kind,
-        sourceKey: item.sourceKey,
-        title: item.title,
-        locationText: item.locationText,
-        link: item.link,
-        tag: item.tag,
-        startMinutes: item.startMinutes,
-        endMinutes: item.endMinutes,
-        updatedAt: now
-      });
-      inserted += 1;
-    }
-  }
-  return inserted;
-}
-
 export const getPlannerState = query({
   args: {
     roomCode: v.optional(v.string())
@@ -474,13 +431,11 @@ export const getPlannerState = query({
       }
     }
 
-    const memberCount = isPairRoom
-      ? (
-        await ctx.db
-          .query('pairMembers')
-          .withIndex('by_room_code', (q) => q.eq('roomCode', roomCode))
-          .collect()
-      ).length
+    const pairRoom = isPairRoom
+      ? await getPairRoomByCode(ctx, roomCode)
+      : null;
+    const memberCount = pairRoom
+      ? normalizePairRoomMembers(pairRoom.members || []).length
       : 1;
 
     return {
@@ -502,10 +457,7 @@ export const replacePlannerState = mutation({
   returns: replacePlannerStateResultValidator,
   handler: async (ctx, args) => {
     const userId = await requireCurrentUserId(ctx);
-    const { roomCode, isPairRoom } = await ensureRoomMembership(ctx, userId, args.roomCode);
-    if (isPairRoom) {
-      await maybeMigrateLegacyPlanner(ctx, roomCode, userId);
-    }
+    const { roomCode } = await ensureRoomMembership(ctx, userId, args.roomCode);
 
     const existing = await ctx.db
       .query('plannerEntries')
@@ -603,12 +555,8 @@ export const createPairRoom = mutation({
       createdByUserId: userId,
       createdAt: now,
       updatedAt: now,
+      members: [{ userId, joinedAt: now }],
       expiredAt: undefined
-    });
-    await ctx.db.insert('pairMembers', {
-      roomCode,
-      userId,
-      joinedAt: now
     });
 
     return {
@@ -637,76 +585,32 @@ export const joinPairRoom = mutation({
     }
 
     if (!room) {
-      const legacy = await ctx.db
-        .query('plannerState')
-        .withIndex('by_key', (q) => q.eq('key', roomCode))
-        .first();
-      if (!legacy) {
-        throw new Error('Pair room not found.');
-      }
-
-      await ctx.db.insert('pairRooms', {
-        roomCode,
-        createdByUserId: userId,
-        createdAt: now,
-        updatedAt: now,
-        expiredAt: undefined
-      });
-      await applyPairTransition(ctx, userId, 'join', roomCode, now);
-      await ctx.db.insert('pairMembers', {
-        roomCode,
-        userId,
-        joinedAt: now
-      });
-      await maybeMigrateLegacyPlanner(ctx, roomCode, userId);
-
-      return {
-        roomCode,
-        memberCount: 1,
-        migratedLegacyRoom: true
-      };
+      throw new Error('Pair room not found.');
     }
 
     await applyPairTransition(ctx, userId, 'join', roomCode, now);
-    const existingMembership = await ctx.db
-      .query('pairMembers')
-      .withIndex('by_room_user', (q) => q.eq('roomCode', roomCode).eq('userId', userId))
-      .first();
+    room = await getPairRoomByCode(ctx, roomCode);
+    if (!room || room.expiredAt) {
+      throw new Error('This pair room is no longer active.');
+    }
 
-    let didAddMembership = false;
-    if (!existingMembership) {
-      const members = await ctx.db
-        .query('pairMembers')
-        .withIndex('by_room_code', (q) => q.eq('roomCode', roomCode))
-        .collect();
+    const members = normalizePairRoomMembers(room.members || []);
+    const hasMembership = hasPairRoomUser(members, userId);
+    let nextMembers = members;
+    if (!hasMembership) {
       if (members.length >= 2) {
         throw new Error('This pair room is full (2 people max).');
       }
-
-      await ctx.db.insert('pairMembers', {
-        roomCode,
-        userId,
-        joinedAt: now
-      });
-      didAddMembership = true;
-    }
-
-    if (didAddMembership) {
+      nextMembers = mergePairRoomMembers(members, [{ userId, joinedAt: now }]);
       await ctx.db.patch(room._id, {
+        members: nextMembers,
         updatedAt: now
       });
     }
 
-    const memberCount = (
-      await ctx.db
-        .query('pairMembers')
-        .withIndex('by_room_code', (q) => q.eq('roomCode', roomCode))
-        .collect()
-    ).length;
-
     return {
       roomCode,
-      memberCount,
+      memberCount: nextMembers.length,
       migratedLegacyRoom: false
     };
   }
@@ -730,28 +634,20 @@ export const listMyPairRooms = query({
   returns: listMyPairRoomsResultValidator,
   handler: async (ctx) => {
     const userId = await requireCurrentUserId(ctx);
-    const memberships = await ctx.db
-      .query('pairMembers')
-      .withIndex('by_user', (q) => q.eq('userId', userId))
-      .collect();
-
+    const allRooms = await ctx.db.query('pairRooms').collect();
     const rooms = [];
-    const seenRoomCodes = new Set<string>();
-    for (const membership of memberships) {
-      const room = await getPairRoomByCode(ctx, membership.roomCode);
-      if (!room || room.expiredAt || seenRoomCodes.has(membership.roomCode)) {
+    for (const room of allRooms) {
+      if (room.expiredAt) {
         continue;
       }
-      seenRoomCodes.add(membership.roomCode);
-      const memberCount = (
-        await ctx.db
-          .query('pairMembers')
-          .withIndex('by_room_code', (q) => q.eq('roomCode', membership.roomCode))
-          .collect()
-      ).length;
+      const members = normalizePairRoomMembers(room.members || []);
+      const membership = members.find((member) => member.userId === userId);
+      if (!membership) {
+        continue;
+      }
       rooms.push({
-        roomCode: membership.roomCode,
-        memberCount,
+        roomCode: room.roomCode,
+        memberCount: members.length,
         joinedAt: membership.joinedAt,
         updatedAt: room.updatedAt
       });

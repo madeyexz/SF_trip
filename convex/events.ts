@@ -10,8 +10,6 @@ const eventValidator = v.object({
   startDateTimeText: v.string(),
   startDateISO: v.string(),
   locationText: v.string(),
-  address: v.string(),
-  googleMapsUrl: v.string(),
   lat: v.optional(v.number()),
   lng: v.optional(v.number()),
   sourceId: v.optional(v.string()),
@@ -26,8 +24,6 @@ const eventRecordValidator = v.object({
   startDateTimeText: v.string(),
   startDateISO: v.string(),
   locationText: v.string(),
-  address: v.string(),
-  googleMapsUrl: v.string(),
   lat: v.optional(v.number()),
   lng: v.optional(v.number()),
   sourceId: v.optional(v.string()),
@@ -68,7 +64,24 @@ export const listEvents = query({
 
     return events
       .filter((event) => !event.isDeleted)
-      .map(({ _creationTime, _id, ...event }) => event)
+      .map((event) => ({
+        id: event.id,
+        name: event.name,
+        description: event.description,
+        eventUrl: event.eventUrl,
+        startDateTimeText: event.startDateTimeText,
+        startDateISO: event.startDateISO,
+        locationText: event.locationText,
+        lat: event.lat,
+        lng: event.lng,
+        sourceId: event.sourceId,
+        sourceUrl: event.sourceUrl,
+        confidence: event.confidence,
+        missedSyncCount: event.missedSyncCount,
+        isDeleted: event.isDeleted,
+        lastSeenAt: event.lastSeenAt,
+        updatedAt: event.updatedAt
+      }))
       .sort((left, right) => {
         const leftValue = left.startDateISO || '9999-99-99';
         const rightValue = right.startDateISO || '9999-99-99';
@@ -183,13 +196,14 @@ export const upsertEvents = mutation({
     for (const row of existingRows) {
       if (!keepUrls.has(row.eventUrl)) {
         const nextMissedSyncCount = (Number(row.missedSyncCount) || 0) + 1;
-        const isDeleted = nextMissedSyncCount >= missedSyncThreshold;
-
-        await ctx.db.patch(row._id, {
-          missedSyncCount: nextMissedSyncCount,
-          isDeleted,
-          updatedAt: args.syncedAt
-        });
+        if (nextMissedSyncCount >= missedSyncThreshold) {
+          await ctx.db.delete(row._id);
+        } else {
+          await ctx.db.patch(row._id, {
+            missedSyncCount: nextMissedSyncCount,
+            updatedAt: args.syncedAt
+          });
+        }
       }
     }
 
@@ -198,13 +212,12 @@ export const upsertEvents = mutation({
       const nextEvent = {
         ...event,
         missedSyncCount: 0,
-        isDeleted: false,
         lastSeenAt: args.syncedAt,
         updatedAt: args.syncedAt
       };
 
       if (existing) {
-        await ctx.db.patch(existing._id, nextEvent);
+        await ctx.db.replace(existing._id, nextEvent);
       } else {
         await ctx.db.insert('events', nextEvent);
       }

@@ -4,26 +4,14 @@ import { v } from 'convex/values';
 
 export default defineSchema({
   ...authTables,
-  plannerState: defineTable({
-    key: v.string(),
-    plannerByDate: v.record(
-      v.string(),
-      v.array(
-        v.object({
-          id: v.string(),
-          kind: v.union(v.literal('event'), v.literal('place')),
-          sourceKey: v.string(),
-          title: v.string(),
-          locationText: v.string(),
-          link: v.string(),
-          tag: v.string(),
-          startMinutes: v.number(),
-          endMinutes: v.number()
-        })
-      )
-    ),
-    updatedAt: v.string()
-  }).index('by_key', ['key']),
+  users: defineTable({
+    email: v.optional(v.string()),
+    emailVerificationTime: v.optional(v.number()),
+    role: v.optional(v.union(v.literal('owner'), v.literal('member'))),
+    tripStart: v.optional(v.string()),
+    tripEnd: v.optional(v.string()),
+    baseLocation: v.optional(v.string())
+  }).index('email', ['email']),
   plannerEntries: defineTable({
     roomCode: v.string(),
     ownerUserId: v.string(),
@@ -40,35 +28,20 @@ export default defineSchema({
     updatedAt: v.string()
   })
     .index('by_room_code', ['roomCode'])
-    .index('by_room_owner', ['roomCode', 'ownerUserId'])
-    .index('by_room_owner_date', ['roomCode', 'ownerUserId', 'dateISO'])
-    .index('by_room_date', ['roomCode', 'dateISO']),
+    .index('by_room_owner', ['roomCode', 'ownerUserId']),
   pairRooms: defineTable({
     roomCode: v.string(),
     createdByUserId: v.string(),
     createdAt: v.string(),
     updatedAt: v.string(),
+    members: v.optional(v.array(v.object({
+      userId: v.string(),
+      joinedAt: v.string()
+    }))),
     expiredAt: v.optional(v.string())
   })
     .index('by_room_code', ['roomCode'])
     .index('by_created_by', ['createdByUserId']),
-  pairMembers: defineTable({
-    roomCode: v.string(),
-    userId: v.string(),
-    joinedAt: v.string()
-  })
-    .index('by_room_code', ['roomCode'])
-    .index('by_room_user', ['roomCode', 'userId'])
-    .index('by_user', ['userId']),
-  userProfiles: defineTable({
-    userId: v.string(),
-    role: v.union(v.literal('owner'), v.literal('member')),
-    email: v.optional(v.string()),
-    createdAt: v.string(),
-    updatedAt: v.string()
-  })
-    .index('by_user_id', ['userId'])
-    .index('by_role', ['role']),
   routeCache: defineTable({
     key: v.string(),
     encodedPolyline: v.string(),
@@ -84,8 +57,6 @@ export default defineSchema({
     startDateTimeText: v.string(),
     startDateISO: v.string(),
     locationText: v.string(),
-    address: v.string(),
-    googleMapsUrl: v.string(),
     lat: v.optional(v.number()),
     lng: v.optional(v.number()),
     sourceId: v.optional(v.string()),
@@ -95,8 +66,7 @@ export default defineSchema({
     isDeleted: v.optional(v.boolean()),
     lastSeenAt: v.optional(v.string()),
     updatedAt: v.optional(v.string())
-  }).index('by_event_url', ['eventUrl'])
-    .index('by_source_id', ['sourceId']),
+  }),
   spots: defineTable({
     id: v.string(),
     name: v.string(),
@@ -109,27 +79,11 @@ export default defineSchema({
     details: v.string(),
     lat: v.optional(v.number()),
     lng: v.optional(v.number()),
-    sourceId: v.optional(v.string()),
-    sourceUrl: v.optional(v.string()),
-    confidence: v.optional(v.number()),
     missedSyncCount: v.optional(v.number()),
     isDeleted: v.optional(v.boolean()),
     lastSeenAt: v.optional(v.string()),
     updatedAt: v.optional(v.string())
-  }).index('by_spot_id', ['id'])
-    .index('by_source_id', ['sourceId']),
-  sources: defineTable({
-    sourceType: v.union(v.literal('event'), v.literal('spot')),
-    url: v.string(),
-    label: v.string(),
-    status: v.union(v.literal('active'), v.literal('paused')),
-    createdAt: v.string(),
-    updatedAt: v.string(),
-    lastSyncedAt: v.optional(v.string()),
-    lastError: v.optional(v.string()),
-    rssStateJson: v.optional(v.string())
-  }).index('by_type_status', ['sourceType', 'status'])
-    .index('by_url', ['url']),
+  }),
   geocodeCache: defineTable({
     addressKey: v.string(),
     addressText: v.string(),
@@ -142,12 +96,5 @@ export default defineSchema({
     syncedAt: v.string(),
     calendars: v.array(v.string()),
     eventCount: v.number()
-  }).index('by_key', ['key']),
-  tripConfig: defineTable({
-    key: v.string(),
-    tripStart: v.string(),
-    tripEnd: v.string(),
-    baseLocation: v.optional(v.string()),
-    updatedAt: v.string()
   }).index('by_key', ['key'])
 });

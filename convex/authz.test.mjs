@@ -26,6 +26,9 @@ describe('convex authz helpers', () => {
   it('requires owner role for owner-locked mutations', async () => {
     const ctx = {
       db: {
+        async get() {
+          return { role: 'member' };
+        },
         query() {
           return createQueryResult({ userId: 'user-1', role: 'member' });
         }
@@ -41,6 +44,9 @@ describe('convex authz helpers', () => {
   it('returns user id when caller is owner', async () => {
     const ctx = {
       db: {
+        async get() {
+          return { role: 'owner' };
+        },
         query() {
           return createQueryResult({ userId: 'owner-1', role: 'owner' });
         }

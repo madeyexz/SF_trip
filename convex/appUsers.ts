@@ -1,5 +1,6 @@
 import { getAuthUserId } from '@convex-dev/auth/server';
 import { v } from 'convex/values';
+import type { Id } from './_generated/dataModel';
 import type { MutationCtx, QueryCtx } from './_generated/server';
 import { mutation, query } from './_generated/server';
 import { parseOwnerEmailAllowlist, resolveInitialUserRole } from './ownerRole';
@@ -14,7 +15,6 @@ type UserIdentityLike = {
 type UserProfileLike = {
   userId: string;
   role: UserRole;
-  email?: string;
 };
 
 const userProfileResponseValidator = v.object({
@@ -38,11 +38,11 @@ function readIdentityEmail(identity: UserIdentityLike) {
   return typeof identity.email === 'string' ? identity.email.trim().toLowerCase() : '';
 }
 
-function buildProfileResponse(profile: UserProfileLike) {
+function buildProfileResponse(profile: UserProfileLike, email = '') {
   return {
     userId: profile.userId,
     role: normalizeUserRole(profile.role),
-    email: profile.email || ''
+    email
   };
 }
 
@@ -57,50 +57,31 @@ export const ensureCurrentUserProfile = mutation({
     const userId = await requireCurrentUserId(ctx);
     const identity = await ctx.auth.getUserIdentity();
     const email = readIdentityEmail(identity);
-    const now = new Date().toISOString();
     const ownerEmailAllowlist = parseOwnerEmailAllowlist(process.env.OWNER_EMAIL_ALLOWLIST);
 
-    const existing = await ctx.db
-      .query('userProfiles')
-      .withIndex('by_user_id', (q) => q.eq('userId', userId))
-      .first();
-
-    if (existing) {
-      const updates: Partial<{
-        email: string;
-        role: UserRole;
-        updatedAt: string;
-      }> = {};
-      if (email && existing.email !== email) {
-        updates.email = email;
-      }
-      const shouldBeOwner = resolveInitialUserRole(email, ownerEmailAllowlist) === 'owner';
-      if (shouldBeOwner && existing.role !== 'owner') {
-        updates.role = 'owner';
-      }
-      if (updates.email || updates.role) {
-        updates.updatedAt = now;
-        await ctx.db.patch(existing._id, updates);
-        return buildProfileResponse({
-          ...existing,
-          ...updates,
-          role: normalizeUserRole(updates.role ?? existing.role)
-        });
-      }
-      return buildProfileResponse(existing);
+    const userDoc = await ctx.db.get(userId as Id<'users'>);
+    if (!userDoc) {
+      throw new Error('Authenticated user record not found.');
     }
-    const role = normalizeUserRole(resolveInitialUserRole(email, ownerEmailAllowlist));
-    await ctx.db.insert('userProfiles', {
-      userId,
-      role,
-      email: email || undefined,
-      createdAt: now,
-      updatedAt: now
-    });
+
+    const shouldBeOwner = resolveInitialUserRole(email, ownerEmailAllowlist) === 'owner';
+    const currentRole = userDoc.role
+      ? normalizeUserRole(userDoc.role)
+      : normalizeUserRole(resolveInitialUserRole(email, ownerEmailAllowlist));
+    const nextRole = shouldBeOwner ? 'owner' : currentRole;
+
+    const updates: Partial<{ role: UserRole }> = {};
+    if (userDoc.role !== nextRole) {
+      updates.role = nextRole;
+    }
+
+    if (Object.keys(updates).length > 0) {
+      await ctx.db.patch(userId as Id<'users'>, updates);
+    }
 
     return {
       userId,
-      role,
+      role: nextRole,
       email
     };
   }
@@ -111,13 +92,12 @@ export const getCurrentUserProfile = query({
   returns: v.union(v.null(), userProfileResponseValidator),
   handler: async (ctx) => {
     const userId = await requireCurrentUserId(ctx);
-    const profile = await ctx.db
-      .query('userProfiles')
-      .withIndex('by_user_id', (q) => q.eq('userId', userId))
-      .first();
-    if (!profile) {
+    const identity = await ctx.auth.getUserIdentity();
+    const email = readIdentityEmail(identity);
+    const userDoc = await ctx.db.get(userId as Id<'users'>);
+    if (!userDoc?.role) {
       return null;
     }
-    return buildProfileResponse(profile);
+    return buildProfileResponse({ userId, role: normalizeUserRole(userDoc.role) }, email);
   }
 });

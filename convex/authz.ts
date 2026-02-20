@@ -1,4 +1,5 @@
 import { getAuthUserId } from '@convex-dev/auth/server';
+import type { Id } from './_generated/dataModel';
 import type { MutationCtx, QueryCtx } from './_generated/server';
 
 type ConvexCtx = MutationCtx | QueryCtx;
@@ -18,15 +19,12 @@ export async function requireAuthenticatedUserId(ctx: ConvexCtx, deps: AuthDeps 
 
 export async function requireOwnerUserId(ctx: ConvexCtx, deps: AuthDeps = {}) {
   const userId = await requireAuthenticatedUserId(ctx, deps);
-  const profile = await ctx.db
-    .query('userProfiles')
-    .withIndex('by_user_id', (q) => q.eq('userId', userId))
-    .first();
+  const user = await ctx.db.get(userId as Id<'users'>);
+  const role = user?.role;
 
-  if (!profile || profile.role !== 'owner') {
+  if (role !== 'owner') {
     throw new Error('Owner role required.');
   }
 
   return userId;
 }
-

@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { computePairRoomTransitions } from './pair-policy.ts';
+import { computePairRoomTransitions } from './pairPolicy.ts';
 
 describe('pair policy transitions', () => {
   it('expels prior memberships and expires old owned rooms when creating', () => {
