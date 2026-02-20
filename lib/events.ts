@@ -195,10 +195,18 @@ function normalizeSourceRoomCode(roomCodeInput) {
   return normalizePlannerRoomCode(roomCodeInput);
 }
 
-export async function loadSourcesPayload(roomCodeInput = '') {
-  const roomCode = normalizeSourceRoomCode(roomCodeInput);
-  const sources = await loadSourcesFromConvex(roomCode);
-  const fallbackEventSources = getCalendarUrls().map((url) => ({
+function buildSourceKey(sourceType, url) {
+  return `${cleanText(sourceType).toLowerCase()}:${normalizeComparableUrl(url)}`;
+}
+
+function getRequiredDefaultSpotUrls() {
+  return Array.from(new Set([DEFAULT_CORNER_LIST_URL, ...getDefaultSpotSourceUrls()]))
+    .map((url) => cleanText(url))
+    .filter(Boolean);
+}
+
+function getRequiredDefaultSources(roomCode = '') {
+  const defaultEventSources = getCalendarUrls().map((url) => ({
     id: `fallback-event-${url}`,
     roomCode,
     sourceType: 'event',
@@ -207,30 +215,90 @@ export async function loadSourcesPayload(roomCodeInput = '') {
     status: 'active',
     readonly: true
   }));
-  const fallbackSpotUrls = getDefaultSpotSourceUrls();
-  const fallbackSpotSources = (fallbackSpotUrls.length > 0 ? fallbackSpotUrls : [DEFAULT_CORNER_LIST_URL]).map(
-    (url) => ({
-      id: `fallback-spot-${url}`,
-      roomCode,
-      sourceType: 'spot',
-      url,
-      label: url,
+  const defaultSpotSources = getRequiredDefaultSpotUrls().map((url) => ({
+    id: `fallback-spot-${url}`,
+    roomCode,
+    sourceType: 'spot',
+    url,
+    label: url,
+    status: 'active',
+    readonly: true
+  }));
+
+  return [...defaultEventSources, ...defaultSpotSources];
+}
+
+function markRequiredSourcesReadonly(sources) {
+  const requiredDefaultKeys = new Set(
+    getRequiredDefaultSources('')
+      .map((source) => buildSourceKey(source.sourceType, source.url))
+  );
+
+  return (Array.isArray(sources) ? sources : []).map((source) => {
+    if (!requiredDefaultKeys.has(buildSourceKey(source?.sourceType, source?.url))) {
+      return source;
+    }
+
+    return {
+      ...source,
       status: 'active',
       readonly: true
-    })
+    };
+  });
+}
+
+function appendMissingRequiredDefaultSources(sources, roomCode = '') {
+  const nextSources = markRequiredSourcesReadonly(sources);
+  const requiredDefaults = getRequiredDefaultSources(roomCode);
+  const seenSourceKeys = new Set(
+    nextSources.map((source) => buildSourceKey(source?.sourceType, source?.url))
   );
-  const fallbackSources = [...fallbackEventSources, ...fallbackSpotSources];
+
+  for (const requiredSource of requiredDefaults) {
+    const sourceKey = buildSourceKey(requiredSource.sourceType, requiredSource.url);
+    if (seenSourceKeys.has(sourceKey)) {
+      continue;
+    }
+    nextSources.push(requiredSource);
+    seenSourceKeys.add(sourceKey);
+  }
+
+  return nextSources;
+}
+
+function appendRequiredDefaultSourceUrls(urls, sourceType) {
+  const nextUrls = Array.isArray(urls)
+    ? urls.map((url) => cleanText(url)).filter(Boolean)
+    : [];
+  const requiredDefaultUrls = sourceType === 'event'
+    ? getCalendarUrls()
+    : sourceType === 'spot'
+      ? getRequiredDefaultSpotUrls()
+      : [];
+  const seenComparableUrls = new Set(nextUrls.map((url) => normalizeComparableUrl(url)));
+
+  for (const requiredUrlRaw of requiredDefaultUrls) {
+    const requiredUrl = cleanText(requiredUrlRaw);
+    const comparableUrl = normalizeComparableUrl(requiredUrl);
+    if (!requiredUrl || seenComparableUrls.has(comparableUrl)) {
+      continue;
+    }
+    nextUrls.push(requiredUrl);
+    seenComparableUrls.add(comparableUrl);
+  }
+
+  return nextUrls;
+}
+
+export async function loadSourcesPayload(roomCodeInput = '') {
+  const roomCode = normalizeSourceRoomCode(roomCodeInput);
+  const sources = await loadSourcesFromConvex(roomCode);
+  const fallbackSources = getRequiredDefaultSources(roomCode);
   // Firecrawl/RSS disabled: do not force Beehiiv as a required event source.
   // const requiredEventSources = [makeFallbackSource('event', DEFAULT_BEEHIIV_RSS_URL)];
 
   if (Array.isArray(sources) && sources.length > 0) {
-    const hasEventSources = sources.some((source) => source.sourceType === 'event');
-    const hasSpotSources = sources.some((source) => source.sourceType === 'spot');
-    const withFallbacks = [
-      ...sources,
-      ...(hasEventSources ? [] : fallbackEventSources),
-      ...(hasSpotSources ? [] : fallbackSpotSources)
-    ];
+    const withFallbacks = appendMissingRequiredDefaultSources(sources, roomCode);
 
     return {
       sources: withFallbacks,
@@ -333,11 +401,10 @@ export async function deleteSourcePayload(sourceId, roomCodeInput = '') {
 
 export async function loadEventsPayload(roomCodeInput = '') {
   const roomCode = normalizeSourceRoomCode(roomCodeInput);
-  const fallbackCalendars = getCalendarUrls();
   const fallbackPlaces = await loadStaticPlaces();
-  const sources = await loadSourcesFromConvex(roomCode);
+  const sources = appendMissingRequiredDefaultSources(await loadSourcesFromConvex(roomCode), roomCode);
   const sourceCalendars = getActiveSourceUrls(sources, 'event');
-  const calendars = sourceCalendars.length > 0 ? sourceCalendars : fallbackCalendars;
+  const calendars = appendRequiredDefaultSourceUrls(sourceCalendars, 'event');
   const spotsPayload = await loadSpotsFromConvex();
   const placesFromConvex = Array.isArray(spotsPayload?.spots) ? spotsPayload.spots : [];
   const places = mergeStaticRegionPlaces(
@@ -785,18 +852,6 @@ function getActiveSourcesByType(sources, sourceType) {
     .filter((source) => source.url);
 }
 
-function makeFallbackSource(sourceType, url) {
-  const nextUrl = cleanText(url);
-  return {
-    id: `fallback-${sourceType}-${nextUrl}`,
-    sourceType,
-    url: nextUrl,
-    label: nextUrl,
-    status: 'active',
-    readonly: true
-  };
-}
-
 // Firecrawl/RSS disabled: keeping helper commented for reference.
 // function appendMissingEventSources(sources, requiredEventSources) {
 //   const nextSources = Array.isArray(sources) ? [...sources] : [];
@@ -1000,26 +1055,16 @@ async function saveRssSeenBySourceUrlToEventsCache(rssStateBySourceUrl) {
 }
 
 async function getSourceSnapshotForSync(roomCode = '') {
-  const convexSources = await loadSourcesFromConvex(roomCode);
+  const convexSources = appendMissingRequiredDefaultSources(await loadSourcesFromConvex(roomCode), roomCode);
   const eventSourcesFromConvex = getActiveSourcesByType(convexSources, 'event');
   const spotSourcesFromConvex = getActiveSourcesByType(convexSources, 'spot');
-  const eventFallbackUrls = getCalendarUrls();
-  const spotFallbackUrls = getDefaultSpotSourceUrls();
-
-  const eventSources =
-    eventSourcesFromConvex.length > 0
-      ? eventSourcesFromConvex
-      : eventFallbackUrls.map((url) => makeFallbackSource('event', url));
+  const eventSources = eventSourcesFromConvex;
   // Firecrawl/RSS disabled: do not force Beehiiv as a required sync source.
   // const eventSourcesWithRequired = appendMissingEventSources(
   //   eventSources,
   //   [makeFallbackSource('event', DEFAULT_BEEHIIV_RSS_URL)]
   // );
-  const spotSources =
-    spotSourcesFromConvex.length > 0
-      ? spotSourcesFromConvex
-      : (spotFallbackUrls.length > 0 ? spotFallbackUrls : [DEFAULT_CORNER_LIST_URL])
-          .map((url) => makeFallbackSource('spot', url));
+  const spotSources = spotSourcesFromConvex;
 
   return {
     eventSources,

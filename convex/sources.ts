@@ -42,6 +42,30 @@ function cleanText(value: unknown) {
   return String(value || '').trim();
 }
 
+function normalizeComparableUrl(value: unknown) {
+  const normalized = cleanText(value).toLowerCase();
+  return normalized.endsWith('/') ? normalized.slice(0, -1) : normalized;
+}
+
+const REQUIRED_DEFAULT_EVENT_URLS = new Set([
+  normalizeComparableUrl('https://api2.luma.com/ics/get?entity=calendar&id=cal-kC1rltFkxqfbHcB'),
+  normalizeComparableUrl('https://api2.luma.com/ics/get?entity=discover&id=discplace-BDj7GNbGlsF7Cka')
+]);
+const REQUIRED_DEFAULT_SPOT_URLS = new Set([
+  normalizeComparableUrl('https://www.corner.inc/list/e65af393-70dd-46d5-948a-d774f472d2ee')
+]);
+
+function isRequiredDefaultSource(sourceType: 'event' | 'spot', url: string) {
+  const comparableUrl = normalizeComparableUrl(url);
+  if (!comparableUrl) {
+    return false;
+  }
+  if (sourceType === 'event') {
+    return REQUIRED_DEFAULT_EVENT_URLS.has(comparableUrl);
+  }
+  return REQUIRED_DEFAULT_SPOT_URLS.has(comparableUrl);
+}
+
 function normalizeRoomCode(value: unknown) {
   const nextValue = cleanText(value).toLowerCase().replace(/[^a-z0-9_-]/g, '');
   if (!ROOM_CODE_PATTERN.test(nextValue)) {
@@ -254,6 +278,10 @@ export const updateSource = mutation({
     if (!existing || existing.roomCode !== roomCode) {
       return null;
     }
+    const isRequiredDefault = isRequiredDefaultSource(existing.sourceType, existing.url);
+    if (isRequiredDefault && (typeof args.label === 'string' || typeof args.status === 'string')) {
+      throw new Error('Default sources are required and cannot be edited.');
+    }
 
     const updates: {
       updatedAt?: string,
@@ -326,6 +354,9 @@ export const deleteSource = mutation({
     const existing = await ctx.db.get(args.sourceId);
     if (!existing || existing.roomCode !== roomCode) {
       return { deleted: false };
+    }
+    if (isRequiredDefaultSource(existing.sourceType, existing.url)) {
+      throw new Error('Default sources are required and cannot be deleted.');
     }
 
     await ctx.db.delete(args.sourceId);
