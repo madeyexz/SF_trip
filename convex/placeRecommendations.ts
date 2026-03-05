@@ -1,5 +1,6 @@
-import { internalMutation, query } from './_generated/server';
+import { internalMutation, mutation, query } from './_generated/server.js';
 import { v } from 'convex/values';
+import { requireAuthenticatedUserId } from './authz';
 
 const placeRecommendationInputValidator = v.object({
   placeKey: v.string(),
@@ -40,6 +41,11 @@ const upsertPlaceRecommendationsResultValidator = v.object({
   inserted: v.number(),
   updated: v.number(),
   unchanged: v.number()
+});
+const updateCoordinatesResultValidator = v.object({
+  updated: v.number(),
+  unchanged: v.number(),
+  skipped: v.number()
 });
 
 function cleanText(value: unknown) {
@@ -167,4 +173,52 @@ export const upsertSharedPlaceRecommendations = internalMutation({
   },
   returns: upsertPlaceRecommendationsResultValidator,
   handler: async (ctx, args) => upsertSharedPlaceRecommendationsInternal(ctx, args.recommendations)
+});
+
+export const updateCoordinates = mutation({
+  args: {
+    recommendations: v.array(v.object({
+      placeKey: v.string(),
+      friendName: v.string(),
+      lat: v.number(),
+      lng: v.number()
+    }))
+  },
+  returns: updateCoordinatesResultValidator,
+  handler: async (ctx, args) => {
+    await requireAuthenticatedUserId(ctx);
+    const summary = {
+      updated: 0,
+      unchanged: 0,
+      skipped: 0
+    };
+
+    for (const recommendation of args.recommendations) {
+      const existing = await ctx.db
+        .query('placeRecommendations')
+        .withIndex('by_place_friend', (q: any) =>
+          q.eq('placeKey', cleanText(recommendation.placeKey)).eq('friendName', cleanText(recommendation.friendName))
+        )
+        .first();
+
+      if (!existing) {
+        summary.skipped += 1;
+        continue;
+      }
+
+      if (existing.lat === recommendation.lat && existing.lng === recommendation.lng) {
+        summary.unchanged += 1;
+        continue;
+      }
+
+      await ctx.db.patch(existing._id, {
+        lat: recommendation.lat,
+        lng: recommendation.lng,
+        updatedAt: new Date().toISOString()
+      });
+      summary.updated += 1;
+    }
+
+    return summary;
+  }
 });

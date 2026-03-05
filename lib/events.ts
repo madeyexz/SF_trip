@@ -4,6 +4,7 @@ import path from 'node:path';
 import ical from 'node-ical';
 import { ConvexHttpClient } from 'convex/browser';
 import { getScopedConvexClient } from './convex-client-context.ts';
+import { mapAsyncWithConcurrency } from './async-map.ts';
 import { validateIngestionSourceUrlForFetch } from './security-server.ts';
 
 const DOC_LOCATION_FILE = path.join(process.cwd(), 'docs', 'my_location.md');
@@ -21,6 +22,7 @@ const FIRECRAWL_BASE_URL = 'https://api.firecrawl.dev';
 const DEFAULT_RSS_INITIAL_ITEMS = 1;
 const DEFAULT_RSS_MAX_ITEMS_PER_SYNC = 3;
 const DEFAULT_RSS_STATE_MAX_ITEMS = 500;
+const GEOCODE_BATCH_CONCURRENCY = 4;
 const SOURCE_TYPES = new Set(['event', 'spot']);
 const SOURCE_STATUSES = new Set(['active', 'paused']);
 const SPOT_TAGS = ['eat', 'bar', 'cafes', 'go out', 'shops', 'sightseeing', 'avoid', 'safe'];
@@ -54,6 +56,11 @@ const CONVEX_SPOT_FIELDS = [
 
 let geocodeCacheMapPromise = null;
 let routeCacheMapPromise = null;
+
+export function resetEventsCachesForTesting() {
+  geocodeCacheMapPromise = null;
+  routeCacheMapPromise = null;
+}
 
 function isReadOnlyFilesystemError(error) {
   const code = cleanText(error?.code).toUpperCase();
@@ -406,23 +413,77 @@ export async function deleteSourcePayload(sourceId) {
 }
 
 export async function loadEventsPayload() {
-  const fallbackPlaces = await loadStaticPlaces();
+  const fallbackPlaces = await ensureStaticPlacesCoordinates(await loadStaticPlaces());
   const sources = appendMissingRequiredDefaultSources(await loadSourcesFromConvex());
   const sourceCalendars = getActiveSourceUrls(sources, 'event');
+  const spotSourceUrls = getActiveSourceUrls(sources, 'spot');
   const calendars = appendRequiredDefaultSourceUrls(sourceCalendars, 'event');
   const tripConfig = await loadTripConfig();
   const spotsPayload = await loadSpotsFromConvex();
   const placeRecommendations = await loadPlaceRecommendationsFromConvex();
-  const placesFromConvex = Array.isArray(spotsPayload?.spots) ? spotsPayload.spots : [];
-  const places = mergePlaceRecommendationsIntoPlaces(mergeStaticRegionPlaces(
-    placesFromConvex.length > 0 ? placesFromConvex : fallbackPlaces,
-    fallbackPlaces
-  ), placeRecommendations, { enabled: tripConfig.showSharedPlaceRecommendations });
   const convexPayload = await loadEventsFromConvex(calendars);
+  const convexEvents = Array.isArray(convexPayload?.events) ? convexPayload.events : [];
+  const placesFromConvex = Array.isArray(spotsPayload?.spots) ? spotsPayload.spots : [];
+  const coordinateRows = [
+    ...convexEvents.map((row) => wrapCoordinateRow('event', row)),
+    ...placesFromConvex.map((row) => wrapCoordinateRow('spot', row)),
+    ...placeRecommendations.map((row) => wrapCoordinateRow('recommendation', row))
+  ];
+  const {
+    rows: hydratedCoordinateRows,
+    stats: hydrationStats
+  } = await enrichLocationRowsWithCoordinates(coordinateRows, {
+    getMapLink: getWrappedCoordinateMapLink,
+    getFallbackText: getWrappedCoordinateFallbackText,
+    applyCoordinates: applyWrappedCoordinates
+  });
+  const hydratedEvents = unwrapCoordinateRows(hydratedCoordinateRows, 'event');
+  const hydratedSpots = unwrapCoordinateRows(hydratedCoordinateRows, 'spot');
+  const hydratedRecommendations = unwrapCoordinateRows(hydratedCoordinateRows, 'recommendation');
+  const placeBase = mergeStaticRegionPlaces(
+    hydratedSpots.length > 0 ? hydratedSpots : fallbackPlaces,
+    fallbackPlaces
+  );
+  const places = mergePlaceRecommendationsIntoPlaces(
+    placeBase,
+    hydratedRecommendations,
+    { enabled: tripConfig.showSharedPlaceRecommendations }
+  );
+
+  if (hydrationStats.updatedRows > 0) {
+    console.info('Coordinate enrichment summary:', hydrationStats);
+  }
 
   if (convexPayload) {
+    const eventCoordinateChanges = getChangedRows(convexEvents, hydratedEvents);
+    const spotCoordinateChanges = getChangedRows(placesFromConvex, hydratedSpots);
+    const recommendationCoordinateChanges = getChangedRows(placeRecommendations, hydratedRecommendations);
+
+    await Promise.allSettled([
+      eventCoordinateChanges.length > 0
+        ? saveEventsToConvex({
+            meta: {
+              syncedAt: convexPayload.meta.syncedAt || new Date().toISOString(),
+              calendars: Array.isArray(convexPayload.meta.calendars) ? convexPayload.meta.calendars : calendars
+            },
+            events: hydratedEvents
+          })
+        : Promise.resolve(),
+      spotCoordinateChanges.length > 0
+        ? saveSpotsToConvex({
+            spots: hydratedSpots,
+            syncedAt: spotsPayload?.meta?.syncedAt || new Date().toISOString(),
+            sourceUrls: Array.isArray(spotsPayload?.meta?.sourceUrls) ? spotsPayload.meta.sourceUrls : spotSourceUrls
+          })
+        : Promise.resolve(),
+      recommendationCoordinateChanges.length > 0
+        ? savePlaceRecommendationCoordinatesToConvex(recommendationCoordinateChanges)
+        : Promise.resolve()
+    ]);
+
     return {
       ...convexPayload,
+      events: hydratedEvents,
       meta: {
         ...convexPayload.meta,
         spotCount: places.length
@@ -434,22 +495,24 @@ export async function loadEventsPayload() {
   try {
     const raw = await readFile(EVENTS_CACHE_FILE, 'utf-8');
     const payload = JSON.parse(raw);
+    const cachedEvents = Array.isArray(payload?.events) ? await enrichEventsWithCoordinates(payload.events) : [];
     const cachedPlacesBase = Array.isArray(payload?.places)
-      ? mergeStaticRegionPlaces(payload.places.map(normalizePlaceCoordinates), fallbackPlaces)
+      ? mergeStaticRegionPlaces((await _enrichPlacesWithCoordinates(payload.places)).rows, fallbackPlaces)
       : [];
     const cachedPlaces = mergePlaceRecommendationsIntoPlaces(
       cachedPlacesBase.length > 0 ? cachedPlacesBase : places,
-      placeRecommendations,
+      hydratedRecommendations,
       { enabled: tripConfig.showSharedPlaceRecommendations }
     );
     return {
       ...payload,
+      events: cachedEvents.length > 0 ? cachedEvents : payload?.events || [],
       places: cachedPlaces.length > 0 ? cachedPlaces : places
     };
   } catch {
     try {
       const sampleRaw = await readFile(SAMPLE_EVENTS_FILE, 'utf-8');
-      const sampleEvents = JSON.parse(sampleRaw);
+      const sampleEvents = await enrichEventsWithCoordinates(JSON.parse(sampleRaw));
       return {
         meta: {
           syncedAt: null,
@@ -638,6 +701,79 @@ export async function syncSingleSource(sourceId) {
   return { syncedAt: nowIso, spots: result.places.length, errors: result.errors };
 }
 
+export async function backfillConvexCoordinates({ dryRun = false, client: providedClient = null } = {}) {
+  const client = providedClient || createAdminConvexClient();
+
+  if (!client) {
+    throw new Error('CONVEX_URL and CONVEX_ADMIN_KEY are required to backfill stored coordinates.');
+  }
+
+  const payload = await client.query('adminCleanup:listCoordinateBackfillRows', {});
+  const events = Array.isArray(payload?.events) ? payload.events : [];
+  const spots = Array.isArray(payload?.spots) ? payload.spots : [];
+  const placeRecommendations = Array.isArray(payload?.placeRecommendations) ? payload.placeRecommendations : [];
+  const coordinateRows = [
+    ...events.map((row) => wrapCoordinateRow('event', row)),
+    ...spots.map((row) => wrapCoordinateRow('spot', row)),
+    ...placeRecommendations.map((row) => wrapCoordinateRow('recommendation', row))
+  ];
+  const {
+    rows: hydratedCoordinateRows,
+    stats
+  } = await enrichLocationRowsWithCoordinates(coordinateRows, {
+    getMapLink: getWrappedCoordinateMapLink,
+    getFallbackText: getWrappedCoordinateFallbackText,
+    applyCoordinates: applyWrappedCoordinates,
+    convexClient: client
+  });
+
+  const hydratedEvents = unwrapCoordinateRows(hydratedCoordinateRows, 'event');
+  const hydratedSpots = unwrapCoordinateRows(hydratedCoordinateRows, 'spot');
+  const hydratedRecommendations = unwrapCoordinateRows(hydratedCoordinateRows, 'recommendation');
+  const eventUpdates = getChangedRows(events, hydratedEvents).map((row) => ({
+    eventUrl: cleanText(row?.eventUrl),
+    lat: row.lat,
+    lng: row.lng
+  }));
+  const spotUpdates = getChangedRows(spots, hydratedSpots).map((row) => ({
+    id: cleanText(row?.id),
+    lat: row.lat,
+    lng: row.lng
+  }));
+  const recommendationUpdates = getChangedRows(placeRecommendations, hydratedRecommendations).map((row) => ({
+    placeKey: cleanText(row?.placeKey),
+    friendName: cleanText(row?.friendName),
+    lat: row.lat,
+    lng: row.lng
+  }));
+  const writeSummary = await client.mutation('adminCleanup:applyCoordinateBackfill', {
+    dryRun: Boolean(dryRun),
+    events: eventUpdates,
+    spots: spotUpdates,
+    placeRecommendations: recommendationUpdates
+  });
+
+  return {
+    dryRun: Boolean(dryRun),
+    scanned: {
+      events: events.length,
+      spots: spots.length,
+      placeRecommendations: placeRecommendations.length
+    },
+    updated: {
+      events: eventUpdates.length,
+      spots: spotUpdates.length,
+      placeRecommendations: recommendationUpdates.length
+    },
+    unresolved: stats.unresolved,
+    localCacheHits: stats.localCacheHits,
+    convexCacheHits: stats.convexCacheHits,
+    googleLookups: stats.googleLookups,
+    googleResolved: stats.googleResolved,
+    writeSummary
+  };
+}
+
 async function loadStaticPlaces() {
   try {
     const raw = await readFile(STATIC_PLACES_FILE, 'utf-8');
@@ -665,6 +801,19 @@ function createConvexClient() {
   }
 
   return new ConvexHttpClient(convexUrl);
+}
+
+function createAdminConvexClient() {
+  const convexUrl = getConvexUrl();
+  const adminKey = cleanText(process.env.CONVEX_ADMIN_KEY);
+
+  if (!convexUrl || !adminKey) {
+    return null;
+  }
+
+  const client = new ConvexHttpClient(convexUrl);
+  client.setAdminAuth(adminKey);
+  return client;
 }
 
 async function loadEventsFromConvex(calendars) {
@@ -821,6 +970,37 @@ async function saveSpotsToConvex({ spots, syncedAt, sourceUrls }) {
     });
   } catch (error) {
     console.error('Convex spots write failed; local cache is still updated.', error);
+  }
+}
+
+async function savePlaceRecommendationCoordinatesToConvex(recommendationsInput) {
+  const client = createConvexClient();
+
+  if (!client) {
+    return;
+  }
+
+  const recommendations = Array.isArray(recommendationsInput)
+    ? recommendationsInput
+        .map((row) => ({
+          placeKey: cleanText(row?.placeKey),
+          friendName: cleanText(row?.friendName),
+          lat: toCoordinateNumber(row?.lat),
+          lng: toCoordinateNumber(row?.lng)
+        }))
+        .filter((row) => row.placeKey && row.friendName && isFiniteCoordinate(row.lat) && isFiniteCoordinate(row.lng))
+    : [];
+
+  if (recommendations.length === 0) {
+    return;
+  }
+
+  try {
+    await client.mutation('placeRecommendations:updateCoordinates', {
+      recommendations
+    });
+  } catch (error) {
+    console.error('Convex recommendation coordinate write failed; continuing without writeback.', error);
   }
 }
 
@@ -1704,43 +1884,300 @@ function buildEventIdFromUrl(eventUrl) {
   return text ? `evt-${text}` : `evt-${Date.now()}`;
 }
 
-async function _enrichPlacesWithCoordinates(places) {
-  const nextPlaces = [];
+function createCoordinateStats() {
+  return {
+    totalRows: 0,
+    alreadyResolved: 0,
+    mapLinkResolved: 0,
+    localCacheHits: 0,
+    convexCacheHits: 0,
+    googleLookups: 0,
+    googleResolved: 0,
+    unresolved: 0,
+    updatedRows: 0
+  };
+}
 
-  for (const place of places) {
-    const normalized = normalizePlaceCoordinates(place);
-
-    if (isFiniteCoordinate(normalized.lat) && isFiniteCoordinate(normalized.lng)) {
-      nextPlaces.push(normalized);
+function mergeCoordinateStats(...statsInput) {
+  const merged = createCoordinateStats();
+  for (const stats of statsInput) {
+    if (!stats || typeof stats !== 'object') {
       continue;
     }
-
-    const fromMapUrl = parseLatLngFromMapUrl(normalized.mapLink || '');
-    if (fromMapUrl) {
-      nextPlaces.push({
-        ...normalized,
-        lat: fromMapUrl.lat,
-        lng: fromMapUrl.lng
-      });
-      continue;
+    for (const key of Object.keys(merged)) {
+      merged[key] += Number(stats[key]) || 0;
     }
+  }
+  return merged;
+}
 
-    const geocodeTarget = normalized.location || normalized.name;
-    const geocoded = await geocodeAddressWithCache(geocodeTarget);
+function applyCoordinatesToRow(row, coordinates) {
+  return {
+    ...(row || {}),
+    lat: coordinates.lat,
+    lng: coordinates.lng
+  };
+}
 
-    if (geocoded) {
-      nextPlaces.push({
-        ...normalized,
-        lat: geocoded.lat,
-        lng: geocoded.lng
-      });
-      continue;
-    }
+function hasCoordinateChange(left, right) {
+  return toCoordinateNumber(left?.lat) !== toCoordinateNumber(right?.lat) ||
+    toCoordinateNumber(left?.lng) !== toCoordinateNumber(right?.lng);
+}
 
-    nextPlaces.push(normalized);
+function getChangedRows(previousRows, nextRows) {
+  if (!Array.isArray(previousRows) || !Array.isArray(nextRows) || previousRows.length !== nextRows.length) {
+    return Array.isArray(nextRows) ? nextRows : [];
   }
 
-  return nextPlaces;
+  return nextRows.filter((row, index) => hasCoordinateChange(previousRows[index], row));
+}
+
+async function resolveAddressCoordinatesBatch(addressTexts, { convexClient = null } = {}) {
+  const coordinatesByAddressKey = new Map();
+  const stats = createCoordinateStats();
+  const addressEntriesByKey = new Map();
+
+  for (const addressText of Array.isArray(addressTexts) ? addressTexts : []) {
+    const cleanedAddress = cleanText(addressText);
+    const addressKey = normalizeAddressKey(cleanedAddress);
+    if (!addressKey || addressEntriesByKey.has(addressKey)) {
+      continue;
+    }
+    addressEntriesByKey.set(addressKey, {
+      addressKey,
+      addressText: cleanedAddress
+    });
+  }
+
+  if (addressEntriesByKey.size === 0) {
+    return {
+      coordinatesByAddressKey,
+      stats
+    };
+  }
+
+  const localCache = await loadGeocodeCacheMap();
+  const missingAfterLocalCache = [];
+
+  for (const entry of addressEntriesByKey.values()) {
+    const localCached = localCache.get(entry.addressKey);
+    if (localCached) {
+      coordinatesByAddressKey.set(entry.addressKey, localCached);
+      stats.localCacheHits += 1;
+      continue;
+    }
+    missingAfterLocalCache.push(entry);
+  }
+
+  let shouldPersistLocalCache = false;
+  const convexCachedMap = await loadGeocodesFromConvexBatch(
+    missingAfterLocalCache.map((entry) => entry.addressKey),
+    { client: convexClient }
+  );
+  const missingAfterConvexCache = [];
+
+  for (const entry of missingAfterLocalCache) {
+    const convexCached = convexCachedMap.get(entry.addressKey);
+    if (convexCached) {
+      coordinatesByAddressKey.set(entry.addressKey, convexCached);
+      localCache.set(entry.addressKey, convexCached);
+      stats.convexCacheHits += 1;
+      shouldPersistLocalCache = true;
+      continue;
+    }
+    missingAfterConvexCache.push(entry);
+  }
+
+  if (shouldPersistLocalCache) {
+    await persistGeocodeCacheMap();
+  }
+
+  const geocodingKey = getGoogleGeocodingKey();
+  if (!geocodingKey || missingAfterConvexCache.length === 0) {
+    stats.unresolved += missingAfterConvexCache.length;
+    return {
+      coordinatesByAddressKey,
+      stats
+    };
+  }
+
+  stats.googleLookups += missingAfterConvexCache.length;
+  const geocodedEntries = await mapAsyncWithConcurrency(
+    missingAfterConvexCache,
+    GEOCODE_BATCH_CONCURRENCY,
+    async (entry) => ({
+      ...entry,
+      coordinates: await geocodeAddressViaGoogle(entry.addressText, geocodingKey)
+    })
+  );
+
+  const newConvexEntries = [];
+  let localCacheUpdatedFromGoogle = false;
+
+  for (const entry of geocodedEntries) {
+    if (!entry.coordinates) {
+      stats.unresolved += 1;
+      continue;
+    }
+
+    coordinatesByAddressKey.set(entry.addressKey, entry.coordinates);
+    localCache.set(entry.addressKey, entry.coordinates);
+    newConvexEntries.push({
+      addressKey: entry.addressKey,
+      addressText: entry.addressText,
+      lat: entry.coordinates.lat,
+      lng: entry.coordinates.lng,
+      updatedAt: new Date().toISOString()
+    });
+    stats.googleResolved += 1;
+    localCacheUpdatedFromGoogle = true;
+  }
+
+  await Promise.allSettled([
+    localCacheUpdatedFromGoogle ? persistGeocodeCacheMap() : Promise.resolve(),
+    newConvexEntries.length > 0 ? saveGeocodesToConvexBatch(newConvexEntries, { client: convexClient }) : Promise.resolve()
+  ]);
+
+  return {
+    coordinatesByAddressKey,
+    stats
+  };
+}
+
+async function enrichLocationRowsWithCoordinates(
+  rows,
+  {
+    getLat = (row) => row?.lat,
+    getLng = (row) => row?.lng,
+    getMapLink = () => '',
+    getFallbackText = () => '',
+    applyCoordinates = applyCoordinatesToRow,
+    convexClient = null
+  } = {}
+) {
+  const stats = createCoordinateStats();
+  const nextRows = new Array(Array.isArray(rows) ? rows.length : 0);
+  const pendingByAddressIndex = [];
+
+  for (const [index, row] of (Array.isArray(rows) ? rows : []).entries()) {
+    stats.totalRows += 1;
+    const lat = toCoordinateNumber(getLat(row));
+    const lng = toCoordinateNumber(getLng(row));
+
+    if (isFiniteCoordinate(lat) && isFiniteCoordinate(lng)) {
+      nextRows[index] = applyCoordinates(row, { lat, lng });
+      stats.alreadyResolved += 1;
+      continue;
+    }
+
+    const fromMapUrl = parseLatLngFromMapUrl(getMapLink(row));
+    if (fromMapUrl) {
+      nextRows[index] = applyCoordinates(row, fromMapUrl);
+      stats.mapLinkResolved += 1;
+      stats.updatedRows += 1;
+      continue;
+    }
+
+    const fallbackText = cleanText(getFallbackText(row));
+    if (!fallbackText) {
+      nextRows[index] = row;
+      stats.unresolved += 1;
+      continue;
+    }
+
+    pendingByAddressIndex.push({
+      index,
+      row,
+      fallbackText,
+      addressKey: normalizeAddressKey(fallbackText)
+    });
+  }
+
+  const { coordinatesByAddressKey, stats: lookupStats } = await resolveAddressCoordinatesBatch(
+    pendingByAddressIndex.map((entry) => entry.fallbackText),
+    { convexClient }
+  );
+
+  for (const entry of pendingByAddressIndex) {
+    const coordinates = coordinatesByAddressKey.get(entry.addressKey);
+    if (!coordinates) {
+      nextRows[entry.index] = entry.row;
+      continue;
+    }
+    nextRows[entry.index] = applyCoordinates(entry.row, coordinates);
+    stats.updatedRows += 1;
+  }
+
+  return {
+    rows: nextRows,
+    stats: mergeCoordinateStats(stats, lookupStats)
+  };
+}
+
+function wrapCoordinateRow(kind, row) {
+  return { kind, row };
+}
+
+function getWrappedCoordinateMapLink(item) {
+  if (item?.kind === 'event') {
+    return item?.row?.googleMapsUrl || '';
+  }
+  return item?.row?.mapLink || '';
+}
+
+function getWrappedCoordinateFallbackText(item) {
+  if (item?.kind === 'event') {
+    return item?.row?.address || item?.row?.locationText || '';
+  }
+  if (item?.kind === 'recommendation') {
+    return item?.row?.location || item?.row?.placeName || '';
+  }
+  return item?.row?.location || item?.row?.name || '';
+}
+
+function applyWrappedCoordinates(item, coordinates) {
+  if (item?.kind === 'event') {
+    return wrapCoordinateRow(item.kind, {
+      ...(item.row || {}),
+      lat: coordinates.lat,
+      lng: coordinates.lng
+    });
+  }
+
+  if (item?.kind === 'recommendation') {
+    return wrapCoordinateRow(item.kind, {
+      ...(item.row || {}),
+      lat: coordinates.lat,
+      lng: coordinates.lng
+    });
+  }
+
+  return wrapCoordinateRow(item?.kind || 'spot', normalizePlaceCoordinates({
+    ...(item?.row || {}),
+    lat: coordinates.lat,
+    lng: coordinates.lng
+  }));
+}
+
+function unwrapCoordinateRows(items, kind) {
+  return (Array.isArray(items) ? items : [])
+    .filter((item) => item?.kind === kind)
+    .map((item) => item.row);
+}
+
+async function _enrichPlacesWithCoordinates(places) {
+  return enrichLocationRowsWithCoordinates(
+    Array.isArray(places) ? places.map(normalizePlaceCoordinates) : [],
+    {
+      getMapLink: (place) => place?.mapLink,
+      getFallbackText: (place) => place?.location || place?.name,
+      applyCoordinates: (place, coordinates) => normalizePlaceCoordinates({
+        ...(place || {}),
+        lat: coordinates.lat,
+        lng: coordinates.lng
+      })
+    }
+  );
 }
 
 function _normalizeSpots(rawPlaces, source) {
@@ -1963,43 +2400,8 @@ async function assertValidSourceUrl(url) {
 }
 
 async function ensureStaticPlacesCoordinates(places) {
-  const nextPlaces = [];
-  let changed = false;
-
-  for (const place of places) {
-    const normalized = normalizePlaceCoordinates(place);
-
-    if (isFiniteCoordinate(normalized.lat) && isFiniteCoordinate(normalized.lng)) {
-      nextPlaces.push(normalized);
-      continue;
-    }
-
-    const fromMapUrl = parseLatLngFromMapUrl(normalized.mapLink || '');
-    if (fromMapUrl) {
-      nextPlaces.push({
-        ...normalized,
-        lat: fromMapUrl.lat,
-        lng: fromMapUrl.lng
-      });
-      changed = true;
-      continue;
-    }
-
-    const geocodeTarget = normalized.location || normalized.name;
-    const geocoded = await geocodeAddressWithCache(geocodeTarget);
-
-    if (geocoded) {
-      nextPlaces.push({
-        ...normalized,
-        lat: geocoded.lat,
-        lng: geocoded.lng
-      });
-      changed = true;
-      continue;
-    }
-
-    nextPlaces.push(normalized);
-  }
+  const { rows: nextPlaces } = await _enrichPlacesWithCoordinates(places);
+  const changed = getChangedRows(Array.isArray(places) ? places.map(normalizePlaceCoordinates) : [], nextPlaces).length > 0;
 
   if (changed) {
     await writeTextFileBestEffort(STATIC_PLACES_FILE, `${JSON.stringify(nextPlaces, null, 2)}\n`, {
@@ -2012,40 +2414,17 @@ async function ensureStaticPlacesCoordinates(places) {
 }
 
 async function enrichEventsWithCoordinates(events) {
-  const nextEvents = [];
+  const { rows } = await enrichLocationRowsWithCoordinates(events, {
+    getMapLink: (event) => event?.googleMapsUrl,
+    getFallbackText: (event) => event?.address || event?.locationText,
+    applyCoordinates: (event, coordinates) => ({
+      ...(event || {}),
+      lat: coordinates.lat,
+      lng: coordinates.lng
+    })
+  });
 
-  for (const event of events) {
-    if (isFiniteCoordinate(event.lat) && isFiniteCoordinate(event.lng)) {
-      nextEvents.push(event);
-      continue;
-    }
-
-    const fromMapUrl = parseLatLngFromMapUrl(event.googleMapsUrl || '');
-    if (fromMapUrl) {
-      nextEvents.push({
-        ...event,
-        lat: fromMapUrl.lat,
-        lng: fromMapUrl.lng
-      });
-      continue;
-    }
-
-    const geocodeTarget = event.address || event.locationText;
-    const geocoded = await geocodeAddressWithCache(geocodeTarget);
-
-    if (geocoded) {
-      nextEvents.push({
-        ...event,
-        lat: geocoded.lat,
-        lng: geocoded.lng
-      });
-      continue;
-    }
-
-    nextEvents.push(event);
-  }
-
-  return nextEvents;
+  return rows;
 }
 
 function normalizePlaceCoordinates(place) {
@@ -2171,36 +2550,8 @@ async function geocodeAddressWithCache(addressText) {
     return null;
   }
 
-  const map = await loadGeocodeCacheMap();
-  const localCached = map.get(addressKey);
-  if (localCached) {
-    return localCached;
-  }
-
-  const convexCached = await loadGeocodeFromConvex(addressKey);
-  if (convexCached) {
-    map.set(addressKey, convexCached);
-    await persistGeocodeCacheMap();
-    return convexCached;
-  }
-
-  const geocodingKey = getGoogleGeocodingKey();
-  if (!geocodingKey) {
-    return null;
-  }
-
-  const geocoded = await geocodeAddressViaGoogle(addressText, geocodingKey);
-  if (!geocoded) {
-    return null;
-  }
-
-  map.set(addressKey, geocoded);
-  await Promise.allSettled([
-    persistGeocodeCacheMap(),
-    saveGeocodeToConvex(addressKey, geocoded, addressText)
-  ]);
-
-  return geocoded;
+  const { coordinatesByAddressKey } = await resolveAddressCoordinatesBatch([addressText]);
+  return coordinatesByAddressKey.get(addressKey) || null;
 }
 
 function getGoogleGeocodingKey() {
@@ -2311,43 +2662,63 @@ async function persistGeocodeCacheMap() {
   });
 }
 
-async function loadGeocodeFromConvex(addressKey) {
-  const client = createConvexClient();
+async function loadGeocodesFromConvexBatch(addressKeys, { client: providedClient = null } = {}) {
+  const client = providedClient || createConvexClient();
+  const wantedKeys = Array.from(new Set((Array.isArray(addressKeys) ? addressKeys : []).map((value) => cleanText(value)).filter(Boolean)));
+  const cachedByKey = new Map();
 
-  if (!client) {
-    return null;
+  if (!client || wantedKeys.length === 0) {
+    return cachedByKey;
   }
 
   try {
-    const cached = await client.query('events:getGeocodeByAddressKey', { addressKey });
-    const lat = toCoordinateNumber(cached?.lat);
-    const lng = toCoordinateNumber(cached?.lng);
-
-    if (!isFiniteCoordinate(lat) || !isFiniteCoordinate(lng)) {
-      return null;
+    const rows = await client.query('geocodeCache:getByAddressKeys', { addressKeys: wantedKeys });
+    for (const row of Array.isArray(rows) ? rows : []) {
+      const lat = toCoordinateNumber(row?.lat);
+      const lng = toCoordinateNumber(row?.lng);
+      const addressKey = cleanText(row?.addressKey);
+      if (!addressKey || !isFiniteCoordinate(lat) || !isFiniteCoordinate(lng)) {
+        continue;
+      }
+      cachedByKey.set(addressKey, { lat, lng });
     }
-
-    return { lat, lng };
   } catch {
-    return null;
+    return new Map();
   }
+
+  return cachedByKey;
 }
 
-async function saveGeocodeToConvex(addressKey, coordinates, addressText) {
-  const client = createConvexClient();
+async function saveGeocodesToConvexBatch(entriesInput, { client: providedClient = null } = {}) {
+  const client = providedClient || createConvexClient();
 
   if (!client) {
     return;
   }
 
+  const entries = Array.isArray(entriesInput)
+    ? entriesInput
+        .map((entry) => ({
+          addressKey: cleanText(entry?.addressKey),
+          addressText: cleanText(entry?.addressText),
+          lat: toCoordinateNumber(entry?.lat),
+          lng: toCoordinateNumber(entry?.lng),
+          updatedAt: cleanText(entry?.updatedAt) || new Date().toISOString()
+        }))
+        .filter((entry) =>
+          entry.addressKey &&
+          entry.addressText &&
+          isFiniteCoordinate(entry.lat) &&
+          isFiniteCoordinate(entry.lng)
+        )
+    : [];
+
+  if (entries.length === 0) {
+    return;
+  }
+
   try {
-    await client.mutation('events:upsertGeocode', {
-      addressKey,
-      addressText: cleanText(addressText),
-      lat: coordinates.lat,
-      lng: coordinates.lng,
-      updatedAt: new Date().toISOString()
-    });
+    await client.mutation('geocodeCache:upsertMany', { entries });
   } catch {
     // Ignore convex geocode cache write failures.
   }

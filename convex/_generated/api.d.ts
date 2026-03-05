@@ -13,6 +13,7 @@ import type * as appUsers from "../appUsers.js";
 import type * as auth from "../auth.js";
 import type * as authz from "../authz.js";
 import type * as events from "../events.js";
+import type * as geocodeCache from "../geocodeCache.js";
 import type * as http from "../http.js";
 import type * as placeRecommendations from "../placeRecommendations.js";
 import type * as planner from "../planner.js";
@@ -33,6 +34,7 @@ declare const fullApi: ApiFromModules<{
   auth: typeof auth;
   authz: typeof authz;
   events: typeof events;
+  geocodeCache: typeof geocodeCache;
   http: typeof http;
   placeRecommendations: typeof placeRecommendations;
   planner: typeof planner;

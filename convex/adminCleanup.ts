@@ -110,11 +110,12 @@ export const migrateLegacyPersonalStorage = mutation({
   },
   returns: v.any(),
   handler: async (ctx, args) => {
+    const dbAny = ctx.db as any;
     const [userRows, sourceRows, plannerRows, pairRoomRows] = await Promise.all([
       ctx.db.query('users').collect(),
       ctx.db.query('sources').collect(),
       ctx.db.query('plannerEntries').collect(),
-      ctx.db.query('pairRooms').collect()
+      dbAny.query('pairRooms').collect()
     ]);
 
     const summary = {
@@ -142,12 +143,12 @@ export const migrateLegacyPersonalStorage = mutation({
     };
 
     for (const row of userRows) {
-      if (row.role === undefined) {
+      if ((row as any).role === undefined) {
         continue;
       }
       summary.users.rolesRemoved += 1;
       if (!args.dryRun) {
-        await ctx.db.patch(row._id, { role: undefined });
+        await dbAny.patch(row._id, { role: undefined });
       }
     }
 
@@ -156,7 +157,7 @@ export const migrateLegacyPersonalStorage = mutation({
       if (existingUserId) {
         summary.sources.alreadyMigrated += 1;
         if (!args.dryRun && cleanText((row as any).roomCode)) {
-          await ctx.db.patch(row._id, { roomCode: undefined });
+          await dbAny.patch(row._id, { roomCode: undefined });
         }
         continue;
       }
@@ -169,7 +170,7 @@ export const migrateLegacyPersonalStorage = mutation({
 
       summary.sources.migrated += 1;
       if (!args.dryRun) {
-        await ctx.db.patch(row._id, {
+        await dbAny.patch(row._id, {
           userId: nextUserId,
           roomCode: undefined
         });
@@ -181,7 +182,7 @@ export const migrateLegacyPersonalStorage = mutation({
       if (existingUserId) {
         summary.plannerEntries.alreadyMigrated += 1;
         if (!args.dryRun && (cleanText((row as any).roomCode) || cleanText((row as any).ownerUserId))) {
-          await ctx.db.patch(row._id, {
+          await dbAny.patch(row._id, {
             roomCode: undefined,
             ownerUserId: undefined
           });
@@ -197,7 +198,7 @@ export const migrateLegacyPersonalStorage = mutation({
 
       summary.plannerEntries.migrated += 1;
       if (!args.dryRun) {
-        await ctx.db.patch(row._id, {
+        await dbAny.patch(row._id, {
           userId: nextUserId,
           roomCode: undefined,
           ownerUserId: undefined
@@ -280,6 +281,134 @@ export const migrateSharedPlaceRecommendations = mutation({
 
       for (const duplicateRow of duplicateRows) {
         await ctx.db.delete(duplicateRow._id);
+      }
+    }
+
+    return summary;
+  }
+});
+
+export const listCoordinateBackfillRows = internalQuery({
+  args: {},
+  returns: v.any(),
+  handler: async (ctx) => {
+    const [eventRows, spotRows, recommendationRows] = await Promise.all([
+      ctx.db.query('events').collect(),
+      ctx.db.query('spots').collect(),
+      ctx.db.query('placeRecommendations').collect()
+    ]);
+
+    return {
+      events: eventRows
+        .filter((row: any) => typeof row.lat !== 'number' || typeof row.lng !== 'number')
+        .map((row: any) => ({
+          id: row.id,
+          eventUrl: row.eventUrl,
+          locationText: row.locationText,
+          lat: row.lat,
+          lng: row.lng
+        })),
+      spots: spotRows
+        .filter((row: any) => typeof row.lat !== 'number' || typeof row.lng !== 'number')
+        .map((row: any) => ({
+          id: row.id,
+          name: row.name,
+          location: row.location,
+          mapLink: row.mapLink,
+          lat: row.lat,
+          lng: row.lng
+        })),
+      placeRecommendations: recommendationRows
+        .filter((row: any) => typeof row.lat !== 'number' || typeof row.lng !== 'number')
+        .map((row: any) => ({
+          placeKey: row.placeKey,
+          placeName: row.placeName,
+          friendName: row.friendName,
+          location: row.location,
+          mapLink: row.mapLink,
+          lat: row.lat,
+          lng: row.lng
+        }))
+    };
+  }
+});
+
+export const applyCoordinateBackfill = internalMutation({
+  args: {
+    dryRun: v.boolean(),
+    events: v.array(v.object({
+      eventUrl: v.string(),
+      lat: v.number(),
+      lng: v.number()
+    })),
+    spots: v.array(v.object({
+      id: v.string(),
+      lat: v.number(),
+      lng: v.number()
+    })),
+    placeRecommendations: v.array(v.object({
+      placeKey: v.string(),
+      friendName: v.string(),
+      lat: v.number(),
+      lng: v.number()
+    }))
+  },
+  returns: v.any(),
+  handler: async (ctx, args) => {
+    const summary = {
+      dryRun: args.dryRun,
+      eventsUpdated: 0,
+      spotsUpdated: 0,
+      recommendationsUpdated: 0
+    };
+
+    for (const eventUpdate of args.events) {
+      const existing = await ctx.db.query('events').filter((q: any) => q.eq(q.field('eventUrl'), eventUpdate.eventUrl)).first();
+      if (!existing) {
+        continue;
+      }
+      summary.eventsUpdated += 1;
+      if (!args.dryRun) {
+        await ctx.db.patch(existing._id, {
+          lat: eventUpdate.lat,
+          lng: eventUpdate.lng,
+          updatedAt: new Date().toISOString()
+        });
+      }
+    }
+
+    for (const spotUpdate of args.spots) {
+      const existing = await ctx.db.query('spots').filter((q: any) => q.eq(q.field('id'), spotUpdate.id)).first();
+      if (!existing) {
+        continue;
+      }
+      summary.spotsUpdated += 1;
+      if (!args.dryRun) {
+        await ctx.db.patch(existing._id, {
+          lat: spotUpdate.lat,
+          lng: spotUpdate.lng,
+          updatedAt: new Date().toISOString()
+        });
+      }
+    }
+
+    for (const recommendationUpdate of args.placeRecommendations) {
+      const existing = await ctx.db
+        .query('placeRecommendations')
+        .withIndex('by_place_friend', (q: any) =>
+          q.eq('placeKey', recommendationUpdate.placeKey).eq('friendName', recommendationUpdate.friendName)
+        )
+        .first();
+      if (!existing) {
+        continue;
+      }
+      summary.recommendationsUpdated += 1;
+      if (!args.dryRun) {
+        await ctx.db.patch(existing._id, {
+          lat: recommendationUpdate.lat,
+          lng: recommendationUpdate.lng,
+          updatedAt: new Date().toISOString()
+        });
       }
     }
 
