@@ -74,6 +74,9 @@ export default defineSchema({
     placeKey: v.string(),
     placeName: v.string(),
     friendName: v.string(),
+    // Legacy rows may still carry a userId from the old per-user storage model.
+    // Keep it optional in schema so deploys are not blocked by stale documents.
+    userId: v.optional(v.string()),
     friendUrl: v.optional(v.string()),
     tag: v.string(),
     location: v.string(),

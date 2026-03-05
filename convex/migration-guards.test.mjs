@@ -50,7 +50,7 @@ describe('schema migration guards', () => {
     const placeRecommendationsSource = placeRecommendationsBlock?.[0] || '';
     assert.equal(schemaSource.includes('showSharedPlaceRecommendations: v.optional(v.boolean())'), true);
     assert.equal(placeRecommendationsSource.includes('placeRecommendations: defineTable({'), true);
-    assert.equal(placeRecommendationsSource.includes('userId: v.string()'), false);
+    assert.equal(placeRecommendationsSource.includes('userId: v.optional(v.string())'), true);
     assert.equal(placeRecommendationsSource.includes(".index('by_user_updated_at', ['userId', 'updatedAt'])"), false);
     assert.equal(placeRecommendationsSource.includes(".index('by_place_friend', ['placeKey', 'friendName'])"), true);
     assert.equal(placeRecommendationsSource.includes("friendUrl: v.optional(v.string())"), true);
