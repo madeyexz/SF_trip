@@ -36,7 +36,7 @@ import {
 import {
   createLucidePinIcon, createLucidePinIconWithLabel, toCoordinateKey, createTravelTimeCacheKey,
   createRouteRequestCacheKey, requestPlannedRoute,
-  loadGoogleMapsScript, buildInfoWindowAddButton
+  loadGoogleMapsScript, buildInfoWindowAddButton, fetchPlacePhotoUri
 } from '@/lib/map-helpers';
 
 const TAG_COLORS = {
@@ -243,6 +243,7 @@ export default function TripProvider({ children }: { children: ReactNode }) {
   const geocodeStoreRef = useRef<Map<string, any>>(new Map());
   const travelTimeCacheRef = useRef<Map<string, any>>(new Map());
   const plannedRouteCacheRef = useRef<Map<string, any>>(new Map());
+  const placePhotoCacheRef = useRef<Map<string, string | null>>(new Map());
   const plannerHydratedRef = useRef(false);
 
   const [status, setStatus] = useState('Loading trip map...');
@@ -1110,7 +1111,7 @@ export default function TripProvider({ children }: { children: ReactNode }) {
     return `<div style="max-width:330px;background:#0A0A0A;color:#FFFFFF;padding:12px;font-family:'JetBrains Mono',monospace;font-size:13px"><h3 style="margin:0 0 6px;font-size:16px;color:#FFFFFF">${escapeHtml(event.name)}</h3><p style="margin:4px 0;color:#8a8a8a"><strong style="color:#FFFFFF">Time:</strong> ${escapeHtml(time)} <span style="color:#6a6a6a;font-size:12px">(${escapeHtml(daysLabel)})</span></p><p style="margin:4px 0;color:#8a8a8a"><strong style="color:#FFFFFF">Location:</strong> ${escapeHtml(location)}</p><p style="margin:4px 0;color:#8a8a8a"><strong style="color:#FFFFFF">Travel time:</strong> ${escapeHtml(travel)}</p>${sourceLine}<p style="margin:4px 0;color:#8a8a8a">${escapeHtml(truncate(event.description || '', 220))}</p>${buildInfoWindowAddButton(plannerAction)}${eventLink}</div>`;
   }, []);
 
-  const buildPlaceInfoWindowHtml = useCallback((place, plannerAction) => {
+  const buildPlaceInfoWindowHtml = useCallback((place, plannerAction, photoUri?: string | null) => {
     const displayTag = formatTag(normalizePlaceTag(place.tag));
     const placeTag = normalizePlaceTag(place.tag);
     const isAvoid = placeTag === 'avoid';
@@ -1137,7 +1138,10 @@ export default function TripProvider({ children }: { children: ReactNode }) {
     const linkRow = (safeMapLink || safeCornerLink)
       ? `<div style="display:flex;gap:10px;flex-wrap:wrap">${safeMapLink ? `<a href="${escapeHtml(safeMapLink)}" target="_blank" rel="noreferrer" style="color:#00FF88;text-decoration:none;font-weight:600;font-size:12px;text-transform:uppercase;letter-spacing:0.05em">Open map</a>` : ''}${safeCornerLink ? `<a href="${escapeHtml(safeCornerLink)}" target="_blank" rel="noreferrer" style="color:#00FF88;text-decoration:none;font-weight:600;font-size:12px;text-transform:uppercase;letter-spacing:0.05em">Corner page</a>` : ''}</div>`
       : '';
-    return `<div style="max-width:340px;background:#0A0A0A;color:#FFFFFF;padding:12px;font-family:'JetBrains Mono',monospace;font-size:13px">${avoidBanner}${safeBanner}<h3 style="margin:0 0 6px;font-size:16px;color:#FFFFFF">${escapeHtml(place.name)}</h3><p style="margin:4px 0;color:#8a8a8a"><strong style="color:#FFFFFF">Tag:</strong> ${escapeHtml(displayTag)}</p><p style="margin:4px 0;color:#8a8a8a"><strong style="color:#FFFFFF">Location:</strong> ${escapeHtml(place.location || 'Unknown')}</p>${place.curatorComment ? `<p style="margin:4px 0;color:#8a8a8a"><strong style="color:#FFFFFF">Curator:</strong> ${escapeHtml(place.curatorComment)}</p>` : ''}${place.description ? `<p style="margin:4px 0;color:#8a8a8a">${escapeHtml(place.description)}</p>` : ''}${place.details ? `<p style="margin:4px 0;color:#8a8a8a">${escapeHtml(place.details)}</p>` : ''}${addButton}${linkRow}</div>`;
+    const photoHtml = photoUri
+      ? `<img src="${escapeHtml(photoUri)}" alt="${escapeHtml(place.name)}" style="width:100%;height:140px;object-fit:cover;margin:8px 0;display:block;border:1px solid rgba(255,255,255,0.08)" />`
+      : '';
+    return `<div style="max-width:340px;background:#0A0A0A;color:#FFFFFF;padding:12px;font-family:'JetBrains Mono',monospace;font-size:13px">${avoidBanner}${safeBanner}<h3 style="margin:0 0 6px;font-size:16px;color:#FFFFFF">${escapeHtml(place.name)}</h3>${photoHtml}<p style="margin:4px 0;color:#8a8a8a"><strong style="color:#FFFFFF">Tag:</strong> ${escapeHtml(displayTag)}</p><p style="margin:4px 0;color:#8a8a8a"><strong style="color:#FFFFFF">Location:</strong> ${escapeHtml(place.location || 'Unknown')}</p>${place.curatorComment ? `<p style="margin:4px 0;color:#8a8a8a"><strong style="color:#FFFFFF">Curator:</strong> ${escapeHtml(place.curatorComment)}</p>` : ''}${place.description ? `<p style="margin:4px 0;color:#8a8a8a">${escapeHtml(place.description)}</p>` : ''}${place.details ? `<p style="margin:4px 0;color:#8a8a8a">${escapeHtml(place.details)}</p>` : ''}${addButton}${linkRow}</div>`;
   }, []);
 
   const renderCurrentSelection = useCallback(
@@ -1268,17 +1272,33 @@ export default function TripProvider({ children }: { children: ReactNode }) {
               label: selectedDate ? `Add to ${formatDateDayMonth(selectedDate)}` : 'Pick planner date first',
               enabled: Boolean(selectedDate)
             };
-            infoWindowRef.current.setContent(buildPlaceInfoWindowHtml(pwp, plannerAction));
-            infoWindowRef.current.open({ map: mapRef.current, anchor: marker });
-            if (addActionId && window.google?.maps?.event) {
-              window.google.maps.event.addListenerOnce(infoWindowRef.current, 'domready', () => {
-                const btn = document.getElementById(addActionId);
-                if (!btn) return;
-                btn.addEventListener('click', (e) => {
-                  e.preventDefault();
-                  addPlaceToDayPlan(pwp);
-                  setStatusMessage(`Added "${pwp.name}" to ${formatDate(selectedDate)}.`);
+            const wireAddButton = () => {
+              if (addActionId && window.google?.maps?.event) {
+                window.google.maps.event.addListenerOnce(infoWindowRef.current, 'domready', () => {
+                  const btn = document.getElementById(addActionId);
+                  if (!btn) return;
+                  btn.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    addPlaceToDayPlan(pwp);
+                    setStatusMessage(`Added "${pwp.name}" to ${formatDate(selectedDate)}.`);
+                  });
                 });
+              }
+            };
+            const cachedPhoto = placePhotoCacheRef.current.get(pwp.name);
+            infoWindowRef.current.setContent(buildPlaceInfoWindowHtml(pwp, plannerAction, cachedPhoto ?? undefined));
+            infoWindowRef.current.open({ map: mapRef.current, anchor: marker });
+            wireAddButton();
+            const placeTag = normalizePlaceTag(pwp.tag);
+            if (placeTag === 'sightseeing' && !placePhotoCacheRef.current.has(pwp.name) && position) {
+              fetchPlacePhotoUri(pwp.name, { lat: position.lat, lng: position.lng }).then((uri) => {
+                placePhotoCacheRef.current.set(pwp.name, uri);
+                if (uri && infoWindowRef.current) {
+                  infoWindowRef.current.close();
+                  infoWindowRef.current.setContent(buildPlaceInfoWindowHtml(pwp, plannerAction, uri));
+                  infoWindowRef.current.open({ map: mapRef.current, anchor: marker });
+                  wireAddButton();
+                }
               });
             }
           });

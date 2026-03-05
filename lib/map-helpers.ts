@@ -190,3 +190,26 @@ export function buildInfoWindowAddButton(plannerAction) {
     </button>
   `;
 }
+
+export async function fetchPlacePhotoUri(
+  placeName: string,
+  location: { lat: number; lng: number } | google.maps.LatLng
+): Promise<string | null> {
+  try {
+    const { Place } = await window.google.maps.importLibrary('places') as any;
+    if (!Place) return null;
+    const point = toLatLngLiteral(location);
+    if (!point) return null;
+    const { places } = await Place.searchByText({
+      textQuery: placeName,
+      fields: ['photos'],
+      locationBias: new window.google.maps.Circle({ center: point, radius: 500 }),
+      maxResultCount: 1,
+    });
+    if (!places?.length || !places[0].photos?.length) return null;
+    return places[0].photos[0].getURI({ maxWidth: 400, maxHeight: 200 });
+  } catch (e) {
+    console.warn('[Places photo] lookup failed for', placeName, e);
+    return null;
+  }
+}
