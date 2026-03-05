@@ -14,6 +14,7 @@ import type * as auth from "../auth.js";
 import type * as authz from "../authz.js";
 import type * as events from "../events.js";
 import type * as http from "../http.js";
+import type * as placeRecommendations from "../placeRecommendations.js";
 import type * as planner from "../planner.js";
 import type * as routeCache from "../routeCache.js";
 import type * as sources from "../sources.js";
@@ -33,6 +34,7 @@ declare const fullApi: ApiFromModules<{
   authz: typeof authz;
   events: typeof events;
   http: typeof http;
+  placeRecommendations: typeof placeRecommendations;
   planner: typeof planner;
   routeCache: typeof routeCache;
   sources: typeof sources;

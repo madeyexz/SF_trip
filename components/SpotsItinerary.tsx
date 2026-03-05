@@ -86,9 +86,20 @@ export default function SpotsItinerary() {
                 <Card className="p-3.5 hover:border-accent-border hover:shadow-[0_0_0_3px_var(--color-accent-glow)]" key={place.id || `${place.name}-${place.location}`}>
                   <div className="flex gap-2 justify-between items-start">
                     <h3 className="m-0 mb-1.5 text-[0.92rem] font-semibold leading-snug">{place.name}</h3>
-                    <Badge className="uppercase tracking-wider shrink-0" variant="secondary" style={{ backgroundColor: `${getTagColor(place.tag)}22`, color: getTagColor(place.tag) }}>{formatTag(place.tag)}</Badge>
+                    <div className="flex items-center gap-1.5 shrink-0 flex-wrap justify-end">
+                      {place.isRecommended ? (
+                        <Badge className="uppercase tracking-wider" variant="default">Recommended</Badge>
+                      ) : null}
+                      <Badge className="uppercase tracking-wider" variant="secondary" style={{ backgroundColor: `${getTagColor(place.tag)}22`, color: getTagColor(place.tag) }}>{formatTag(place.tag)}</Badge>
+                    </div>
                   </div>
                   <p className="my-0.5 text-[0.82rem] text-foreground-secondary leading-relaxed"><strong>Location:</strong> {place.location}</p>
+                  {Array.isArray(place.recommendedBy) && place.recommendedBy.length > 0 ? (
+                    <p className="my-0.5 text-[0.82rem] text-foreground-secondary leading-relaxed"><strong>Recommended by:</strong> {place.recommendedBy.join(', ')}</p>
+                  ) : null}
+                  {Array.isArray(place.recommendations) && place.recommendations[0]?.note ? (
+                    <p className="my-0.5 text-[0.82rem] text-foreground-secondary leading-relaxed"><strong>Friend note:</strong> {place.recommendations[0].note}</p>
+                  ) : null}
                   {place.curatorComment ? <p className="my-0.5 text-[0.82rem] text-foreground-secondary leading-relaxed"><strong>Curator note:</strong> {place.curatorComment}</p> : null}
                   {place.description ? <p className="my-0.5 text-[0.82rem] text-foreground-secondary leading-relaxed">{truncate(place.description, 180)}</p> : null}
                   {place.details ? <p className="my-0.5 text-[0.82rem] text-foreground-secondary leading-relaxed">{truncate(place.details, 220)}</p> : null}

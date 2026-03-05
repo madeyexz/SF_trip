@@ -69,6 +69,26 @@ export default defineSchema({
     lastSeenAt: v.optional(v.string()),
     updatedAt: v.optional(v.string())
   }),
+  placeRecommendations: defineTable({
+    userId: v.string(),
+    placeKey: v.string(),
+    placeName: v.string(),
+    friendName: v.string(),
+    tag: v.string(),
+    location: v.string(),
+    mapLink: v.string(),
+    cornerLink: v.optional(v.string()),
+    note: v.optional(v.string()),
+    details: v.optional(v.string()),
+    sourceUrl: v.optional(v.string()),
+    lat: v.optional(v.number()),
+    lng: v.optional(v.number()),
+    createdAt: v.string(),
+    updatedAt: v.string()
+  })
+    .index('by_user_updated_at', ['userId', 'updatedAt'])
+    .index('by_user_place_friend', ['userId', 'placeKey', 'friendName'])
+    .index('by_user_friend', ['userId', 'friendName']),
   sources: defineTable({
     userId: v.string(),
     sourceType: v.union(v.literal('event'), v.literal('spot')),

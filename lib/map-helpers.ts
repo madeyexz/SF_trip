@@ -1,5 +1,10 @@
 import { escapeHtml } from './helpers';
 
+type LatLngLike = {
+  lat: number | (() => number);
+  lng: number | (() => number);
+};
+
 export function toKebabCase(value) {
   return String(value).replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`);
 }
@@ -193,7 +198,7 @@ export function buildInfoWindowAddButton(plannerAction) {
 
 export async function fetchPlacePhotoUri(
   placeName: string,
-  location: { lat: number; lng: number } | google.maps.LatLng
+  location: LatLngLike
 ): Promise<string | null> {
   try {
     const { Place } = await window.google.maps.importLibrary('places') as any;

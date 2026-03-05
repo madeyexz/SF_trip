@@ -393,11 +393,12 @@ export async function loadEventsPayload() {
   const sourceCalendars = getActiveSourceUrls(sources, 'event');
   const calendars = appendRequiredDefaultSourceUrls(sourceCalendars, 'event');
   const spotsPayload = await loadSpotsFromConvex();
+  const placeRecommendations = await loadPlaceRecommendationsFromConvex();
   const placesFromConvex = Array.isArray(spotsPayload?.spots) ? spotsPayload.spots : [];
-  const places = mergeStaticRegionPlaces(
+  const places = mergePlaceRecommendationsIntoPlaces(mergeStaticRegionPlaces(
     placesFromConvex.length > 0 ? placesFromConvex : fallbackPlaces,
     fallbackPlaces
-  );
+  ), placeRecommendations);
   const convexPayload = await loadEventsFromConvex(calendars);
 
   if (convexPayload) {
@@ -414,9 +415,13 @@ export async function loadEventsPayload() {
   try {
     const raw = await readFile(EVENTS_CACHE_FILE, 'utf-8');
     const payload = JSON.parse(raw);
-    const cachedPlaces = Array.isArray(payload?.places)
+    const cachedPlacesBase = Array.isArray(payload?.places)
       ? mergeStaticRegionPlaces(payload.places.map(normalizePlaceCoordinates), fallbackPlaces)
       : [];
+    const cachedPlaces = mergePlaceRecommendationsIntoPlaces(
+      cachedPlacesBase.length > 0 ? cachedPlacesBase : places,
+      placeRecommendations
+    );
     return {
       ...payload,
       places: cachedPlaces.length > 0 ? cachedPlaces : places
@@ -538,6 +543,8 @@ export async function syncEvents() {
     spotSyncResult.places.length > 0 ? spotSyncResult.places : staticPlaces,
     staticPlaces
   );
+  const placeRecommendations = await loadPlaceRecommendationsFromConvex();
+  const mergedPlaces = mergePlaceRecommendationsIntoPlaces(fallbackPlaces, placeRecommendations);
   const allErrors = [...eventSyncResult.errors, ...spotSyncResult.errors];
 
   const payload = {
@@ -545,12 +552,12 @@ export async function syncEvents() {
       syncedAt: nowIso,
       calendars: eventSyncResult.sourceUrls,
       eventCount: eventSyncResult.events.length,
-      spotCount: fallbackPlaces.length,
+      spotCount: mergedPlaces.length,
       ingestionErrors: allErrors,
       rssSeenBySourceUrl: eventSyncResult.rssStateBySourceUrl
     },
     events: eventSyncResult.events,
-    places: fallbackPlaces
+    places: mergedPlaces
   };
 
   await writeTextFileBestEffort(EVENTS_CACHE_FILE, JSON.stringify(payload, null, 2), {
@@ -755,6 +762,22 @@ async function loadSpotsFromConvex() {
   }
 }
 
+async function loadPlaceRecommendationsFromConvex() {
+  const client = createConvexClient();
+
+  if (!client) {
+    return [];
+  }
+
+  try {
+    const rows = await client.query('placeRecommendations:listPlaceRecommendations', {});
+    return Array.isArray(rows) ? rows : [];
+  } catch (error) {
+    console.error('Convex place recommendation read failed; continuing without friend recommendations.', error);
+    return [];
+  }
+}
+
 async function saveSpotsToConvex({ spots, syncedAt, sourceUrls }) {
   const client = createConvexClient();
 
@@ -804,6 +827,128 @@ function sanitizeObjectForConvex(row, allowedFields) {
   }
 
   return sanitizedRow;
+}
+
+function normalizeComparableText(value) {
+  return String(value || '')
+    .toLowerCase()
+    .replace(/[^\w\s-]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+export function buildComparablePlaceKey(placeLike) {
+  const name = normalizeComparableText(placeLike?.name || placeLike?.placeName);
+  const location = normalizeComparableText(placeLike?.location || placeLike?.locationText);
+  const mapLink = normalizeComparableUrl(placeLike?.mapLink);
+
+  if (name && location) {
+    return `${name}|${location}`;
+  }
+  if (name) {
+    return name;
+  }
+  if (mapLink) {
+    return `map:${mapLink}`;
+  }
+  return '';
+}
+
+function buildPlaceRecommendationSummary(recommendationRows) {
+  const recommendations = [];
+  const seenFriends = new Set();
+  const recommendedBy = [];
+
+  for (const row of Array.isArray(recommendationRows) ? recommendationRows : []) {
+    const friendName = cleanText(row?.friendName);
+    const note = cleanText(row?.note);
+    recommendations.push({
+      friendName,
+      note,
+      details: cleanText(row?.details),
+      sourceUrl: cleanText(row?.sourceUrl)
+    });
+    if (friendName && !seenFriends.has(friendName)) {
+      seenFriends.add(friendName);
+      recommendedBy.push(friendName);
+    }
+  }
+
+  return {
+    isRecommended: recommendedBy.length > 0,
+    recommendedBy,
+    recommendations
+  };
+}
+
+function buildSyntheticPlaceFromRecommendation(recommendationRows) {
+  const rows = Array.isArray(recommendationRows) ? recommendationRows : [];
+  const first = rows[0];
+  if (!first) {
+    return null;
+  }
+
+  const summary = buildPlaceRecommendationSummary(rows);
+  const placeKey = cleanText(first.placeKey) || buildComparablePlaceKey(first);
+  const friendSlug = cleanText(first.friendName).toLowerCase().replace(/[^a-z0-9]+/g, '-');
+
+  return normalizePlaceCoordinates({
+    id: `friend-${friendSlug || 'recommendation'}-${placeKey.replace(/[^a-z0-9]+/gi, '-').replace(/^-+|-+$/g, '')}`,
+    name: cleanText(first.placeName) || cleanText(first.name),
+    tag: normalizeSpotTag(first.tag, `${first.placeName || ''} ${first.note || ''} ${first.details || ''}`),
+    location: cleanText(first.location),
+    mapLink: cleanText(first.mapLink),
+    cornerLink: cleanText(first.cornerLink),
+    curatorComment: '',
+    description: cleanText(first.details) || cleanText(first.note) || `Recommended by ${summary.recommendedBy.join(', ')}`,
+    details: cleanText(first.details),
+    sourceType: 'friend_recommendation',
+    lat: typeof first.lat === 'number' ? first.lat : undefined,
+    lng: typeof first.lng === 'number' ? first.lng : undefined,
+    ...summary
+  });
+}
+
+export function mergePlaceRecommendationsIntoPlaces(placesInput, recommendationRowsInput) {
+  const places = Array.isArray(placesInput) ? placesInput.map((place) => ({ ...place })) : [];
+  const recommendationRows = Array.isArray(recommendationRowsInput) ? recommendationRowsInput : [];
+  const recommendationsByKey = new Map();
+  const existingKeys = new Map();
+
+  for (const place of places) {
+    const key = buildComparablePlaceKey(place);
+    if (key && !existingKeys.has(key)) {
+      existingKeys.set(key, place);
+    }
+  }
+
+  for (const row of recommendationRows) {
+    const key = cleanText(row?.placeKey) || buildComparablePlaceKey(row);
+    if (!key) {
+      continue;
+    }
+    if (!recommendationsByKey.has(key)) {
+      recommendationsByKey.set(key, []);
+    }
+    recommendationsByKey.get(key).push(row);
+  }
+
+  for (const [key, rows] of recommendationsByKey.entries()) {
+    const summary = buildPlaceRecommendationSummary(rows);
+    const existing = existingKeys.get(key);
+    if (existing) {
+      Object.assign(existing, summary);
+      continue;
+    }
+
+    const syntheticPlace = buildSyntheticPlaceFromRecommendation(rows);
+    if (syntheticPlace) {
+      places.push(syntheticPlace);
+      existingKeys.set(key, syntheticPlace);
+    }
+  }
+
+  return places.sort((left, right) => `${left.tag}|${left.name}`.localeCompare(`${right.tag}|${right.name}`));
 }
 
 function getActiveSourceUrls(sources, sourceType) {

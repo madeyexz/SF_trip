@@ -850,13 +850,17 @@ export default function TripProvider({ children }: { children: ReactNode }) {
     const addButton = isAvoid || isSafe ? '' : buildInfoWindowAddButton(plannerAction);
     const safeMapLink = getSafeExternalHref(place.mapLink);
     const safeCornerLink = getSafeExternalHref(place.cornerLink);
+    const recommendedBy = Array.isArray(place.recommendedBy) ? place.recommendedBy.filter(Boolean) : [];
+    const firstRecommendationNote = Array.isArray(place.recommendations)
+      ? String(place.recommendations.find((recommendation) => recommendation?.note)?.note || '').trim()
+      : '';
     const linkRow = (safeMapLink || safeCornerLink)
       ? `<div style="display:flex;gap:10px;flex-wrap:wrap">${safeMapLink ? `<a href="${escapeHtml(safeMapLink)}" target="_blank" rel="noreferrer" style="color:#00FF88;text-decoration:none;font-weight:600;font-size:12px;text-transform:uppercase;letter-spacing:0.05em">Open map</a>` : ''}${safeCornerLink ? `<a href="${escapeHtml(safeCornerLink)}" target="_blank" rel="noreferrer" style="color:#00FF88;text-decoration:none;font-weight:600;font-size:12px;text-transform:uppercase;letter-spacing:0.05em">Corner page</a>` : ''}</div>`
       : '';
     const photoHtml = photoUri
       ? `<img src="${escapeHtml(photoUri)}" alt="${escapeHtml(place.name)}" style="width:100%;height:140px;object-fit:cover;margin:8px 0;display:block;border:1px solid rgba(255,255,255,0.08)" />`
       : '';
-    return `<div class="custom-iw" style="max-width:340px;background:#0A0A0A;color:#FFFFFF;padding:12px;font-family:'JetBrains Mono',monospace;font-size:13px">${avoidBanner}${safeBanner}<h3 style="margin:0 0 6px;font-size:16px;color:#FFFFFF">${escapeHtml(place.name)}</h3>${photoHtml}<p style="margin:4px 0;color:#8a8a8a"><strong style="color:#FFFFFF">Tag:</strong> ${escapeHtml(displayTag)}</p><p style="margin:4px 0;color:#8a8a8a"><strong style="color:#FFFFFF">Location:</strong> ${escapeHtml(place.location || 'Unknown')}</p>${place.curatorComment ? `<p style="margin:4px 0;color:#8a8a8a"><strong style="color:#FFFFFF">Curator:</strong> ${escapeHtml(place.curatorComment)}</p>` : ''}${place.description ? `<p style="margin:4px 0;color:#8a8a8a">${escapeHtml(place.description)}</p>` : ''}${place.details ? `<p style="margin:4px 0;color:#8a8a8a">${escapeHtml(place.details)}</p>` : ''}${addButton}${linkRow}</div>`;
+    return `<div class="custom-iw" style="max-width:340px;background:#0A0A0A;color:#FFFFFF;padding:12px;font-family:'JetBrains Mono',monospace;font-size:13px">${avoidBanner}${safeBanner}<h3 style="margin:0 0 6px;font-size:16px;color:#FFFFFF">${escapeHtml(place.name)}</h3>${photoHtml}<p style="margin:4px 0;color:#8a8a8a"><strong style="color:#FFFFFF">Tag:</strong> ${escapeHtml(displayTag)}</p><p style="margin:4px 0;color:#8a8a8a"><strong style="color:#FFFFFF">Location:</strong> ${escapeHtml(place.location || 'Unknown')}</p>${recommendedBy.length > 0 ? `<p style="margin:4px 0;color:#8a8a8a"><strong style="color:#FFFFFF">Recommended by:</strong> ${escapeHtml(recommendedBy.join(', '))}</p>` : ''}${firstRecommendationNote ? `<p style="margin:4px 0;color:#8a8a8a"><strong style="color:#FFFFFF">Friend note:</strong> ${escapeHtml(firstRecommendationNote)}</p>` : ''}${place.curatorComment ? `<p style="margin:4px 0;color:#8a8a8a"><strong style="color:#FFFFFF">Curator:</strong> ${escapeHtml(place.curatorComment)}</p>` : ''}${place.description ? `<p style="margin:4px 0;color:#8a8a8a">${escapeHtml(place.description)}</p>` : ''}${place.details ? `<p style="margin:4px 0;color:#8a8a8a">${escapeHtml(place.details)}</p>` : ''}${addButton}${linkRow}</div>`;
   }, []);
 
   const renderCurrentSelection = useCallback(
@@ -974,9 +978,17 @@ export default function TripProvider({ children }: { children: ReactNode }) {
             markersRef.current.push(labelMarker);
           }
         } else if (position) {
+          const recommendationCount = Array.isArray(pwp.recommendedBy) ? pwp.recommendedBy.length : 0;
+          const recommendationLabel = recommendationCount > 1
+            ? `+${recommendationCount}`
+            : recommendationCount === 1
+              ? String(pwp.recommendedBy[0] || '').trim().charAt(0).toUpperCase()
+              : '';
           const marker = new window.google.maps.marker.AdvancedMarkerElement({
             map: mapRef.current, position, title: place.name,
-            content: createLucidePinIcon(getTagIconNode(pwp.tag), getTagColor(pwp.tag)),
+            content: recommendationLabel
+              ? createLucidePinIconWithLabel(getTagIconNode(pwp.tag), getTagColor(pwp.tag), recommendationLabel)
+              : createLucidePinIcon(getTagIconNode(pwp.tag), getTagColor(pwp.tag)),
             gmpClickable: true
           });
           marker.addEventListener('gmp-click', () => {

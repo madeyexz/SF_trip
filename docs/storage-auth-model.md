@@ -24,6 +24,7 @@ These files are local fallbacks and write-through caches for development resilie
 Primary tables in use:
 - `events`
 - `spots`
+- `placeRecommendations`
 - `sources`
 - `syncMeta`
 - `plannerEntries`
@@ -56,6 +57,13 @@ Profile shape returned by `/api/me`:
 - Default required sources are appended at read time and exposed as read-only in the UI.
 - User-created sources can be created, paused, resumed, synced, or deleted.
 
+## Friend Recommendations
+
+- Friend-attributed place recommendations live in `placeRecommendations`.
+- These rows are personal-only and keyed by `userId`.
+- Recommendation rows are merged onto canonical spots at read time.
+- If there is no canonical spot match, the recommendation is surfaced as a synthetic place row instead of being written into `spots`.
+
 ## Sync Behavior
 
 - `/api/events` reads from Convex first, then falls back to local cache or sample data when needed.
@@ -66,4 +74,4 @@ Profile shape returned by `/api/me`:
 
 - `events`, `spots`, and `syncMeta` are still global tables today.
 - `sources` and `plannerEntries` are already personal-only.
-- If we later add friend recommendations, they should be modeled as annotations on top of canonical events, not as a return to shared planner state.
+- Friend recommendations should stay as annotation tables, not as a return to shared planner state.
