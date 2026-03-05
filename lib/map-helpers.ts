@@ -189,18 +189,37 @@ export async function requestPlannedRoute({ origin, destination, waypoints, trav
   };
 }
 
+let googleMapsScriptPromise: Promise<void> | null = null;
+
+export function resetGoogleMapsScriptLoaderForTesting() {
+  googleMapsScriptPromise = null;
+}
+
 export function loadGoogleMapsScript(apiKey) {
   if (window.google?.maps) return Promise.resolve();
-  return new Promise<void>((resolve, reject) => {
+  if (googleMapsScriptPromise) {
+    return googleMapsScriptPromise;
+  }
+
+  googleMapsScriptPromise = new Promise<void>((resolve, reject) => {
     const callbackName = `initGoogleMaps_${Math.random().toString(36).slice(2)}`;
     window[callbackName] = () => { delete window[callbackName]; resolve(); };
     const script = document.createElement('script');
+    script.id = 'google-maps-js';
     script.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(apiKey)}&libraries=places,visualization&loading=async&callback=${callbackName}`;
     script.async = true;
     script.defer = true;
-    script.onerror = () => { delete window[callbackName]; reject(new Error('Failed to load Google Maps script.')); };
-    document.head.appendChild(script);
+    script.onerror = () => {
+      delete window[callbackName];
+      googleMapsScriptPromise = null;
+      reject(new Error('Failed to load Google Maps script.'));
+    };
+    if (!document.getElementById('google-maps-js')) {
+      document.head.appendChild(script);
+    }
   });
+
+  return googleMapsScriptPromise;
 }
 
 export function buildInfoWindowAddButton(plannerAction) {

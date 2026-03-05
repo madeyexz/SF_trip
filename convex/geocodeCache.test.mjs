@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import {
   listGeocodeCacheRowsByAddressKeys,
   upsertGeocodeCacheRows
-} from './geocodeCache.ts';
+} from './geocodeCacheHelpers.ts';
 
 function createGeocodeQueryCtx(rows) {
   return {

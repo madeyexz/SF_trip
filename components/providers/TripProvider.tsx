@@ -1326,11 +1326,18 @@ export default function TripProvider({ children }: { children: ReactNode }) {
   }, [loadSourcesFromServer, setStatusMessage]);
 
   useEffect(() => {
-    if (!mapRuntimeActive) {
+    if (mapRuntimeActive) return;
+    cleanupMapRuntime();
+  }, [cleanupMapRuntime, mapRuntimeActive]);
+
+  useEffect(() => {
+    return () => {
       cleanupMapRuntime();
-      return;
-    }
-    if (mapsReady || mapRef.current || !mapElementRef.current || isInitializing) {
+    };
+  }, [cleanupMapRuntime]);
+
+  useEffect(() => {
+    if (!mapRuntimeActive || mapsReady || mapRef.current || !mapElementRef.current || isInitializing) {
       return;
     }
 
@@ -1360,11 +1367,6 @@ export default function TripProvider({ children }: { children: ReactNode }) {
         });
         distanceMatrixRef.current = new window.google.maps.DistanceMatrixService();
         infoWindowRef.current = new window.google.maps.InfoWindow();
-        const geocodedBase = await geocode(baseLocationText || '');
-        if (cancelled || !mapRef.current) return;
-        if (geocodedBase) {
-          setBaseMarker(geocodedBase, `Base location: ${baseLocationText}`);
-        }
         setMapsReady(true);
       } catch (error) {
         if (!cancelled) {
@@ -1376,20 +1378,32 @@ export default function TripProvider({ children }: { children: ReactNode }) {
     void initializeMapRuntime();
     return () => {
       cancelled = true;
-      cleanupMapRuntime();
     };
   }, [
-    baseLocationText,
-    cleanupMapRuntime,
-    geocode,
     isInitializing,
     mapRuntimeActive,
     mapsBrowserKey,
     mapsMapId,
     mapsReady,
-    setBaseMarker,
     setStatusMessage
   ]);
+
+  useEffect(() => {
+    if (!mapsReady || !window.google?.maps || !mapRef.current) return;
+    let cancelled = false;
+
+    async function syncBaseMarker() {
+      if (!baseLocationText) return;
+      const geocodedBase = await geocode(baseLocationText);
+      if (cancelled || !mapRef.current || !geocodedBase) return;
+      setBaseMarker(geocodedBase, `Base location: ${baseLocationText}`);
+    }
+
+    void syncBaseMarker();
+    return () => {
+      cancelled = true;
+    };
+  }, [baseLocationText, geocode, mapsReady, setBaseMarker]);
 
   useEffect(() => {
     if (!isAuthenticated) {
