@@ -11,6 +11,15 @@ import {
   type Variants,
 } from 'framer-motion';
 
+// Returns false on the server and during hydration, then the real value after mount.
+// This prevents hydration mismatches from useReducedMotion returning null on the server.
+function useReducedMotionSafe(): boolean {
+  const prefersReduced = useReducedMotion();
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
+  return mounted ? !!prefersReduced : false;
+}
+
 const containerVariants: Variants = {
   hidden: {},
   visible: {
@@ -45,7 +54,7 @@ export function MotionProvider({ children }: { children: ReactNode }) {
 }
 
 export function ScrollProgressBar() {
-  const shouldReduceMotion = useReducedMotion();
+  const shouldReduceMotion = useReducedMotionSafe();
   const { scrollYProgress } = useScroll();
 
   if (shouldReduceMotion) {
@@ -67,7 +76,7 @@ export function NavEnter({
   children: ReactNode;
   className?: string;
 }) {
-  const shouldReduceMotion = useReducedMotion();
+  const shouldReduceMotion = useReducedMotionSafe();
 
   if (shouldReduceMotion) {
     return <nav className={className}>{children}</nav>;
@@ -94,7 +103,7 @@ export function InViewStagger({
   className?: string;
   amount?: number;
 }) {
-  const shouldReduceMotion = useReducedMotion();
+  const shouldReduceMotion = useReducedMotionSafe();
 
   if (shouldReduceMotion) {
     return <div className={className}>{children}</div>;
@@ -120,7 +129,7 @@ export function FadeItem({
   children: ReactNode;
   className?: string;
 }) {
-  const shouldReduceMotion = useReducedMotion();
+  const shouldReduceMotion = useReducedMotionSafe();
 
   if (shouldReduceMotion) {
     return <div className={className}>{children}</div>;
@@ -146,7 +155,7 @@ export function HoverLift({
   y?: number;
   tapScale?: number;
 }) {
-  const shouldReduceMotion = useReducedMotion();
+  const shouldReduceMotion = useReducedMotionSafe();
 
   if (shouldReduceMotion) {
     return <div className={className}>{children}</div>;
@@ -171,7 +180,7 @@ export function HeroParallax({
   children: ReactNode;
   className?: string;
 }) {
-  const shouldReduceMotion = useReducedMotion();
+  const shouldReduceMotion = useReducedMotionSafe();
   const { scrollYProgress } = useScroll();
   const y = useTransform(scrollYProgress, [0, 0.25], [0, -28]);
   const opacity = useTransform(scrollYProgress, [0, 0.25], [1, 0.9]);
@@ -193,7 +202,7 @@ export function HeroParallax({
 }
 
 export function ArrowNudge({ children }: { children: ReactNode }) {
-  const shouldReduceMotion = useReducedMotion();
+  const shouldReduceMotion = useReducedMotionSafe();
 
   if (shouldReduceMotion) {
     return <span>{children}</span>;
@@ -216,7 +225,7 @@ export function TextScramble({
   children: string;
   className?: string;
 }) {
-  const shouldReduceMotion = useReducedMotion();
+  const shouldReduceMotion = useReducedMotionSafe();
   const [text, setText] = useState(shouldReduceMotion ? children : '');
 
   useEffect(() => {
@@ -263,7 +272,7 @@ export function PulseGlow({
 }: {
   className?: string;
 }) {
-  const shouldReduceMotion = useReducedMotion();
+  const shouldReduceMotion = useReducedMotionSafe();
   
   if (shouldReduceMotion) {
     return <div className={className} />;
