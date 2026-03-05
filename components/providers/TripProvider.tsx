@@ -44,6 +44,7 @@ import {
   DEVICE_LOCATION_OPTIONS
 } from '@/lib/device-location';
 import { getOrCreateCoalescedPromise } from '@/lib/async-coalesce';
+import { mapAsyncInParallel } from '@/lib/async-map';
 
 const TAG_COLORS = {
   eat: '#FF8800',
@@ -224,7 +225,10 @@ export default function TripProvider({ children }: { children: ReactNode }) {
   const [crimeLayerMeta, setCrimeLayerMeta] = useState<CrimeLayerMeta>(EMPTY_CRIME_LAYER_META);
   const [crimeHeatmapStrength, setCrimeHeatmapStrength] = useState(DEFAULT_CRIME_HEATMAP_STRENGTH);
   const [crimeLookbackHours, setCrimeLookbackHours] = useState<number>(DEFAULT_CRIME_LOOKBACK_HOURS);
+  const [mapRuntimeActive, setMapRuntimeActive] = useState(false);
   const [mapsReady, setMapsReady] = useState(false);
+  const [mapsBrowserKey, setMapsBrowserKey] = useState('');
+  const [mapsMapId, setMapsMapId] = useState('');
   const [allEvents, setAllEvents] = useState<any[]>([]);
   const [allPlaces, setAllPlaces] = useState<any[]>([]);
   const [visibleEvents, setVisibleEvents] = useState<any[]>([]);
@@ -506,6 +510,42 @@ export default function TripProvider({ children }: { children: ReactNode }) {
     if (routePolylineRef.current) { routePolylineRef.current.setMap(null); routePolylineRef.current = null; }
     setIsRouteUpdating(false);
   }, []);
+
+  const cleanupMapRuntime = useCallback(() => {
+    renderGenerationRef.current += 1;
+    clearMapMarkers();
+    clearRoute();
+    if (crimeIdleListenerRef.current?.remove) {
+      crimeIdleListenerRef.current.remove();
+      crimeIdleListenerRef.current = null;
+    }
+    if (crimeRefreshTimerRef.current) {
+      window.clearInterval(crimeRefreshTimerRef.current);
+      crimeRefreshTimerRef.current = null;
+    }
+    if (crimeHeatmapRef.current) {
+      crimeHeatmapRef.current.setMap(null);
+      crimeHeatmapRef.current = null;
+    }
+    if (infoWindowRef.current?.close) {
+      infoWindowRef.current.close();
+    }
+    infoWindowRef.current = null;
+    if (baseMarkerRef.current) {
+      baseMarkerRef.current.map = null;
+      baseMarkerRef.current = null;
+    }
+    if (deviceLocationMarkerRef.current) {
+      deviceLocationMarkerRef.current.map = null;
+      deviceLocationMarkerRef.current = null;
+    }
+    baseLatLngRef.current = null;
+    deviceLocationLatLngRef.current = null;
+    distanceMatrixRef.current = null;
+    mapRef.current = null;
+    activePlaceInfoWindowKeyRef.current = '';
+    setMapsReady(false);
+  }, [clearMapMarkers, clearRoute]);
 
   const applyCrimeHeatmapData = useCallback((incidentsInput, generatedAtValue = '', hoursValue = DEFAULT_CRIME_LOOKBACK_HOURS) => {
     if (!mapsReady || !mapRef.current || !window.google?.maps?.visualization) return;
@@ -985,19 +1025,22 @@ export default function TripProvider({ children }: { children: ReactNode }) {
         : [...eventsInput]
       ).filter((e) => daysFromNow(e.startDateISO) >= 0);
 
-      const evtsWithPositions = [];
-      for (const event of filteredEvents) {
+      const evtsWithPositions = await mapAsyncInParallel(filteredEvents, async (event: any) => {
         const position = await resolvePosition({
           cacheKey: `event:${event.eventUrl}`, mapLink: event.googleMapsUrl,
           fallbackLocation: event.address || event.locationText, lat: event.lat, lng: event.lng
         });
+        return { ...event, _position: position, travelDurationText: '' };
+      });
+      if (isStaleRender()) return;
+      for (const ewp of evtsWithPositions) {
         if (isStaleRender()) return;
-        const ewp = { ...event, _position: position, travelDurationText: '' };
+        const position = ewp._position;
         if (position) {
-          const days = daysFromNow(event.startDateISO);
+          const days = daysFromNow(ewp.startDateISO);
           const dayLabel = days === 0 ? 'today' : `${days}d`;
           const marker = new window.google.maps.marker.AdvancedMarkerElement({
-            map: mapRef.current, position, title: event.name,
+            map: mapRef.current, position, title: ewp.name,
             content: createLucidePinIconWithLabel(calendarIconNode, '#FF8800', dayLabel),
             gmpClickable: true
           });
@@ -1026,36 +1069,38 @@ export default function TripProvider({ children }: { children: ReactNode }) {
           });
           markersRef.current.push(marker);
         }
-        evtsWithPositions.push(ewp);
       }
 
-      const placesWithPositions = [];
-      for (const place of placesInput) {
+      const placesWithPositions = await mapAsyncInParallel(placesInput, async (place: any) => {
         const position = await resolvePosition({
           cacheKey: `place:${place.id || place.name}`, mapLink: place.mapLink,
           fallbackLocation: place.location, lat: place.lat, lng: place.lng
         });
+        return { ...place, _position: position, tag: normalizePlaceTag(place.tag) };
+      });
+      if (isStaleRender()) return;
+      for (const pwp of placesWithPositions) {
         if (isStaleRender()) return;
-        const pwp = { ...place, _position: position, tag: normalizePlaceTag(place.tag) };
-        const hasBoundary = Array.isArray(place.boundary) && place.boundary.length >= 3;
+        const position = pwp._position;
+        const hasBoundary = Array.isArray(pwp.boundary) && pwp.boundary.length >= 3;
         const isRegion = hasBoundary && (pwp.tag === 'avoid' || pwp.tag === 'safe');
         if (isRegion) {
           const regionStyle = (() => {
             if (pwp.tag === 'avoid') {
-              const risk = place.risk || 'medium';
+              const risk = pwp.risk || 'medium';
               if (risk === 'extreme') return { fill: '#FF4444', fillOpacity: 0.32, strokeOpacity: 0.85, strokeWeight: 3 };
               if (risk === 'high') return { fill: '#FF4444', fillOpacity: 0.22, strokeOpacity: 0.7, strokeWeight: 2.5 };
               if (risk === 'medium-high') return { fill: '#FF4444', fillOpacity: 0.15, strokeOpacity: 0.55, strokeWeight: 2 };
               return { fill: '#FF4444', fillOpacity: 0.08, strokeOpacity: 0.4, strokeWeight: 1.5 };
             }
-            const safetyLevel = place.safetyLevel || 'high';
+            const safetyLevel = pwp.safetyLevel || 'high';
             if (safetyLevel === 'very-high') return { fill: '#00FF88', fillOpacity: 0.20, strokeOpacity: 0.78, strokeWeight: 2.5 };
             if (safetyLevel === 'high') return { fill: '#00FF88', fillOpacity: 0.14, strokeOpacity: 0.62, strokeWeight: 2 };
             return { fill: '#00FF88', fillOpacity: 0.10, strokeOpacity: 0.5, strokeWeight: 1.8 };
           })();
           const polygon = new window.google.maps.Polygon({
             map: mapRef.current,
-            paths: place.boundary,
+            paths: pwp.boundary,
             fillColor: regionStyle.fill,
             fillOpacity: regionStyle.fillOpacity,
             strokeColor: regionStyle.fill,
@@ -1074,11 +1119,11 @@ export default function TripProvider({ children }: { children: ReactNode }) {
           regionPolygonsRef.current.push(polygon);
           if (position) {
             const detailText = pwp.tag === 'avoid'
-              ? place.crimeTypes || ''
-              : place.safetyLabel || place.safetyHighlights || 'Lower violent-crime profile';
+              ? pwp.crimeTypes || ''
+              : pwp.safetyLabel || pwp.safetyHighlights || 'Lower violent-crime profile';
             const labelEl = document.createElement('div');
             const isAvoidTag = pwp.tag === 'avoid';
-            const risk = place.risk || 'medium';
+            const risk = pwp.risk || 'medium';
             const isExtreme = risk === 'extreme';
             const isHighRisk = risk === 'high';
             const bgColor = isAvoidTag
@@ -1088,7 +1133,7 @@ export default function TripProvider({ children }: { children: ReactNode }) {
             const borderColor = isAvoidTag ? 'rgba(255,68,68,0.4)' : 'rgba(0,255,136,0.3)';
             const labelPrefix = isAvoidTag ? '⚠' : '✓';
             labelEl.style.cssText = `font-size:11px;font-weight:700;font-family:'JetBrains Mono',monospace;color:${textColor};background:${bgColor};padding:3px 7px;border-radius:0;border:1px solid ${borderColor};white-space:nowrap;pointer-events:none;text-align:center;line-height:1.4;`;
-            labelEl.innerHTML = `${labelPrefix} ${escapeHtml(place.name)}${detailText ? `<br><span style="font-size:10px;font-weight:500;opacity:0.9">${escapeHtml(detailText)}</span>` : ''}`;
+            labelEl.innerHTML = `${labelPrefix} ${escapeHtml(pwp.name)}${detailText ? `<br><span style="font-size:10px;font-weight:500;opacity:0.9">${escapeHtml(detailText)}</span>` : ''}`;
             const labelMarker = new window.google.maps.marker.AdvancedMarkerElement({
               map: mapRef.current, position, content: labelEl, gmpClickable: false, zIndex: isAvoidTag ? 40 : 25
             });
@@ -1097,12 +1142,12 @@ export default function TripProvider({ children }: { children: ReactNode }) {
         } else if (position) {
           const recommendationCount = Array.isArray(pwp.recommendedBy) ? pwp.recommendedBy.length : 0;
           const recommendationLabel = recommendationCount > 1
-            ? `+${recommendationCount}`
-            : recommendationCount === 1
+              ? `+${recommendationCount}`
+              : recommendationCount === 1
               ? String(pwp.recommendedBy[0] || '').trim().charAt(0).toUpperCase()
               : '';
           const marker = new window.google.maps.marker.AdvancedMarkerElement({
-            map: mapRef.current, position, title: place.name,
+            map: mapRef.current, position, title: pwp.name,
             content: recommendationLabel
               ? createLucidePinIconWithLabel(getTagIconNode(pwp.tag), getTagColor(pwp.tag), recommendationLabel)
               : createLucidePinIcon(getTagIconNode(pwp.tag), getTagColor(pwp.tag)),
@@ -1187,7 +1232,6 @@ export default function TripProvider({ children }: { children: ReactNode }) {
           });
           markersRef.current.push(marker);
         }
-        placesWithPositions.push(pwp);
       }
 
       try {
@@ -1238,70 +1282,114 @@ export default function TripProvider({ children }: { children: ReactNode }) {
       }
     }
 
-  async function bootstrap() {
-    setIsInitializing(true);
-    try {
-      const [config, eventsPayload, sourcesPayload, mePayload] = await Promise.all([
-        fetchJson('/api/config'),
-        fetchJson('/api/events'),
-        fetchJson('/api/sources').catch(() => ({ sources: [] })),
-        fetchJson('/api/me').catch(() => null)
-      ]);
-      if (!mounted) return;
-      const nextProfile = mePayload?.profile || null;
-      const nextUserId = String(nextProfile?.userId || '');
-      setProfile(nextProfile);
-      setAuthUserId(nextUserId);
-      setTripStart(config.tripStart || '');
-      setTripEnd(config.tripEnd || '');
-      setBaseLocationText(config.baseLocation || '');
-      setShowSharedPlaceRecommendations(config.showSharedPlaceRecommendations ?? true);
-      const loadedEvents = Array.isArray(eventsPayload.events) ? eventsPayload.events : [];
-      const loadedPlaces = Array.isArray(eventsPayload.places) ? eventsPayload.places : [];
-      const loadedSources = Array.isArray(sourcesPayload?.sources) ? sourcesPayload.sources : [];
-      setAllEvents(loadedEvents);
-      setAllPlaces(loadedPlaces);
-      setSources(loadedSources);
-      void runBackgroundSync();
+    async function bootstrapData() {
+      setIsInitializing(true);
+      try {
+        const [config, eventsPayload, sourcesPayload, mePayload] = await Promise.all([
+          fetchJson('/api/config'),
+          fetchJson('/api/events'),
+          fetchJson('/api/sources').catch(() => ({ sources: [] })),
+          fetchJson('/api/me').catch(() => null)
+        ]);
+        if (!mounted) return;
+        const nextProfile = mePayload?.profile || null;
+        const nextUserId = String(nextProfile?.userId || '');
+        setProfile(nextProfile);
+        setAuthUserId(nextUserId);
+        setMapsBrowserKey(String(config.mapsBrowserKey || ''));
+        setMapsMapId(String(config.mapsMapId || ''));
+        setTripStart(config.tripStart || '');
+        setTripEnd(config.tripEnd || '');
+        setBaseLocationText(config.baseLocation || '');
+        setShowSharedPlaceRecommendations(config.showSharedPlaceRecommendations ?? true);
+        const loadedEvents = Array.isArray(eventsPayload.events) ? eventsPayload.events : [];
+        const loadedPlaces = Array.isArray(eventsPayload.places) ? eventsPayload.places : [];
+        const loadedSources = Array.isArray(sourcesPayload?.sources) ? sourcesPayload.sources : [];
+        setAllEvents(loadedEvents);
+        setAllPlaces(loadedPlaces);
+        setSources(loadedSources);
+        void runBackgroundSync();
 
-      if (!config.mapsBrowserKey) { setStatusMessage('Missing GOOGLE_MAPS_BROWSER_KEY in .env. Map cannot load.', true); return; }
-      await loadGoogleMapsScript(config.mapsBrowserKey);
-      await window.google.maps.importLibrary('marker');
-      await window.google.maps.importLibrary('visualization');
-      if (!mounted || !mapElementRef.current || !window.google?.maps) return;
-      mapRef.current = new window.google.maps.Map(mapElementRef.current, {
-        center: { lat: 37.7749, lng: -122.4194 }, zoom: 13,
-        mapId: config.mapsMapId || 'DEMO_MAP_ID',
-        colorScheme: 'DARK',
-        mapTypeControl: false, streetViewControl: false, fullscreenControl: false,
-        restriction: {
-          latLngBounds: { north: 37.85, south: 37.68, west: -122.55, east: -122.33 },
-          strictBounds: false
-        }
-      });
-      distanceMatrixRef.current = new window.google.maps.DistanceMatrixService();
-      infoWindowRef.current = new window.google.maps.InfoWindow();
-      const geocodedBase = await geocode(config.baseLocation || '');
-      if (geocodedBase) setBaseMarker(geocodedBase, `Base location: ${config.baseLocation}`);
-      setMapsReady(true);
-      const sampleNote = eventsPayload?.meta?.sampleData ? ' Showing sample data until you sync.' : '';
-      setStatusMessage(`Loaded ${loadedEvents.length} events and ${loadedPlaces.length} curated places.${sampleNote}`);
-    } catch (error) {
-      setStatusMessage(error instanceof Error ? error.message : 'Failed to initialize app.', true);
-    } finally {
-      if (mounted) setIsInitializing(false);
+        const sampleNote = eventsPayload?.meta?.sampleData ? ' Showing sample data until you sync.' : '';
+        setStatusMessage(`Loaded ${loadedEvents.length} events and ${loadedPlaces.length} curated places.${sampleNote}`);
+      } catch (error) {
+        setStatusMessage(error instanceof Error ? error.message : 'Failed to initialize app.', true);
+      } finally {
+        if (mounted) setIsInitializing(false);
+      }
     }
-  }
-    void bootstrap();
+
+    void bootstrapData();
     return () => {
       mounted = false;
-      renderGenerationRef.current += 1;
-      clearMapMarkers();
-      clearRoute();
-      if (baseMarkerRef.current) baseMarkerRef.current.map = null;
-      if (deviceLocationMarkerRef.current) deviceLocationMarkerRef.current.map = null;
     };
-  }, [clearMapMarkers, clearRoute, geocode, loadSourcesFromServer, setBaseMarker, setStatusMessage]);
+  }, [loadSourcesFromServer, setStatusMessage]);
+
+  useEffect(() => {
+    if (!mapRuntimeActive) {
+      cleanupMapRuntime();
+      return;
+    }
+    if (mapsReady || mapRef.current || !mapElementRef.current || isInitializing) {
+      return;
+    }
+
+    let cancelled = false;
+
+    async function initializeMapRuntime() {
+      try {
+        if (!mapsBrowserKey) {
+          setStatusMessage('Missing GOOGLE_MAPS_BROWSER_KEY in .env. Map cannot load.', true);
+          return;
+        }
+        await loadGoogleMapsScript(mapsBrowserKey);
+        await Promise.all([
+          window.google.maps.importLibrary('marker'),
+          window.google.maps.importLibrary('visualization')
+        ]);
+        if (cancelled || !mapElementRef.current || !window.google?.maps) return;
+        mapRef.current = new window.google.maps.Map(mapElementRef.current, {
+          center: { lat: 37.7749, lng: -122.4194 }, zoom: 13,
+          mapId: mapsMapId || 'DEMO_MAP_ID',
+          colorScheme: 'DARK',
+          mapTypeControl: false, streetViewControl: false, fullscreenControl: false,
+          restriction: {
+            latLngBounds: { north: 37.85, south: 37.68, west: -122.55, east: -122.33 },
+            strictBounds: false
+          }
+        });
+        distanceMatrixRef.current = new window.google.maps.DistanceMatrixService();
+        infoWindowRef.current = new window.google.maps.InfoWindow();
+        const geocodedBase = await geocode(baseLocationText || '');
+        if (cancelled || !mapRef.current) return;
+        if (geocodedBase) {
+          setBaseMarker(geocodedBase, `Base location: ${baseLocationText}`);
+        }
+        setMapsReady(true);
+      } catch (error) {
+        if (!cancelled) {
+          setStatusMessage(error instanceof Error ? error.message : 'Failed to initialize map runtime.', true);
+        }
+      }
+    }
+
+    void initializeMapRuntime();
+    return () => {
+      cancelled = true;
+      cleanupMapRuntime();
+    };
+  }, [
+    baseLocationText,
+    cleanupMapRuntime,
+    geocode,
+    isInitializing,
+    mapRuntimeActive,
+    mapsBrowserKey,
+    mapsMapId,
+    mapsReady,
+    setBaseMarker,
+    setStatusMessage
+  ]);
 
   useEffect(() => {
     if (!isAuthenticated) {
@@ -1465,7 +1553,11 @@ export default function TripProvider({ children }: { children: ReactNode }) {
   }, [loadSourcesFromServer, setStatusMessage]);
 
   const handleDeviceLocation = useCallback(() => {
-    if (!navigator.geolocation || !window.google?.maps) { setStatusMessage('Geolocation is not supported in this browser.', true); return; }
+    if (!navigator.geolocation) { setStatusMessage('Geolocation is not supported in this browser.', true); return; }
+    if (!mapsReady || !window.google?.maps || !mapRef.current) {
+      setStatusMessage('Open a map view before using device location.', true);
+      return;
+    }
     setStatusMessage('Finding your current location...');
     navigator.geolocation.getCurrentPosition(
       async (position) => {
@@ -1485,7 +1577,7 @@ export default function TripProvider({ children }: { children: ReactNode }) {
       (error) => { setStatusMessage(error.message || 'Could not get device location.', true); },
       DEVICE_LOCATION_OPTIONS
     );
-  }, [allEvents, effectiveDateFilter, filteredPlaces, focusMapOnOrigin, renderCurrentSelection, setDeviceLocationMarker, setStatusMessage, travelMode]);
+  }, [allEvents, effectiveDateFilter, filteredPlaces, focusMapOnOrigin, mapsReady, renderCurrentSelection, setDeviceLocationMarker, setStatusMessage, travelMode]);
 
   const handleCreateSource = useCallback(async (event) => {
     event.preventDefault();
@@ -1695,6 +1787,7 @@ export default function TripProvider({ children }: { children: ReactNode }) {
     dayPlanItems, plannedRouteStops, travelReadyCount,
     // Handlers
     setStatusMessage,
+    setMapRuntimeActive,
     handleSignOut,
     handleSync, handleDeviceLocation,
     handleCreateSource, handleToggleSourceStatus, handleDeleteSource, handleSyncSource,

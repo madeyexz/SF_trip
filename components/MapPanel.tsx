@@ -1,5 +1,6 @@
 'use client';
 
+import { useEffect } from 'react';
 import { Calendar, House, Siren } from 'lucide-react';
 import { useTrip, TAG_COLORS, getTagIconComponent } from '@/components/providers/TripProvider';
 import { formatTag } from '@/lib/helpers';
@@ -65,6 +66,7 @@ export default function MapPanel() {
     crimeLookbackHours,
     setCrimeLookbackHours,
     crimeLookbackHourOptions,
+    setMapRuntimeActive,
   } = useTrip();
   const isCrimeVisible = !hiddenCategories.has('crime');
   const crimeStatusText = crimeLayerMeta.loading
@@ -72,6 +74,13 @@ export default function MapPanel() {
     : crimeLayerMeta.error
       ? `Update failed: ${crimeLayerMeta.error}`
       : `${crimeLayerMeta.count.toLocaleString()} incidents in ${formatCrimeWindowLabel(crimeLayerMeta.hours || crimeLookbackHours)} · ${formatCrimeUpdatedAt(crimeLayerMeta.generatedAt)}`;
+
+  useEffect(() => {
+    setMapRuntimeActive(true);
+    return () => {
+      setMapRuntimeActive(false);
+    };
+  }, [setMapRuntimeActive]);
 
   return (
     <section className="flex flex-col min-h-0 h-full" ref={mapPanelRef}>

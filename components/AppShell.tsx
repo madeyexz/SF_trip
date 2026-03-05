@@ -5,6 +5,11 @@ import { Button } from '@/components/ui/button';
 import MapPanel from '@/components/MapPanel';
 import { useTrip } from '@/components/providers/TripProvider';
 import {
+  getActiveNavId,
+  shouldShowMapForNavId,
+  shouldShowMapSidebarForNavId
+} from '@/lib/map-ui';
+import {
   Calendar, Coffee, MapPin, Navigation, RefreshCw
 } from 'lucide-react';
 
@@ -16,8 +21,6 @@ const NAV_ITEMS = [
   { id: 'config', href: '/config', icon: RefreshCw, label: 'Config' }
 ];
 
-const MAP_TABS = new Set(['map', 'planning', 'spots']);
-
 export default function AppShell({ children }) {
   const pathname = usePathname();
   const router = useRouter();
@@ -25,9 +28,9 @@ export default function AppShell({ children }) {
     isSyncing, handleSync, handleDeviceLocation
   } = useTrip();
 
-  const activeId = NAV_ITEMS.find((n) => pathname.startsWith(n.href))?.id || 'planning';
-  const showMap = MAP_TABS.has(activeId);
-  const hasMapSidebar = activeId !== 'map' && showMap;
+  const activeId = getActiveNavId(pathname);
+  const showMap = shouldShowMapForNavId(activeId);
+  const hasMapSidebar = shouldShowMapSidebarForNavId(activeId);
   const syncLabel = isSyncing ? 'Syncing...' : 'Sync';
 
   return (
@@ -64,16 +67,16 @@ export default function AppShell({ children }) {
             <RefreshCw size={14} className={isSyncing ? 'animate-spin' : ''} />
             {syncLabel}
           </Button>
-          <Button variant="secondary" id="use-device-location" type="button" size="sm" onClick={handleDeviceLocation}>
-            <Navigation size={14} />
-            My Location
-          </Button>
+          {showMap ? (
+            <Button variant="secondary" id="use-device-location" type="button" size="sm" onClick={handleDeviceLocation}>
+              <Navigation size={14} />
+              My Location
+            </Button>
+          ) : null}
         </div>
       </header>
       <div className={`min-h-0 flex-1 grid items-stretch ${hasMapSidebar ? 'layout-sidebar grid-cols-[minmax(0,3fr)_5fr]' : showMap ? 'grid-cols-1' : ''}`} style={showMap ? undefined : { display: 'contents' }}>
-        <div className={showMap ? 'map-panel-shell min-h-0' : ''} style={showMap ? undefined : { position: 'absolute', width: 0, height: 0, overflow: 'hidden', pointerEvents: 'none' }} aria-hidden={!showMap}>
-          <MapPanel />
-        </div>
+        {showMap ? <div className="map-panel-shell min-h-0"><MapPanel /></div> : null}
         {children}
       </div>
     </main>
