@@ -1,6 +1,5 @@
 import { deleteSourcePayload, syncSingleSource, updateSourcePayload } from '@/lib/events';
-import { runWithAuthenticatedClient, runWithOwnerClient } from '@/lib/api-guards';
-import { getPlannerRoomCodeFromUrl } from '@/lib/planner-api';
+import { runWithAuthenticatedClient } from '@/lib/api-guards';
 
 export const runtime = 'nodejs';
 
@@ -9,10 +8,7 @@ type RouteContext = {
 };
 
 export async function PATCH(request: Request, context: RouteContext) {
-  const roomCode = getPlannerRoomCodeFromUrl(request.url);
-  const runGuarded = roomCode ? runWithOwnerClient : runWithAuthenticatedClient;
-
-  return runGuarded(async () => {
+  return runWithAuthenticatedClient(async () => {
     const { sourceId } = await context.params;
     let body = null;
 
@@ -28,7 +24,7 @@ export async function PATCH(request: Request, context: RouteContext) {
     }
 
     try {
-      const source = await updateSourcePayload(sourceId, body || {}, roomCode);
+      const source = await updateSourcePayload(sourceId, body || {});
       return Response.json({ source });
     } catch (error) {
       return Response.json(
@@ -42,14 +38,12 @@ export async function PATCH(request: Request, context: RouteContext) {
 }
 
 export async function POST(request: Request, context: RouteContext) {
-  const roomCode = getPlannerRoomCodeFromUrl(request.url);
-  const runGuarded = roomCode ? runWithOwnerClient : runWithAuthenticatedClient;
-
-  return runGuarded(async () => {
+  void request;
+  return runWithAuthenticatedClient(async () => {
     const { sourceId } = await context.params;
 
     try {
-      const result = await syncSingleSource(sourceId, roomCode);
+      const result = await syncSingleSource(sourceId);
       return Response.json(result);
     } catch (error) {
       return Response.json(
@@ -63,14 +57,12 @@ export async function POST(request: Request, context: RouteContext) {
 }
 
 export async function DELETE(request: Request, context: RouteContext) {
-  const roomCode = getPlannerRoomCodeFromUrl(request.url);
-  const runGuarded = roomCode ? runWithOwnerClient : runWithAuthenticatedClient;
-
-  return runGuarded(async () => {
+  void request;
+  return runWithAuthenticatedClient(async () => {
     const { sourceId } = await context.params;
 
     try {
-      const result = await deleteSourcePayload(sourceId, roomCode);
+      const result = await deleteSourcePayload(sourceId);
       return Response.json(result);
     } catch (error) {
       return Response.json(

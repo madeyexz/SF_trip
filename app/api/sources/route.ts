@@ -1,22 +1,18 @@
 import { createSourcePayload, loadSourcesPayload } from '@/lib/events';
-import { runWithAuthenticatedClient, runWithOwnerClient } from '@/lib/api-guards';
-import { getPlannerRoomCodeFromUrl } from '@/lib/planner-api';
+import { runWithAuthenticatedClient } from '@/lib/api-guards';
 
 export const runtime = 'nodejs';
 
 export async function GET(request: Request) {
+  void request;
   return runWithAuthenticatedClient(async () => {
-    const roomCode = getPlannerRoomCodeFromUrl(request.url);
-    const payload = await loadSourcesPayload(roomCode);
+    const payload = await loadSourcesPayload();
     return Response.json(payload);
   });
 }
 
 export async function POST(request: Request) {
-  const roomCode = getPlannerRoomCodeFromUrl(request.url);
-  const runGuarded = roomCode ? runWithOwnerClient : runWithAuthenticatedClient;
-
-  return runGuarded(async () => {
+  return runWithAuthenticatedClient(async () => {
     let body = null;
 
     try {
@@ -31,7 +27,7 @@ export async function POST(request: Request) {
     }
 
     try {
-      const source = await createSourcePayload(body, roomCode);
+      const source = await createSourcePayload(body);
       return Response.json({ source });
     } catch (error) {
       return Response.json(

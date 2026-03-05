@@ -4,7 +4,6 @@ import path from 'node:path';
 import ical from 'node-ical';
 import { ConvexHttpClient } from 'convex/browser';
 import { getScopedConvexClient } from './convex-client-context.ts';
-import { normalizePlannerRoomCode } from './planner-api.ts';
 import { validateIngestionSourceUrlForFetch } from './security-server.ts';
 
 const DOC_LOCATION_FILE = path.join(process.cwd(), 'docs', 'my_location.md');
@@ -191,10 +190,6 @@ export async function resolveAddressCoordinates(addressText) {
   };
 }
 
-function normalizeSourceRoomCode(roomCodeInput) {
-  return normalizePlannerRoomCode(roomCodeInput);
-}
-
 function buildSourceKey(sourceType, url) {
   return `${cleanText(sourceType).toLowerCase()}:${normalizeComparableUrl(url)}`;
 }
@@ -290,15 +285,14 @@ function appendRequiredDefaultSourceUrls(urls, sourceType) {
   return nextUrls;
 }
 
-export async function loadSourcesPayload(roomCodeInput = '') {
-  const roomCode = normalizeSourceRoomCode(roomCodeInput);
-  const sources = await loadSourcesFromConvex(roomCode);
-  const fallbackSources = getRequiredDefaultSources(roomCode);
+export async function loadSourcesPayload() {
+  const sources = await loadSourcesFromConvex();
+  const fallbackSources = getRequiredDefaultSources();
   // Firecrawl/RSS disabled: do not force Beehiiv as a required event source.
   // const requiredEventSources = [makeFallbackSource('event', DEFAULT_BEEHIIV_RSS_URL)];
 
   if (Array.isArray(sources) && sources.length > 0) {
-    const withFallbacks = appendMissingRequiredDefaultSources(sources, roomCode);
+    const withFallbacks = appendMissingRequiredDefaultSources(sources);
 
     return {
       sources: withFallbacks,
@@ -312,8 +306,7 @@ export async function loadSourcesPayload(roomCodeInput = '') {
   };
 }
 
-export async function createSourcePayload(input, roomCodeInput = '') {
-  const roomCode = normalizeSourceRoomCode(roomCodeInput);
+export async function createSourcePayload(input) {
   const client = createConvexClient();
   if (!client) {
     throw new Error('CONVEX_URL is missing. Configure Convex to persist room sources.');
@@ -329,7 +322,6 @@ export async function createSourcePayload(input, roomCodeInput = '') {
   await assertValidSourceUrl(url);
 
   const source = await client.mutation('sources:createSource', {
-    roomCode: roomCode || undefined,
     sourceType,
     url,
     label: label || url
@@ -342,8 +334,7 @@ export async function createSourcePayload(input, roomCodeInput = '') {
   return normalized;
 }
 
-export async function updateSourcePayload(sourceId, input, roomCodeInput = '') {
-  const roomCode = normalizeSourceRoomCode(roomCodeInput);
+export async function updateSourcePayload(sourceId, input) {
   const client = createConvexClient();
   if (!client) {
     throw new Error('CONVEX_URL is missing. Configure Convex to persist room sources.');
@@ -366,7 +357,6 @@ export async function updateSourcePayload(sourceId, input, roomCodeInput = '') {
 
   const source = await client.mutation('sources:updateSource', {
     sourceId,
-    roomCode: roomCode || undefined,
     ...patch
   });
   if (!source) {
@@ -381,16 +371,14 @@ export async function updateSourcePayload(sourceId, input, roomCodeInput = '') {
   return normalized;
 }
 
-export async function deleteSourcePayload(sourceId, roomCodeInput = '') {
-  const roomCode = normalizeSourceRoomCode(roomCodeInput);
+export async function deleteSourcePayload(sourceId) {
   const client = createConvexClient();
   if (!client) {
     throw new Error('CONVEX_URL is missing. Configure Convex to persist room sources.');
   }
 
   const result = await client.mutation('sources:deleteSource', {
-    sourceId,
-    roomCode: roomCode || undefined
+    sourceId
   });
   if (!result?.deleted) {
     throw new Error('Source not found.');
@@ -399,10 +387,9 @@ export async function deleteSourcePayload(sourceId, roomCodeInput = '') {
   return { deleted: true };
 }
 
-export async function loadEventsPayload(roomCodeInput = '') {
-  const roomCode = normalizeSourceRoomCode(roomCodeInput);
+export async function loadEventsPayload() {
   const fallbackPlaces = await loadStaticPlaces();
-  const sources = appendMissingRequiredDefaultSources(await loadSourcesFromConvex(roomCode), roomCode);
+  const sources = appendMissingRequiredDefaultSources(await loadSourcesFromConvex());
   const sourceCalendars = getActiveSourceUrls(sources, 'event');
   const calendars = appendRequiredDefaultSourceUrls(sourceCalendars, 'event');
   const spotsPayload = await loadSpotsFromConvex();
@@ -535,10 +522,9 @@ export async function saveCachedRoutePayload(cacheKey, routePayloadInput) {
   }
 }
 
-export async function syncEvents(roomCodeInput = '') {
-  const roomCode = normalizeSourceRoomCode(roomCodeInput);
+export async function syncEvents() {
   const nowIso = new Date().toISOString();
-  const sourceSnapshot = await getSourceSnapshotForSync(roomCode);
+  const sourceSnapshot = await getSourceSnapshotForSync();
   const rssFallbackStateBySourceUrl = await loadRssSeenBySourceUrlFromEventsCache();
   const eventSyncResult = await syncEventsFromSources({
     eventSources: sourceSnapshot.eventSources,
@@ -582,19 +568,17 @@ export async function syncEvents(roomCodeInput = '') {
       sourceSnapshot.eventSources,
       eventSyncResult.errors,
       nowIso,
-      eventSyncResult.rssStateBySourceUrl,
-      roomCode
+      eventSyncResult.rssStateBySourceUrl
     ),
-    saveSourceSyncStatus(sourceSnapshot.spotSources, spotSyncResult.errors, nowIso, {}, roomCode),
+    saveSourceSyncStatus(sourceSnapshot.spotSources, spotSyncResult.errors, nowIso, {}),
     saveRssSeenBySourceUrlToEventsCache(eventSyncResult.rssStateBySourceUrl)
   ]);
 
   return payload;
 }
 
-export async function syncSingleSource(sourceId, roomCodeInput = '') {
-  const roomCode = normalizeSourceRoomCode(roomCodeInput);
-  const sourcesPayload = await loadSourcesPayload(roomCode);
+export async function syncSingleSource(sourceId) {
+  const sourcesPayload = await loadSourcesPayload();
   const allSources = Array.isArray(sourcesPayload?.sources) ? sourcesPayload.sources : [];
   const source = allSources.find((s) => s.id === sourceId);
 
@@ -611,7 +595,7 @@ export async function syncSingleSource(sourceId, roomCodeInput = '') {
       rssFallbackStateBySourceUrl
     });
     await Promise.allSettled([
-      saveSourceSyncStatus([source], result.errors, nowIso, result.rssStateBySourceUrl, roomCode),
+      saveSourceSyncStatus([source], result.errors, nowIso, result.rssStateBySourceUrl),
       saveRssSeenBySourceUrlToEventsCache(result.rssStateBySourceUrl)
     ]);
     return { syncedAt: nowIso, events: result.events.length, errors: result.errors };
@@ -620,7 +604,7 @@ export async function syncSingleSource(sourceId, roomCodeInput = '') {
   const result = await syncSpotsFromSources({
     spotSources: [source]
   });
-  await saveSourceSyncStatus([source], result.errors, nowIso, {}, roomCode);
+  await saveSourceSyncStatus([source], result.errors, nowIso, {});
   return { syncedAt: nowIso, spots: result.places.length, errors: result.errors };
 }
 
@@ -712,7 +696,7 @@ async function saveEventsToConvex(payload) {
   }
 }
 
-async function loadSourcesFromConvex(roomCode = '') {
+async function loadSourcesFromConvex() {
   const client = createConvexClient();
 
   if (!client) {
@@ -721,7 +705,6 @@ async function loadSourcesFromConvex(roomCode = '') {
 
   try {
     const rows = await client.query('sources:listSources', {
-      roomCode: roomCode || undefined
     });
     if (!Array.isArray(rows)) {
       return [];
@@ -1054,8 +1037,8 @@ async function saveRssSeenBySourceUrlToEventsCache(rssStateBySourceUrl) {
   });
 }
 
-async function getSourceSnapshotForSync(roomCode = '') {
-  const convexSources = appendMissingRequiredDefaultSources(await loadSourcesFromConvex(roomCode), roomCode);
+async function getSourceSnapshotForSync() {
+  const convexSources = appendMissingRequiredDefaultSources(await loadSourcesFromConvex());
   const eventSourcesFromConvex = getActiveSourcesByType(convexSources, 'event');
   const spotSourcesFromConvex = getActiveSourcesByType(convexSources, 'spot');
   const eventSources = eventSourcesFromConvex;
@@ -1718,7 +1701,7 @@ function scoreSpot(spot) {
   return score;
 }
 
-async function saveSourceSyncStatus(sources, errors, syncedAt, rssStateBySourceUrl = {}, roomCode = '') {
+async function saveSourceSyncStatus(sources, errors, syncedAt, rssStateBySourceUrl = {}) {
   const client = createConvexClient();
 
   if (!client || !Array.isArray(sources) || sources.length === 0) {
@@ -1741,7 +1724,6 @@ async function saveSourceSyncStatus(sources, errors, syncedAt, rssStateBySourceU
       const rssStateJson = serializeRssSeenState(rssStateBySourceUrl?.[sourceUrlKey]);
       const patch = {
         sourceId: source.id,
-        roomCode: roomCode || undefined,
         lastSyncedAt: syncedAt,
         lastError: firstErrorBySource.get(source.id) || ''
       };

@@ -1,21 +1,18 @@
 import { syncEvents } from '@/lib/events';
-import { runWithAuthenticatedClient, runWithOwnerClient } from '@/lib/api-guards';
-import { getPlannerRoomCodeFromUrl } from '@/lib/planner-api';
+import { runWithAuthenticatedClient } from '@/lib/api-guards';
 
 export const runtime = 'nodejs';
 
 const syncInFlightByRoom = new Map<string, Promise<any>>();
 
 export async function POST(request: Request) {
-  const roomCode = getPlannerRoomCodeFromUrl(request.url);
-  const runGuarded = roomCode ? runWithOwnerClient : runWithAuthenticatedClient;
-
-  return runGuarded(async () => {
-    const syncKey = roomCode || '__personal__';
+  void request;
+  return runWithAuthenticatedClient(async () => {
+    const syncKey = '__personal__';
 
     try {
       if (!syncInFlightByRoom.has(syncKey)) {
-        const syncTask = syncEvents(roomCode).finally(() => {
+        const syncTask = syncEvents().finally(() => {
           syncInFlightByRoom.delete(syncKey);
         });
         syncInFlightByRoom.set(syncKey, syncTask);

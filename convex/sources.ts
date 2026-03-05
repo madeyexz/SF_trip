@@ -3,8 +3,6 @@ import type { Id } from './_generated/dataModel';
 import { v } from 'convex/values';
 import { requireAuthenticatedUserId } from './authz';
 
-const ROOM_CODE_PATTERN = /^[a-z0-9_-]{2,64}$/;
-
 const sourceTypeValidator = v.union(v.literal('event'), v.literal('spot'));
 const sourceStatusValidator = v.union(v.literal('active'), v.literal('paused'));
 const sourceRecordValidator = v.object({
@@ -66,38 +64,8 @@ function isRequiredDefaultSource(sourceType: 'event' | 'spot', url: string) {
   return REQUIRED_DEFAULT_SPOT_URLS.has(comparableUrl);
 }
 
-function normalizeRoomCode(value: unknown) {
-  const nextValue = cleanText(value).toLowerCase().replace(/[^a-z0-9_-]/g, '');
-  if (!ROOM_CODE_PATTERN.test(nextValue)) {
-    return '';
-  }
-  return nextValue;
-}
-
 function toPersonalRoomCode(userId: string) {
   return `self:${userId}`;
-}
-
-function resolveRoomCode(userId: string, roomCodeInput: unknown) {
-  const normalized = normalizeRoomCode(roomCodeInput);
-  if (normalized) {
-    return normalized;
-  }
-  return toPersonalRoomCode(userId);
-}
-
-async function resolveManagedRoomCode(ctx: any, userId: string, roomCodeInput: unknown) {
-  const normalizedRoomCode = normalizeRoomCode(roomCodeInput);
-  if (!normalizedRoomCode) {
-    return toPersonalRoomCode(userId);
-  }
-
-  const user = await ctx.db.get(userId as Id<'users'>);
-  if (user?.role !== 'owner') {
-    throw new Error('Owner role required.');
-  }
-
-  return normalizedRoomCode;
 }
 
 function buildSourceResponse(row: SourceRecordLike) {
@@ -173,13 +141,11 @@ function assertPublicSourceUrl(url: string) {
 }
 
 export const listSources = query({
-  args: {
-    roomCode: v.optional(v.string())
-  },
+  args: {},
   returns: v.array(sourceRecordValidator),
-  handler: async (ctx, args) => {
+  handler: async (ctx) => {
     const userId = await requireAuthenticatedUserId(ctx);
-    const roomCode = resolveRoomCode(userId, args.roomCode);
+    const roomCode = toPersonalRoomCode(userId);
     const rows = await ctx.db
       .query('sources')
       .withIndex('by_room_updated_at', (q) => q.eq('roomCode', roomCode))
@@ -193,13 +159,12 @@ export const listSources = query({
 
 export const listActiveSources = query({
   args: {
-    roomCode: v.optional(v.string()),
     sourceType: sourceTypeValidator
   },
   returns: v.array(sourceRecordValidator),
   handler: async (ctx, args) => {
     const userId = await requireAuthenticatedUserId(ctx);
-    const roomCode = resolveRoomCode(userId, args.roomCode);
+    const roomCode = toPersonalRoomCode(userId);
     const rows = await ctx.db
       .query('sources')
       .withIndex('by_room_type_status', (q) =>
@@ -213,7 +178,6 @@ export const listActiveSources = query({
 
 export const createSource = mutation({
   args: {
-    roomCode: v.optional(v.string()),
     sourceType: sourceTypeValidator,
     url: v.string(),
     label: v.optional(v.string())
@@ -221,7 +185,7 @@ export const createSource = mutation({
   returns: sourceRecordValidator,
   handler: async (ctx, args) => {
     const userId = await requireAuthenticatedUserId(ctx);
-    const roomCode = await resolveManagedRoomCode(ctx, userId, args.roomCode);
+    const roomCode = toPersonalRoomCode(userId);
     const now = new Date().toISOString();
     const nextUrl = args.url.trim();
     const nextLabel = (args.label || '').trim() || nextUrl;
@@ -275,7 +239,6 @@ export const createSource = mutation({
 export const updateSource = mutation({
   args: {
     sourceId: v.id('sources'),
-    roomCode: v.optional(v.string()),
     label: v.optional(v.string()),
     status: v.optional(sourceStatusValidator),
     lastSyncedAt: v.optional(v.string()),
@@ -285,7 +248,7 @@ export const updateSource = mutation({
   returns: v.union(v.null(), sourceRecordValidator),
   handler: async (ctx, args) => {
     const userId = await requireAuthenticatedUserId(ctx);
-    const roomCode = await resolveManagedRoomCode(ctx, userId, args.roomCode);
+    const roomCode = toPersonalRoomCode(userId);
 
     const existing = await ctx.db.get(args.sourceId);
     if (!existing || existing.roomCode !== roomCode) {
@@ -356,13 +319,12 @@ export const updateSource = mutation({
 
 export const deleteSource = mutation({
   args: {
-    sourceId: v.id('sources'),
-    roomCode: v.optional(v.string())
+    sourceId: v.id('sources')
   },
   returns: deleteSourceResultValidator,
   handler: async (ctx, args) => {
     const userId = await requireAuthenticatedUserId(ctx);
-    const roomCode = await resolveManagedRoomCode(ctx, userId, args.roomCode);
+    const roomCode = toPersonalRoomCode(userId);
 
     const existing = await ctx.db.get(args.sourceId);
     if (!existing || existing.roomCode !== roomCode) {
