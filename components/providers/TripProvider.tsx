@@ -43,6 +43,7 @@ import {
   applyDeviceLocation,
   DEVICE_LOCATION_OPTIONS
 } from '@/lib/device-location';
+import { getOrCreateCoalescedPromise } from '@/lib/async-coalesce';
 
 const TAG_COLORS = {
   eat: '#FF8800',
@@ -207,13 +208,16 @@ export default function TripProvider({ children }: { children: ReactNode }) {
   const lastCrimeFetchAtRef = useRef(0);
   const lastCrimeQueryRef = useRef('');
   const positionCacheRef = useRef<Map<string, any>>(new Map());
+  const positionInFlightRef = useRef<Map<string, Promise<any>>>(new Map());
   const geocodeStoreRef = useRef<Map<string, any>>(new Map());
+  const geocodeInFlightRef = useRef<Map<string, Promise<any>>>(new Map());
   const travelTimeCacheRef = useRef<Map<string, any>>(new Map());
   const plannedRouteCacheRef = useRef<Map<string, any>>(new Map());
   const placePhotoCacheRef = useRef<Map<string, any[]>>(new Map());
   const placePhotoGalleryIndexRef = useRef<Map<string, number>>(new Map());
   const activePlaceInfoWindowKeyRef = useRef('');
   const plannerHydratedRef = useRef(false);
+  const renderGenerationRef = useRef(0);
 
   const [status, setStatus] = useState('Loading trip map...');
   const [statusError, setStatusError] = useState(false);
@@ -600,20 +604,44 @@ export default function TripProvider({ children }: { children: ReactNode }) {
 
   const geocode = useCallback(async (address) => {
     if (!address || !window.google?.maps) return null;
-    try {
-      const response = await fetch('/api/geocode', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ address })
-      });
-      const payload = await response.json().catch(() => null);
-      if (!response.ok) return null;
-      const lat = Number(payload?.lat);
-      const lng = Number(payload?.lng);
-      if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
-      return new window.google.maps.LatLng(lat, lng);
-    } catch { return null; }
-  }, []);
+    const addressKey = normalizeAddressKey(address);
+    if (addressKey) {
+      const cached = geocodeStoreRef.current.get(addressKey);
+      if (cached && Number.isFinite(cached.lat) && Number.isFinite(cached.lng)) {
+        return new window.google.maps.LatLng(cached.lat, cached.lng);
+      }
+    }
+
+    const requestKey = addressKey || String(address);
+    return getOrCreateCoalescedPromise(geocodeInFlightRef.current, requestKey, async () => {
+      if (addressKey) {
+        const cached = geocodeStoreRef.current.get(addressKey);
+        if (cached && Number.isFinite(cached.lat) && Number.isFinite(cached.lng)) {
+          return new window.google.maps.LatLng(cached.lat, cached.lng);
+        }
+      }
+
+      try {
+        const response = await fetch('/api/geocode', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ address })
+        });
+        const payload = await response.json().catch(() => null);
+        if (!response.ok) return null;
+        const lat = Number(payload?.lat);
+        const lng = Number(payload?.lng);
+        if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+        if (addressKey) {
+          geocodeStoreRef.current.set(addressKey, { lat, lng });
+          saveGeocodeCache();
+        }
+        return new window.google.maps.LatLng(lat, lng);
+      } catch {
+        return null;
+      }
+    });
+  }, [saveGeocodeCache]);
 
   const parseLatLngFromMapUrl = useCallback((url) => {
     if (!url || !window.google?.maps) return null;
@@ -632,35 +660,42 @@ export default function TripProvider({ children }: { children: ReactNode }) {
     async ({ cacheKey, mapLink, fallbackLocation, lat, lng }) => {
       const cached = positionCacheRef.current.get(cacheKey);
       if (cached) return cached;
+      return getOrCreateCoalescedPromise(positionInFlightRef.current, cacheKey, async () => {
+        const existing = positionCacheRef.current.get(cacheKey);
+        if (existing) return existing;
 
-      if (Number.isFinite(lat) && Number.isFinite(lng) && window.google?.maps) {
-        const pos = new window.google.maps.LatLng(lat, lng);
-        positionCacheRef.current.set(cacheKey, pos);
-        return pos;
-      }
-
-      const fromMap = parseLatLngFromMapUrl(mapLink);
-      if (fromMap) { positionCacheRef.current.set(cacheKey, fromMap); return fromMap; }
-
-      const addressKey = normalizeAddressKey(fallbackLocation);
-      if (addressKey) {
-        const cc = geocodeStoreRef.current.get(addressKey);
-        if (cc && Number.isFinite(cc.lat) && Number.isFinite(cc.lng) && window.google?.maps) {
-          const pos = new window.google.maps.LatLng(cc.lat, cc.lng);
+        if (Number.isFinite(lat) && Number.isFinite(lng) && window.google?.maps) {
+          const pos = new window.google.maps.LatLng(lat, lng);
           positionCacheRef.current.set(cacheKey, pos);
           return pos;
         }
-      }
 
-      const geocoded = await geocode(fallbackLocation);
-      if (geocoded) {
-        positionCacheRef.current.set(cacheKey, geocoded);
-        if (addressKey) {
-          geocodeStoreRef.current.set(addressKey, { lat: geocoded.lat(), lng: geocoded.lng() });
-          saveGeocodeCache();
+        const fromMap = parseLatLngFromMapUrl(mapLink);
+        if (fromMap) {
+          positionCacheRef.current.set(cacheKey, fromMap);
+          return fromMap;
         }
-      }
-      return geocoded;
+
+        const addressKey = normalizeAddressKey(fallbackLocation);
+        if (addressKey) {
+          const cc = geocodeStoreRef.current.get(addressKey);
+          if (cc && Number.isFinite(cc.lat) && Number.isFinite(cc.lng) && window.google?.maps) {
+            const pos = new window.google.maps.LatLng(cc.lat, cc.lng);
+            positionCacheRef.current.set(cacheKey, pos);
+            return pos;
+          }
+        }
+
+        const geocoded = await geocode(fallbackLocation);
+        if (geocoded) {
+          positionCacheRef.current.set(cacheKey, geocoded);
+          if (addressKey) {
+            geocodeStoreRef.current.set(addressKey, { lat: geocoded.lat(), lng: geocoded.lng() });
+            saveGeocodeCache();
+          }
+        }
+        return geocoded;
+      });
     },
     [geocode, parseLatLngFromMapUrl, saveGeocodeCache]
   );
@@ -941,6 +976,9 @@ export default function TripProvider({ children }: { children: ReactNode }) {
   const renderCurrentSelection = useCallback(
     async (eventsInput, placesInput, dateFilter, activeTravelMode, shouldFitBounds = true) => {
       if (!mapsReady || !window.google?.maps || !mapRef.current) return;
+      const renderGeneration = renderGenerationRef.current + 1;
+      renderGenerationRef.current = renderGeneration;
+      const isStaleRender = () => renderGenerationRef.current !== renderGeneration;
       clearMapMarkers();
       const filteredEvents = (dateFilter
         ? eventsInput.filter((e) => normalizeDateKey(e.startDateISO) === dateFilter)
@@ -953,6 +991,7 @@ export default function TripProvider({ children }: { children: ReactNode }) {
           cacheKey: `event:${event.eventUrl}`, mapLink: event.googleMapsUrl,
           fallbackLocation: event.address || event.locationText, lat: event.lat, lng: event.lng
         });
+        if (isStaleRender()) return;
         const ewp = { ...event, _position: position, travelDurationText: '' };
         if (position) {
           const days = daysFromNow(event.startDateISO);
@@ -996,6 +1035,7 @@ export default function TripProvider({ children }: { children: ReactNode }) {
           cacheKey: `place:${place.id || place.name}`, mapLink: place.mapLink,
           fallbackLocation: place.location, lat: place.lat, lng: place.lng
         });
+        if (isStaleRender()) return;
         const pwp = { ...place, _position: position, tag: normalizePlaceTag(place.tag) };
         const hasBoundary = Array.isArray(place.boundary) && place.boundary.length >= 3;
         const isRegion = hasBoundary && (pwp.tag === 'avoid' || pwp.tag === 'safe');
@@ -1152,10 +1192,12 @@ export default function TripProvider({ children }: { children: ReactNode }) {
 
       try {
         const evtsWithTravel = await calculateTravelTimes(evtsWithPositions, activeTravelMode);
+        if (isStaleRender()) return;
         setVisibleEvents(evtsWithTravel);
         setVisiblePlaces(placesWithPositions);
         if (shouldFitBounds) fitMapToVisiblePoints(evtsWithTravel, placesWithPositions);
       } catch (error) {
+        if (isStaleRender()) return;
         setStatusMessage(error instanceof Error ? error.message : 'Could not calculate travel times.', true);
         setVisibleEvents(evtsWithPositions);
         setVisiblePlaces(placesWithPositions);
@@ -1253,6 +1295,7 @@ export default function TripProvider({ children }: { children: ReactNode }) {
     void bootstrap();
     return () => {
       mounted = false;
+      renderGenerationRef.current += 1;
       clearMapMarkers();
       clearRoute();
       if (baseMarkerRef.current) baseMarkerRef.current.map = null;
