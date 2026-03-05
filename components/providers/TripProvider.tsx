@@ -245,6 +245,7 @@ export default function TripProvider({ children }: { children: ReactNode }) {
   const [placeSearchResults, setPlaceSearchResults] = useState<any[]>([]);
   const [searchResultTagDrafts, setSearchResultTagDrafts] = useState<Record<string, string>>({});
   const [savingSearchResultId, setSavingSearchResultId] = useState('');
+  const [deletingCustomSpotId, setDeletingCustomSpotId] = useState('');
   const [isSyncing, setIsSyncing] = useState(false);
   const [isInitializing, setIsInitializing] = useState(true);
   const [placeTagFilter, setPlaceTagFilter] = useState('all');
@@ -1736,6 +1737,41 @@ export default function TripProvider({ children }: { children: ReactNode }) {
     }
   }, [placeSearchResults, searchResultTagDrafts, setStatusMessage]);
 
+  const handleDeleteCustomSpot = useCallback(async (spotId) => {
+    spotId = String(spotId || '').trim();
+    if (!spotId) return;
+
+    const deletedSpotName = allPlaces.find((place) => place.id === spotId)?.name
+      || placeSearchResults.find((candidate) => candidate.savedSpotId === spotId)?.name
+      || '';
+
+    setDeletingCustomSpotId(spotId);
+    try {
+      const response = await fetchJson(`/api/custom-spots/${encodeURIComponent(spotId)}`, {
+        method: 'DELETE'
+      });
+      if (!response?.deleted) {
+        throw new Error('Delete response missing confirmation.');
+      }
+
+      setAllPlaces((prev) => prev.filter((place) => place.id !== spotId));
+      setPlaceSearchResults((prev) => prev.map((candidate) => (
+        candidate.savedSpotId === spotId
+          ? {
+              ...candidate,
+              savedSpotId: '',
+              savedTag: ''
+            }
+          : candidate
+      )));
+      setStatusMessage(`Deleted custom spot "${deletedSpotName || 'Saved spot'}".`);
+    } catch (error) {
+      setStatusMessage(error instanceof Error ? error.message : 'Failed to delete custom spot.', true);
+    } finally {
+      setDeletingCustomSpotId('');
+    }
+  }, [allPlaces, placeSearchResults, setStatusMessage]);
+
   const handleSearchMapLocation = useCallback(async (queryInput) => {
     if (isSearchingMapLocation) return;
     const trimmedQuery = String(queryInput || '').trim();
@@ -2001,7 +2037,7 @@ export default function TripProvider({ children }: { children: ReactNode }) {
     selectedDate, setSelectedDate, showAllEvents, setShowAllEvents,
     travelMode, setTravelMode, baseLocationText, setBaseLocationText,
     mapSearchQuery, setMapSearchQuery, isSearchingMapLocation, searchLocationError,
-    placeSearchResults, searchResultTagDrafts, savingSearchResultId,
+    placeSearchResults, searchResultTagDrafts, savingSearchResultId, deletingCustomSpotId,
     hasSearchLocation: placeSearchResults.length > 0,
     isSyncing, placeTagFilter, setPlaceTagFilter, hiddenCategories, toggleCategory,
     calendarMonthISO, setCalendarMonthISO,
@@ -2025,7 +2061,7 @@ export default function TripProvider({ children }: { children: ReactNode }) {
     handleSignOut,
     handleSync, handleDeviceLocation,
     handleSearchMapLocation, handleClearSearchLocation, handleSetSearchResultTag,
-    handleFocusSearchResult, handleSaveSearchResultAsSpot,
+    handleFocusSearchResult, handleSaveSearchResultAsSpot, handleDeleteCustomSpot,
     handleCreateSource, handleToggleSourceStatus, handleDeleteSource, handleSyncSource,
     handleSaveTripDates, handleSaveBaseLocation, handleSaveSharedPlaceRecommendations,
     handleExportPlannerIcs, handleAddDayPlanToGoogleCalendar,

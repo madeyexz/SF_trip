@@ -47,7 +47,8 @@ function SpotsItinerarySkeleton() {
 export default function SpotsItinerary() {
   const {
     visiblePlaces, placeTagFilter, setPlaceTagFilter,
-    placeTagOptions, addPlaceToDayPlan, selectedDate, isInitializing
+    placeTagOptions, addPlaceToDayPlan, handleDeleteCustomSpot, deletingCustomSpotId,
+    selectedDate, isInitializing
   } = useTrip();
 
   if (isInitializing) {
@@ -122,7 +123,20 @@ export default function SpotsItinerary() {
                       {place.crimeTypes ? <p className="my-0 text-[0.76rem] text-accent/80 pl-[22px]">Watch for: {place.crimeTypes}</p> : null}
                     </div>
                   ) : (
-                    <Button type="button" size="sm" variant="secondary" onClick={() => addPlaceToDayPlan(place)}>Add to day</Button>
+                    <div className="mt-1.5 flex flex-wrap gap-2">
+                      <Button type="button" size="sm" variant="secondary" onClick={() => addPlaceToDayPlan(place)}>Add to day</Button>
+                      {place.sourceType === 'custom_spot' ? (
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="danger"
+                          disabled={deletingCustomSpotId === place.id}
+                          onClick={() => { void handleDeleteCustomSpot(place.id); }}
+                        >
+                          {deletingCustomSpotId === place.id ? 'Deleting...' : 'Delete Spot'}
+                        </Button>
+                      ) : null}
+                    </div>
                   )}
                   {(safeMapLink || safeCornerLink) ? (
                     <p className="my-0.5 text-[0.82rem] text-foreground-secondary leading-relaxed flex flex-wrap gap-3">

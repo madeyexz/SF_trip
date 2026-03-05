@@ -65,8 +65,10 @@ describe('schema migration guards', () => {
     assert.equal(customSpotsSource.includes('customSpots: defineTable({'), true);
     assert.equal(customSpotsSource.includes('userId: v.string()'), true);
     assert.equal(customSpotsSource.includes('sourceKey: v.string()'), true);
+    assert.equal(customSpotsSource.includes('id: v.string()'), true);
     assert.equal(customSpotsSource.includes('tag: v.string()'), true);
     assert.equal(customSpotsSource.includes(".index('by_user_source_key', ['userId', 'sourceKey'])"), true);
+    assert.equal(customSpotsSource.includes(".index('by_user_spot_id', ['userId', 'id'])"), true);
     assert.equal(customSpotsSource.includes(".index('by_user_updated_at', ['userId', 'updatedAt'])"), true);
     assert.equal(customSpotsSource.includes('roomCode'), false);
   });

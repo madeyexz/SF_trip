@@ -88,6 +88,7 @@ export default defineSchema({
     updatedAt: v.string()
   })
     .index('by_user_source_key', ['userId', 'sourceKey'])
+    .index('by_user_spot_id', ['userId', 'id'])
     .index('by_user_updated_at', ['userId', 'updatedAt']),
   placeRecommendations: defineTable({
     placeKey: v.string(),

@@ -78,12 +78,14 @@ export default function MapPanel() {
     placeSearchResults,
     searchResultTagDrafts,
     savingSearchResultId,
+    deletingCustomSpotId,
     hasSearchLocation,
     handleSearchMapLocation,
     handleClearSearchLocation,
     handleSetSearchResultTag,
     handleFocusSearchResult,
     handleSaveSearchResultAsSpot,
+    handleDeleteCustomSpot,
     setMapRuntimeActive,
   } = useTrip();
   const isCrimeVisible = !hiddenCategories.has('crime');
@@ -195,6 +197,7 @@ export default function MapPanel() {
                 {placeSearchResults.map((result, index) => {
                   const selectedTag = searchResultTagDrafts[result.id] || result.suggestedTag || 'eat';
                   const isSavingResult = savingSearchResultId === result.id;
+                  const isDeletingResult = deletingCustomSpotId === result.savedSpotId;
                   return (
                     <div key={result.id} className="border border-border bg-bg-elevated px-2.5 py-2">
                       <div className="flex items-start justify-between gap-2">
@@ -225,9 +228,22 @@ export default function MapPanel() {
                         <Button type="button" size="sm" variant="secondary" className="min-h-[32px] px-2.5" onClick={() => handleFocusSearchResult(result.id)}>
                           Focus
                         </Button>
-                        <Button type="button" size="sm" className="min-h-[32px] px-2.5" disabled={isSavingResult} onClick={() => { void handleSaveSearchResultAsSpot(result.id); }}>
-                          {isSavingResult ? 'Saving...' : 'Save Spot'}
-                        </Button>
+                        {result.savedTag ? (
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="danger"
+                            className="min-h-[32px] px-2.5"
+                            disabled={isDeletingResult}
+                            onClick={() => { void handleDeleteCustomSpot(result.savedSpotId); }}
+                          >
+                            {isDeletingResult ? 'Deleting...' : 'Remove Spot'}
+                          </Button>
+                        ) : (
+                          <Button type="button" size="sm" className="min-h-[32px] px-2.5" disabled={isSavingResult} onClick={() => { void handleSaveSearchResultAsSpot(result.id); }}>
+                            {isSavingResult ? 'Saving...' : 'Save Spot'}
+                          </Button>
+                        )}
                       </div>
                     </div>
                   );

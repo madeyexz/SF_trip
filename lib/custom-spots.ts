@@ -171,3 +171,17 @@ export async function createCustomSpotPayload(input: CustomSpotPayloadInput) {
   const created = await client.mutation('customSpots:upsertCustomSpot', { spot });
   return normalizeCustomSpotRecord(created);
 }
+
+export async function deleteCustomSpotPayload(spotId: unknown) {
+  const client = createConvexClient();
+  if (!client) {
+    throw new Error('CONVEX_URL is missing. Configure Convex to persist custom spots.');
+  }
+
+  const id = cleanText(spotId);
+  if (!id) {
+    throw new Error('Custom spot id is required.');
+  }
+
+  return client.mutation('customSpots:deleteCustomSpot', { id });
+}

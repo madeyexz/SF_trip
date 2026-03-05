@@ -36,6 +36,11 @@ const customSpotRecordValidator = v.object({
   updatedAt: v.string()
 });
 
+const customSpotDeleteResultValidator = v.object({
+  deleted: v.boolean(),
+  spotId: v.string()
+});
+
 function cleanText(value: unknown) {
   return String(value || '').trim();
 }
@@ -147,5 +152,30 @@ export const upsertCustomSpot = mutation({
       ...nextSpot,
       createdAt: now
     });
+  }
+});
+
+export const deleteCustomSpot = mutation({
+  args: {
+    id: v.string()
+  },
+  returns: customSpotDeleteResultValidator,
+  handler: async (ctx, args) => {
+    const userId = await requireAuthenticatedUserId(ctx);
+    const spotId = cleanText(args.id);
+    const existing = await ctx.db
+      .query('customSpots')
+      .withIndex('by_user_spot_id', (q) => q.eq('userId', userId).eq('id', spotId))
+      .first();
+
+    if (!existing) {
+      throw new Error('Saved custom spot not found.');
+    }
+
+    await ctx.db.delete(existing._id);
+    return {
+      deleted: true,
+      spotId: existing.id
+    };
   }
 });
