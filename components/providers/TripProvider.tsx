@@ -38,6 +38,10 @@ import {
   createRouteRequestCacheKey, requestPlannedRoute,
   loadGoogleMapsScript, buildInfoWindowAddButton, fetchPlacePhotoUri
 } from '@/lib/map-helpers';
+import {
+  applyDeviceLocationOrigin,
+  DEVICE_LOCATION_OPTIONS
+} from '@/lib/device-location';
 
 const TAG_COLORS = {
   eat: '#FF8800',
@@ -645,6 +649,14 @@ export default function TripProvider({ children }: { children: ReactNode }) {
     mapRef.current.fitBounds(bounds, 60);
   }, []);
 
+  const focusMapOnOrigin = useCallback((latLng, zoom = 15) => {
+    if (!mapRef.current || !latLng) return;
+    mapRef.current.panTo(latLng);
+    const currentZoom = Number(mapRef.current.getZoom?.());
+    const nextZoom = Number.isFinite(currentZoom) ? Math.max(currentZoom, zoom) : zoom;
+    mapRef.current.setZoom(nextZoom);
+  }, []);
+
   const setBaseMarker = useCallback((latLng, title) => {
     if (!mapRef.current || !window.google?.maps?.marker) return;
     baseLatLngRef.current = latLng;
@@ -1237,7 +1249,7 @@ export default function TripProvider({ children }: { children: ReactNode }) {
       if (!mapRef.current) { setIsRouteUpdating(false); return; }
       if (activePlanId) return;
       if (!selectedDate || dayPlanItems.length === 0) { clearRoute(); setRouteSummary(''); return; }
-      if (!baseLatLngRef.current) { clearRoute(); setRouteSummary('Set your home location before drawing a route.'); return; }
+      if (!baseLatLngRef.current) { clearRoute(); setRouteSummary('Set a base location or use My Location before drawing a route.'); return; }
       const routeStops = plannedRouteStops.slice(0, MAX_ROUTE_STOPS);
       if (routeStops.length === 0) { clearRoute(); setRouteSummary('Route needs map-ready items with known coordinates.'); return; }
 
@@ -1303,14 +1315,24 @@ export default function TripProvider({ children }: { children: ReactNode }) {
     setStatusMessage('Finding your current location...');
     navigator.geolocation.getCurrentPosition(
       async (position) => {
-        const latLng = new window.google.maps.LatLng(position.coords.latitude, position.coords.longitude);
-        setBaseMarker(latLng, 'My current location');
-        await renderCurrentSelection(allEvents, filteredPlaces, effectiveDateFilter, travelMode);
-        setStatusMessage('Using your live device location as trip origin.');
+        await applyDeviceLocationOrigin({
+          googleMaps: window.google.maps,
+          coords: position.coords,
+          allEvents,
+          filteredPlaces,
+          effectiveDateFilter,
+          travelMode,
+          setBaseMarker,
+          focusMapOnOrigin,
+          renderCurrentSelection,
+          bumpBaseLocationVersion: () => setBaseLocationVersion((version) => version + 1),
+          setStatusMessage
+        });
       },
-      (error) => { setStatusMessage(error.message || 'Could not get device location.', true); }
+      (error) => { setStatusMessage(error.message || 'Could not get device location.', true); },
+      DEVICE_LOCATION_OPTIONS
     );
-  }, [allEvents, effectiveDateFilter, filteredPlaces, renderCurrentSelection, setBaseMarker, setStatusMessage, travelMode]);
+  }, [allEvents, effectiveDateFilter, filteredPlaces, focusMapOnOrigin, renderCurrentSelection, setBaseMarker, setStatusMessage, travelMode]);
 
   const handleCreateSource = useCallback(async (event) => {
     event.preventDefault();
