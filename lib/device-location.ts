@@ -4,9 +4,9 @@ export const DEVICE_LOCATION_OPTIONS = {
   maximumAge: 60_000
 };
 
-export const DEVICE_LOCATION_SESSION_MESSAGE = 'Using your live device location as trip origin for this session. Saved base address is unchanged.';
+export const DEVICE_LOCATION_VISIBLE_MESSAGE = 'Showing your current location on the map. Home base remains unchanged.';
 
-type ApplyDeviceLocationOriginInput = {
+type ApplyDeviceLocationInput = {
   googleMaps: {
     LatLng: new (lat: number, lng: number) => any;
   };
@@ -18,7 +18,7 @@ type ApplyDeviceLocationOriginInput = {
   filteredPlaces: any[];
   effectiveDateFilter: string;
   travelMode: string;
-  setBaseMarker: (latLng: any, title: string) => void;
+  setDeviceLocationMarker: (latLng: any, title: string) => void;
   focusMapOnOrigin: (latLng: any) => void;
   renderCurrentSelection: (
     eventsInput: any[],
@@ -27,30 +27,27 @@ type ApplyDeviceLocationOriginInput = {
     activeTravelMode: string,
     shouldFitBounds?: boolean
   ) => Promise<any>;
-  bumpBaseLocationVersion: () => void;
   setStatusMessage: (message: string, isError?: boolean) => void;
 };
 
-export async function applyDeviceLocationOrigin({
+export async function applyDeviceLocation({
   googleMaps,
   coords,
   allEvents,
   filteredPlaces,
   effectiveDateFilter,
   travelMode,
-  setBaseMarker,
+  setDeviceLocationMarker,
   focusMapOnOrigin,
   renderCurrentSelection,
-  bumpBaseLocationVersion,
   setStatusMessage
-}: ApplyDeviceLocationOriginInput) {
+}: ApplyDeviceLocationInput) {
   const latLng = new googleMaps.LatLng(coords.latitude, coords.longitude);
 
-  setBaseMarker(latLng, 'My current location');
+  setDeviceLocationMarker(latLng, 'My current location');
   focusMapOnOrigin(latLng);
   await renderCurrentSelection(allEvents, filteredPlaces, effectiveDateFilter, travelMode, false);
-  bumpBaseLocationVersion();
-  setStatusMessage(DEVICE_LOCATION_SESSION_MESSAGE);
+  setStatusMessage(DEVICE_LOCATION_VISIBLE_MESSAGE);
 
   return latLng;
 }

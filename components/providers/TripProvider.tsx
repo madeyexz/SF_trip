@@ -39,7 +39,7 @@ import {
   loadGoogleMapsScript, buildInfoWindowAddButton, createPlacePhotoCacheKey, fetchPlacePhotoGallery
 } from '@/lib/map-helpers';
 import {
-  applyDeviceLocationOrigin,
+  applyDeviceLocation,
   DEVICE_LOCATION_OPTIONS
 } from '@/lib/device-location';
 
@@ -195,6 +195,8 @@ export default function TripProvider({ children }: { children: ReactNode }) {
   const infoWindowRef = useRef<any>(null);
   const baseMarkerRef = useRef<any>(null);
   const baseLatLngRef = useRef<any>(null);
+  const deviceLocationMarkerRef = useRef<any>(null);
+  const deviceLocationLatLngRef = useRef<any>(null);
   const markersRef = useRef<any[]>([]);
   const regionPolygonsRef = useRef<any[]>([]);
   const crimeHeatmapRef = useRef<any>(null);
@@ -676,6 +678,7 @@ export default function TripProvider({ children }: { children: ReactNode }) {
     const bounds = new window.google.maps.LatLngBounds();
     let points = 0;
     if (baseLatLngRef.current) { bounds.extend(baseLatLngRef.current); points += 1; }
+    if (deviceLocationLatLngRef.current) { bounds.extend(deviceLocationLatLngRef.current); points += 1; }
     for (const e of evts) { if (e._position) { bounds.extend(e._position); points += 1; } }
     for (const p of places) { if (p._position) { bounds.extend(p._position); points += 1; } }
     if (points === 0) { mapRef.current.setCenter({ lat: 37.7749, lng: -122.4194 }); mapRef.current.setZoom(12); return; }
@@ -691,19 +694,34 @@ export default function TripProvider({ children }: { children: ReactNode }) {
     mapRef.current.setZoom(nextZoom);
   }, []);
 
-  const setBaseMarker = useCallback((latLng, title) => {
+  const setBaseMarker = useCallback((latLng, title, iconNode = houseIconNode) => {
     if (!mapRef.current || !window.google?.maps?.marker) return;
     baseLatLngRef.current = latLng;
     if (baseMarkerRef.current) baseMarkerRef.current.map = null;
     baseMarkerRef.current = new window.google.maps.marker.AdvancedMarkerElement({
       map: hiddenCategoriesRef.current.has('home') ? null : mapRef.current, position: latLng, title,
-      content: createLucidePinIcon(houseIconNode, '#00FF88')
+      content: createLucidePinIcon(iconNode, '#00FF88')
+    });
+  }, []);
+
+  const setDeviceLocationMarker = useCallback((latLng, title) => {
+    if (!mapRef.current || !window.google?.maps?.marker) return;
+    deviceLocationLatLngRef.current = latLng;
+    if (deviceLocationMarkerRef.current) deviceLocationMarkerRef.current.map = null;
+    deviceLocationMarkerRef.current = new window.google.maps.marker.AdvancedMarkerElement({
+      map: mapRef.current,
+      position: latLng,
+      title,
+      content: createLucidePinIcon(mapPinIconNode, '#00FF88')
     });
   }, []);
 
   useEffect(() => {
     if (baseMarkerRef.current) {
       baseMarkerRef.current.map = hiddenCategories.has('home') ? null : mapRef.current;
+    }
+    if (deviceLocationMarkerRef.current) {
+      deviceLocationMarkerRef.current.map = mapRef.current;
     }
     if (crimeHeatmapRef.current) {
       crimeHeatmapRef.current.setMap(hiddenCategories.has('crime') ? null : mapRef.current);
@@ -1205,7 +1223,13 @@ export default function TripProvider({ children }: { children: ReactNode }) {
     }
   }
     void bootstrap();
-    return () => { mounted = false; clearMapMarkers(); clearRoute(); if (baseMarkerRef.current) baseMarkerRef.current.map = null; };
+    return () => {
+      mounted = false;
+      clearMapMarkers();
+      clearRoute();
+      if (baseMarkerRef.current) baseMarkerRef.current.map = null;
+      if (deviceLocationMarkerRef.current) deviceLocationMarkerRef.current.map = null;
+    };
   }, [clearMapMarkers, clearRoute, geocode, loadSourcesFromServer, setBaseMarker, setStatusMessage]);
 
   useEffect(() => {
@@ -1308,7 +1332,7 @@ export default function TripProvider({ children }: { children: ReactNode }) {
       if (!mapRef.current) { setIsRouteUpdating(false); return; }
       if (activePlanId) return;
       if (!selectedDate || dayPlanItems.length === 0) { clearRoute(); setRouteSummary(''); return; }
-      if (!baseLatLngRef.current) { clearRoute(); setRouteSummary('Set a base location or use My Location before drawing a route.'); return; }
+      if (!baseLatLngRef.current) { clearRoute(); setRouteSummary('Set your home location before drawing a route.'); return; }
       const routeStops = plannedRouteStops.slice(0, MAX_ROUTE_STOPS);
       if (routeStops.length === 0) { clearRoute(); setRouteSummary('Route needs map-ready items with known coordinates.'); return; }
 
@@ -1374,24 +1398,23 @@ export default function TripProvider({ children }: { children: ReactNode }) {
     setStatusMessage('Finding your current location...');
     navigator.geolocation.getCurrentPosition(
       async (position) => {
-        await applyDeviceLocationOrigin({
+        await applyDeviceLocation({
           googleMaps: window.google.maps,
           coords: position.coords,
           allEvents,
           filteredPlaces,
           effectiveDateFilter,
           travelMode,
-          setBaseMarker,
+          setDeviceLocationMarker,
           focusMapOnOrigin,
           renderCurrentSelection,
-          bumpBaseLocationVersion: () => setBaseLocationVersion((version) => version + 1),
           setStatusMessage
         });
       },
       (error) => { setStatusMessage(error.message || 'Could not get device location.', true); },
       DEVICE_LOCATION_OPTIONS
     );
-  }, [allEvents, effectiveDateFilter, filteredPlaces, focusMapOnOrigin, renderCurrentSelection, setBaseMarker, setStatusMessage, travelMode]);
+  }, [allEvents, effectiveDateFilter, filteredPlaces, focusMapOnOrigin, renderCurrentSelection, setDeviceLocationMarker, setStatusMessage, travelMode]);
 
   const handleCreateSource = useCallback(async (event) => {
     event.preventDefault();

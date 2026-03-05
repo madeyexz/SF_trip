@@ -155,7 +155,7 @@ export async function requestPlannedRoute({ origin, destination, waypoints, trav
   const originPoint = toLatLngLiteral(origin);
   const destinationPoint = toLatLngLiteral(destination);
   if (!originPoint || !destinationPoint) {
-    throw new Error('Set a base location or use My Location before drawing a route.');
+    throw new Error('Set your home location before drawing a route.');
   }
   const waypointPoints = Array.isArray(waypoints)
     ? waypoints.map(toLatLngLiteral).filter(Boolean)
