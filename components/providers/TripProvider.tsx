@@ -681,7 +681,7 @@ export default function TripProvider({ children }: { children: ReactNode }) {
     if (deviceLocationLatLngRef.current) { bounds.extend(deviceLocationLatLngRef.current); points += 1; }
     for (const e of evts) { if (e._position) { bounds.extend(e._position); points += 1; } }
     for (const p of places) { if (p._position) { bounds.extend(p._position); points += 1; } }
-    if (points === 0) { mapRef.current.setCenter({ lat: 37.7749, lng: -122.4194 }); mapRef.current.setZoom(12); return; }
+    if (points === 0) { mapRef.current.setCenter({ lat: 37.7749, lng: -122.4194 }); mapRef.current.setZoom(13); return; }
     if (points === 1) { mapRef.current.setCenter(bounds.getCenter()); mapRef.current.setZoom(13); return; }
     mapRef.current.fitBounds(bounds, 60);
   }, []);
@@ -1200,7 +1200,7 @@ export default function TripProvider({ children }: { children: ReactNode }) {
       await window.google.maps.importLibrary('visualization');
       if (!mounted || !mapElementRef.current || !window.google?.maps) return;
       mapRef.current = new window.google.maps.Map(mapElementRef.current, {
-        center: { lat: 37.7749, lng: -122.4194 }, zoom: 12,
+        center: { lat: 37.7749, lng: -122.4194 }, zoom: 13,
         mapId: config.mapsMapId || 'DEMO_MAP_ID',
         colorScheme: 'DARK',
         mapTypeControl: false, streetViewControl: false, fullscreenControl: false,
