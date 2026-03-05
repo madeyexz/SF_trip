@@ -1,7 +1,6 @@
 'use client';
 
 import { Button } from '@/components/ui/button';
-import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue
 } from '@/components/ui/select';
@@ -101,8 +100,7 @@ function PlannerItinerarySkeleton() {
 export default function PlannerItinerary() {
   const {
     selectedDate, travelMode, setTravelMode,
-    dayPlanItems, activePlanId, baseLocationText, authUserId, currentPairRoomId,
-    plannerViewMode, setPlannerViewMode,
+    dayPlanItems, activePlanId, baseLocationText,
     routeSummary, isRouteUpdating,
     clearDayPlan, startPlanDrag, removePlanItem,
     handleExportPlannerIcs, handleAddDayPlanToGoogleCalendar,
@@ -115,12 +113,6 @@ export default function PlannerItinerary() {
 
   const routeSummaryText =
     routeSummary || (selectedDate && dayPlanItems.length ? 'Waiting for routable stops...' : 'Add stops to draw route');
-  const hasEditableItems = dayPlanItems.some((item) => {
-    if (!currentPairRoomId) return true;
-    if (!item.ownerUserId || !authUserId) return true;
-    return item.ownerUserId === authUserId;
-  });
-  const isMergedPairView = Boolean(currentPairRoomId && plannerViewMode === 'merged');
 
   return (
     <div className="flex flex-col p-3 min-h-0 h-full overflow-hidden">
@@ -138,24 +130,10 @@ export default function PlannerItinerary() {
                 <SelectItem value="WALKING">Walking</SelectItem>
               </SelectContent>
             </Select>
-            {currentPairRoomId ? (
-              <ToggleGroup
-                type="single"
-                value={plannerViewMode}
-                onValueChange={(value) => {
-                  if (value) setPlannerViewMode(value);
-                }}
-                aria-label="Planner ownership filter"
-              >
-                <ToggleGroupItem value="mine" aria-label="Show my plans">Mine</ToggleGroupItem>
-                <ToggleGroupItem value="partner" aria-label="Show partner plans">Partner</ToggleGroupItem>
-                <ToggleGroupItem value="merged" aria-label="Show merged plans">Merged</ToggleGroupItem>
-              </ToggleGroup>
-            ) : null}
           </div>
         </div>
         <div className="flex gap-1 shrink-0">
-          <Button type="button" size="sm" variant="secondary" onClick={clearDayPlan} disabled={!selectedDate || dayPlanItems.length === 0 || !hasEditableItems}>Clear</Button>
+          <Button type="button" size="sm" variant="secondary" onClick={clearDayPlan} disabled={!selectedDate || dayPlanItems.length === 0}>Clear</Button>
           <Button type="button" size="sm" variant="secondary" onClick={handleExportPlannerIcs} disabled={!selectedDate || dayPlanItems.length === 0}>.ics</Button>
           <Button type="button" size="sm" variant="secondary" onClick={handleAddDayPlanToGoogleCalendar} disabled={!selectedDate || dayPlanItems.length === 0}>GCal</Button>
         </div>
@@ -170,65 +148,39 @@ export default function PlannerItinerary() {
               </div>
             ))}
           </div>
-          <div className={`planner-block-layer ${isMergedPairView ? 'planner-block-layer-paired' : ''}`}>
+          <div className="planner-block-layer">
             {(() => {
-              const mineItems = dayPlanItems.filter((item) => !item.ownerUserId || !authUserId || item.ownerUserId === authUserId);
-              const partnerItems = dayPlanItems.filter((item) => item.ownerUserId && authUserId && item.ownerUserId !== authUserId);
-
               const allLayout = computeOverlapColumns(dayPlanItems);
-              const mineLayout = computeOverlapColumns(mineItems);
-              const partnerLayout = computeOverlapColumns(partnerItems);
-
               const allCollisions = getCollisions(dayPlanItems);
-              const mineCollisions = getCollisions(mineItems);
-              const partnerCollisions = getCollisions(partnerItems);
 
               return dayPlanItems.map((item) => {
                 const top = item.startMinutes * PLAN_MINUTE_HEIGHT;
                 const height = Math.max(28, (item.endMinutes - item.startMinutes) * PLAN_MINUTE_HEIGHT);
-                const isReadOnly = Boolean(
-                  currentPairRoomId
-                  && item.ownerUserId
-                  && authUserId
-                  && item.ownerUserId !== authUserId
-                );
-                const isPartnerOwned = isReadOnly;
-                const activeLayout = isMergedPairView
-                  ? (isPartnerOwned ? partnerLayout : mineLayout)
-                  : allLayout;
-                const activeCollisions = isMergedPairView
-                  ? (isPartnerOwned ? partnerCollisions : mineCollisions)
-                  : allCollisions;
-                const col = activeLayout.columns.get(item.id) || 0;
-                const total = activeLayout.totalCols.get(item.id) || 1;
-                const laneWidthPct = isMergedPairView ? 50 : 100;
-                const laneOffsetPct = isMergedPairView ? (isPartnerOwned ? 50 : 0) : 0;
-                const widthPct = laneWidthPct / total;
-                const leftPct = laneOffsetPct + col * widthPct;
-                const hasCollision = activeCollisions.has(item.id);
+                const col = allLayout.columns.get(item.id) || 0;
+                const total = allLayout.totalCols.get(item.id) || 1;
+                const widthPct = 100 / total;
+                const leftPct = col * widthPct;
+                const hasCollision = allCollisions.has(item.id);
                 const itemClass = [
                   'planner-item',
                   item.kind === 'event' ? 'planner-item-event' : 'planner-item-place',
-                  isPartnerOwned ? 'planner-item-owner-partner' : 'planner-item-owner-mine',
-                  isReadOnly ? 'opacity-70' : '',
+                  'planner-item-owner-mine',
                   activePlanId === item.id ? 'planner-item-active' : ''
                 ].filter(Boolean).join(' ');
 
                 return (
-                  <article className={itemClass} key={item.id} style={{ top: `${top}px`, height: `${height}px`, width: `${widthPct}%`, left: `${leftPct}%` }} onPointerDown={isReadOnly ? undefined : (e) => startPlanDrag(e, item, 'move')}>
-                    <button type="button" className={`absolute left-0 right-0 top-0 h-2 border-none bg-transparent ${isReadOnly ? 'cursor-default' : 'cursor-ns-resize'}`} aria-label="Adjust start time" onPointerDown={isReadOnly ? undefined : (e) => startPlanDrag(e, item, 'resize-start')} />
+                  <article className={itemClass} key={item.id} style={{ top: `${top}px`, height: `${height}px`, width: `${widthPct}%`, left: `${leftPct}%` }} onPointerDown={(e) => startPlanDrag(e, item, 'move')}>
+                    <button type="button" className="absolute left-0 right-0 top-0 h-2 border-none bg-transparent cursor-ns-resize" aria-label="Adjust start time" onPointerDown={(e) => startPlanDrag(e, item, 'resize-start')} />
                     <div className="absolute top-1 right-1.5 flex items-center gap-1.5">
                       {hasCollision ? <AlertTriangle size={12} className="text-warning" aria-label="Time conflict" /> : null}
                       <button type="button" className="px-1.5 py-0.5 rounded-none border border-border bg-bg-elevated text-foreground-secondary text-[0.65rem] font-semibold leading-tight cursor-pointer hover:bg-accent-light hover:border-accent-border hover:text-accent transition-colors" aria-label="Add to Google Calendar" onClick={(e) => { e.stopPropagation(); const url = buildGoogleCalendarItemUrl({ dateISO: selectedDate, item, baseLocationText }); window.open(url, '_blank', 'noopener,noreferrer'); }} title="Add to Google Calendar">+ GCal</button>
-                      <button type="button" className="border-none bg-transparent text-foreground-secondary text-base leading-none cursor-pointer hover:text-foreground disabled:opacity-35 disabled:cursor-not-allowed" aria-label="Remove from plan" disabled={isReadOnly} onClick={(e) => { e.stopPropagation(); removePlanItem(item.id); }}>x</button>
+                      <button type="button" className="border-none bg-transparent text-foreground-secondary text-base leading-none cursor-pointer hover:text-foreground disabled:opacity-35 disabled:cursor-not-allowed" aria-label="Remove from plan" onClick={(e) => { e.stopPropagation(); removePlanItem(item.id); }}>x</button>
                     </div>
                     <div className="text-[0.72rem] font-bold text-foreground-secondary tracking-wide">{formatMinuteLabel(item.startMinutes)} - {formatMinuteLabel(item.endMinutes)}</div>
                     <div className="mt-0.5 text-[0.82rem] font-bold text-foreground leading-tight break-words">{item.title}</div>
-                    <div className={`mt-0.5 text-[0.65rem] font-semibold uppercase tracking-wide ${isPartnerOwned ? 'text-warning' : 'text-accent'}`}>
-                      {isPartnerOwned ? 'Partner' : 'Mine'}
-                    </div>
+                    <div className="mt-0.5 text-[0.65rem] font-semibold uppercase tracking-wide text-accent">Personal</div>
                     {item.locationText ? <div className="mt-0.5 text-[0.72rem] text-foreground-secondary leading-tight break-words">{item.locationText}</div> : null}
-                    <button type="button" className={`absolute left-0 right-0 bottom-0 h-2 border-none bg-transparent ${isReadOnly ? 'cursor-default' : 'cursor-ns-resize'}`} aria-label="Adjust end time" onPointerDown={isReadOnly ? undefined : (e) => startPlanDrag(e, item, 'resize-end')} />
+                    <button type="button" className="absolute left-0 right-0 bottom-0 h-2 border-none bg-transparent cursor-ns-resize" aria-label="Adjust end time" onPointerDown={(e) => startPlanDrag(e, item, 'resize-end')} />
                   </article>
                 );
               });

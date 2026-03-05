@@ -3,7 +3,7 @@ import LandingContent from './landing/LandingContent';
 export const metadata = {
   title: 'SF Trip Planner — Turn 50 Open Tabs Into One Trip Plan',
   description:
-    "See where events are, when they conflict, where it's safe, and plan your SF trip with friends. Live crime heatmaps, curated spots, and Google Calendar export.",
+    "See where events are, when they conflict, where it's safe, and plan your SF trip. Live crime heatmaps, curated spots, and Google Calendar export.",
   alternates: {
     canonical: 'https://sf.ianhsiao.me',
   },
@@ -17,7 +17,7 @@ const jsonLd = {
       name: 'SF Trip Planner',
       url: 'https://sf.ianhsiao.me',
       description:
-        'SF Trip Planner consolidates San Francisco events from Luma and Beehiiv, curated restaurant and cafe spots, and live SFPD crime heatmaps onto one interactive Google Map. Plan day-by-day itineraries, share plans with travel companions, and export to Google Calendar. Free, open source, built with Next.js 15.',
+        'SF Trip Planner consolidates San Francisco events from Luma and Beehiiv, curated restaurant and cafe spots, and live SFPD crime heatmaps onto one interactive Google Map. Plan day-by-day itineraries and export to Google Calendar. Free, open source, built with Next.js 15.',
       applicationCategory: 'TravelApplication',
       operatingSystem: 'Web',
       offers: {
@@ -34,7 +34,6 @@ const jsonLd = {
         'Interactive Google Map with color-coded event and spot pins',
         'Live crime heatmap overlay from SFPD incident data',
         'Day-by-day drag-and-drop trip planner',
-        'Shared pair planner for travel companions',
         'Google Calendar and iCal export',
         'Event aggregation from Luma calendars and Beehiiv newsletters',
         'Curated restaurant, cafe, bar, and shop recommendations',
@@ -79,10 +78,10 @@ const jsonLd = {
         },
         {
           '@type': 'Question',
-          name: 'Can I plan a San Francisco trip with friends?',
+          name: 'Can I plan a San Francisco trip for myself?',
           acceptedAnswer: {
             '@type': 'Answer',
-            text: 'Yes. SF Trip Planner includes a shared pair planner mode. Create a planner room, invite your travel companion, and both of you see each other\'s schedules side by side. Each person edits only their own itinerary, preventing conflicts while keeping plans synchronized.',
+            text: 'Yes. SF Trip Planner gives you a personal planning workspace where you can map events, build day-by-day itineraries, and export the final plan to Google Calendar or ICS.',
           },
         },
         {

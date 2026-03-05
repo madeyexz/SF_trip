@@ -22,14 +22,13 @@ export default function AppShell({ children }) {
   const pathname = usePathname();
   const router = useRouter();
   const {
-    isSyncing, handleSync, handleDeviceLocation, canManageGlobal
+    isSyncing, handleSync, handleDeviceLocation
   } = useTrip();
 
   const activeId = NAV_ITEMS.find((n) => pathname.startsWith(n.href))?.id || 'planning';
   const showMap = MAP_TABS.has(activeId);
   const hasMapSidebar = activeId !== 'map' && showMap;
-  const canSync = canManageGlobal;
-  const syncLabel = isSyncing ? 'Syncing...' : canSync ? 'Sync' : 'Owner only';
+  const syncLabel = isSyncing ? 'Syncing...' : 'Sync';
 
   return (
     <main className="min-h-dvh h-dvh flex flex-col w-full overflow-hidden">
@@ -59,8 +58,8 @@ export default function AppShell({ children }) {
             type="button"
             size="sm"
             onClick={handleSync}
-            disabled={isSyncing || !canSync}
-            title={canSync ? 'Sync events and spots' : 'Owner role required for pair-room sync'}
+            disabled={isSyncing}
+            title="Sync events and spots"
           >
             <RefreshCw size={14} className={isSyncing ? 'animate-spin' : ''} />
             {syncLabel}

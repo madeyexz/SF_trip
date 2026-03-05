@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { Check, Copy, RefreshCw } from 'lucide-react';
+import { Check, RefreshCw } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -12,107 +12,28 @@ import {
 import { useTrip } from '@/components/providers/TripProvider';
 import { safeHostname } from '@/lib/helpers';
 
-function normalizePlannerRoomId(value) {
-  const nextValue = String(value || '').trim().toLowerCase().replace(/[^a-z0-9_-]/g, '');
-  if (nextValue.length < 2 || nextValue.length > 64) {
-    return '';
-  }
-  return nextValue;
-}
-
 export default function ConfigPage() {
   const {
-    authLoading, profile, canManageGlobal, isSigningOut, handleSignOut,
-    currentPairRoomId, pairRooms, pairMemberCount,
-    isPairActionPending, handleUsePersonalPlanner, handleCreatePairRoom, handleJoinPairRoom, handleSelectPairRoom,
+    authLoading, profile, isSigningOut, handleSignOut,
     groupedSources,
     newSourceType, setNewSourceType, newSourceUrl, setNewSourceUrl,
     newSourceLabel, setNewSourceLabel, isSavingSource, syncingSourceId,
     handleCreateSource, handleToggleSourceStatus, handleDeleteSource, handleSyncSource,
     tripStart, tripEnd, handleSaveTripDates,
-    baseLocationText, handleSaveBaseLocation,
-    setStatusMessage
+    baseLocationText, handleSaveBaseLocation
   } = useTrip();
 
-  const [roomCodeInput, setRoomCodeInput] = useState(currentPairRoomId);
-  const [pairSaveState, setPairSaveState] = useState('idle');
   const [localTripStart, setLocalTripStart] = useState(tripStart);
   const [localTripEnd, setLocalTripEnd] = useState(tripEnd);
   const [dateSaveState, setDateSaveState] = useState('idle');
   const [localBaseLocation, setLocalBaseLocation] = useState(baseLocationText);
   const [locationSaveState, setLocationSaveState] = useState('idle');
-  const pairTimerRef = useRef<any>(null);
   const dateTimerRef = useRef<any>(null);
   const locationTimerRef = useRef<any>(null);
 
   useEffect(() => { setLocalTripStart(tripStart); }, [tripStart]);
   useEffect(() => { setLocalTripEnd(tripEnd); }, [tripEnd]);
   useEffect(() => { setLocalBaseLocation(baseLocationText); }, [baseLocationText]);
-  useEffect(() => {
-    if (!currentPairRoomId) {
-      setRoomCodeInput('');
-    }
-  }, [currentPairRoomId]);
-
-  const onCopyRoomCode = async () => {
-    if (!currentPairRoomId || !navigator?.clipboard?.writeText) return;
-    try {
-      await navigator.clipboard.writeText(currentPairRoomId);
-      setStatusMessage(`Copied room code "${currentPairRoomId}".`);
-    } catch {
-      setStatusMessage('Could not copy room code. Copy it manually.', true);
-    }
-  };
-
-  const onJoinRoom = async (event) => {
-    event.preventDefault();
-    const normalizedRoomCode = normalizePlannerRoomId(roomCodeInput);
-    if (!normalizedRoomCode) {
-      setStatusMessage('Room code is required (2-64 chars: a-z, 0-9, _ or -).', true);
-      return;
-    }
-    setPairSaveState('saving');
-    const joined = await handleJoinPairRoom(normalizedRoomCode);
-    if (joined) {
-      setRoomCodeInput(normalizedRoomCode);
-      setPairSaveState('saved');
-      clearTimeout(pairTimerRef.current);
-      pairTimerRef.current = setTimeout(() => setPairSaveState('idle'), 2000);
-      return;
-    }
-    setPairSaveState('idle');
-  };
-
-  const onCreateRoom = async () => {
-    setPairSaveState('saving');
-    const roomCode = await handleCreatePairRoom();
-    if (roomCode) {
-      setRoomCodeInput(roomCode);
-      setPairSaveState('saved');
-      clearTimeout(pairTimerRef.current);
-      pairTimerRef.current = setTimeout(() => setPairSaveState('idle'), 2000);
-      return;
-    }
-    setPairSaveState('idle');
-  };
-
-  const onUsePersonal = () => {
-    handleUsePersonalPlanner();
-    setRoomCodeInput('');
-    setPairSaveState('saved');
-    clearTimeout(pairTimerRef.current);
-    pairTimerRef.current = setTimeout(() => setPairSaveState('idle'), 2000);
-  };
-
-  const onSelectSavedRoom = (roomCode) => {
-    const normalizedRoomCode = normalizePlannerRoomId(roomCode);
-    if (!normalizedRoomCode) return;
-    handleSelectPairRoom(normalizedRoomCode);
-    setRoomCodeInput(normalizedRoomCode);
-    setPairSaveState('saved');
-    clearTimeout(pairTimerRef.current);
-    pairTimerRef.current = setTimeout(() => setPairSaveState('idle'), 2000);
-  };
 
   const onSaveDates = async (event) => {
     event.preventDefault();
@@ -145,7 +66,7 @@ export default function ConfigPage() {
     const isActive = source.status === 'active';
     const isSyncingThis = syncingSourceId === source.id;
     const displayTitle = source.label || safeHostname(source.url);
-    const isReadonly = Boolean(source.readonly) || !canManageGlobal;
+    const isReadonly = Boolean(source.readonly);
 
     return (
       <Card
@@ -191,90 +112,17 @@ export default function ConfigPage() {
             <p className="mt-0.5 text-muted text-[0.82rem]">Signed in with magic link authentication.</p>
           </div>
           <div className="flex items-center gap-2">
-            <Badge variant={canManageGlobal ? 'default' : 'secondary'}>
-              {authLoading ? 'Loading...' : canManageGlobal ? 'Owner' : 'Member'}
+            <Badge variant="default">
+              {authLoading ? 'Loading...' : 'Personal'}
             </Badge>
             <Button type="button" size="sm" variant="secondary" disabled={isSigningOut || authLoading} onClick={() => { void handleSignOut(); }}>
               {isSigningOut ? 'Signing out...' : 'Sign out'}
             </Button>
           </div>
         </div>
+
         <Card className="p-3">
-          <div className="flex items-center justify-between gap-3 max-sm:flex-col max-sm:items-start">
-            <div>
-              <div className="text-sm font-semibold text-foreground">{profile?.email || 'No email returned'}</div>
-            </div>
-          </div>
-        </Card>
-
-        <div className="flex items-center justify-between gap-4">
-          <div>
-            <h2 className="m-0 text-xl font-extrabold tracking-tight uppercase" style={{ fontFamily: "var(--font-space-grotesk, 'Space Grotesk'), sans-serif" }}>Pair Planner</h2>
-            <p className="mt-0.5 text-muted text-[0.82rem]">Single-person mode shows only your plans. Pair mode shows both people, and you can edit only yours.</p>
-          </div>
-        </div>
-        <Card className="p-3 flex flex-col gap-3">
-          <div className="flex items-center gap-2 flex-wrap">
-            <Badge variant={currentPairRoomId ? 'default' : 'secondary'}>
-              {currentPairRoomId ? `Pair room: ${currentPairRoomId}` : 'Single-person mode'}
-            </Badge>
-            {currentPairRoomId ? (
-              <Badge variant="secondary">{pairMemberCount} member{pairMemberCount === 1 ? '' : 's'}</Badge>
-            ) : null}
-            {pairSaveState === 'saved' ? <Badge variant="default"><Check size={12} />Saved</Badge> : null}
-          </div>
-
-          <div className="flex gap-2 flex-wrap">
-            <Button
-              type="button"
-              size="sm"
-              variant={!currentPairRoomId ? 'default' : 'secondary'}
-              onClick={onUsePersonal}
-              disabled={isPairActionPending}
-            >
-              Single Mode
-            </Button>
-            <Button type="button" size="sm" onClick={() => { void onCreateRoom(); }} disabled={isPairActionPending}>
-              {isPairActionPending ? 'Working...' : 'Create Pair Room'}
-            </Button>
-            {currentPairRoomId ? (
-              <Button type="button" size="sm" variant="secondary" onClick={() => { void onCopyRoomCode(); }}>
-                <Copy size={12} />
-                Copy Room Code
-              </Button>
-            ) : null}
-          </div>
-
-          <form className="flex items-center gap-2 max-sm:flex-col" onSubmit={onJoinRoom}>
-            <Input type="text" value={roomCodeInput} onChange={(event) => setRoomCodeInput(event.target.value)} placeholder="Enter room code" />
-            <Button type="submit" size="sm" className="min-h-[36px] min-w-[100px] shrink-0" disabled={isPairActionPending || pairSaveState === 'saving'}>
-              {pairSaveState === 'saving' ? 'Joining...' : 'Join Room'}
-            </Button>
-          </form>
-
-          {pairRooms.length > 0 ? (
-            <div className="flex flex-col gap-2">
-              <h3 className="m-0 text-[0.78rem] font-bold uppercase tracking-wider text-muted">Your Pair Rooms</h3>
-              <div className="flex gap-2 flex-wrap">
-                {pairRooms.map((room) => {
-                  const roomCode = normalizePlannerRoomId(room?.roomCode);
-                  if (!roomCode) return null;
-                  const isActiveRoom = roomCode === currentPairRoomId;
-                  return (
-                    <Button
-                      key={roomCode}
-                      type="button"
-                      size="sm"
-                      variant={isActiveRoom ? 'default' : 'secondary'}
-                      onClick={() => onSelectSavedRoom(roomCode)}
-                    >
-                      {roomCode} ({Number(room?.memberCount) || 1})
-                    </Button>
-                  );
-                })}
-              </div>
-            </div>
-          ) : null}
+          <div className="text-sm font-semibold text-foreground">{profile?.email || 'No email returned'}</div>
         </Card>
 
         <div className="flex items-center justify-between gap-4">
@@ -314,9 +162,7 @@ export default function ConfigPage() {
         <div className="flex items-center justify-between gap-4">
           <div>
             <h2 className="m-0 text-xl font-extrabold tracking-tight uppercase" style={{ fontFamily: "var(--font-space-grotesk, 'Space Grotesk'), sans-serif" }}>Sources</h2>
-            <p className="mt-0.5 text-muted text-[0.82rem]">
-              Manage event and spot feeds for {currentPairRoomId ? `pair room "${currentPairRoomId}"` : 'single-person mode'}.
-            </p>
+            <p className="mt-0.5 text-muted text-[0.82rem]">Manage personal event and spot feeds for this trip plan.</p>
           </div>
         </div>
 
@@ -332,11 +178,10 @@ export default function ConfigPage() {
           </Select>
           <Input placeholder="https://example.com/source" value={newSourceUrl} onChange={(event) => setNewSourceUrl(event.target.value)} />
           <Input className="max-w-[160px] max-sm:max-w-none" placeholder="Label (optional)" value={newSourceLabel} onChange={(event) => setNewSourceLabel(event.target.value)} />
-          <Button type="submit" size="sm" className="min-h-[36px] min-w-[100px] shrink-0 max-sm:w-full" disabled={!canManageGlobal || isSavingSource}>
+          <Button type="submit" size="sm" className="min-h-[36px] min-w-[100px] shrink-0 max-sm:w-full" disabled={isSavingSource}>
             {isSavingSource ? 'Adding...' : 'Add Source'}
           </Button>
         </form>
-        {!canManageGlobal ? <p className="mt-1 mb-0 text-xs text-muted">Owner role required to add/edit/delete sources.</p> : null}
 
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '20px' }}>
           {[

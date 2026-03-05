@@ -189,7 +189,7 @@ export default function LandingContent() {
                 <span className="text-foreground">
                   One screen that shows you everything you need to decide
                 </span>
-                &mdash;then plan your days, plan with friends, and export to Google Calendar.
+                &mdash;then plan your days and export to Google Calendar.
               </p>
             </FadeItem>
 

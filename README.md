@@ -2,7 +2,7 @@
 
 **Turn 50 open tabs into one trip plan.**
 
-See where every event is. See when they conflict. See where it's safe to walk. One screen that shows you everything you need to decide — then plan your days, plan with friends, and export to Google Calendar.
+See where every event is. See when they conflict. See where it's safe to walk. One screen that shows you everything you need to decide, then plan your days and export to Google Calendar.
 
 ![Planning View](public/screenshots/planning.png)
 
@@ -20,7 +20,7 @@ See where every event is. See when they conflict. See where it's safe to walk. O
 ### Plan It
 
 - **Drag-and-drop day planner** — Drag events and spots into a time-grid planner. Rearrange by dragging. Routes update automatically on the map.
-- **Plan with friends** — Create a shared planner room. Both schedules side by side, but you only edit your own.
+- **Personal day planner** — Build one clean itinerary for yourself and export it when you are ready.
 - **Export** — Export your itinerary as an ICS file or sync directly to Google Calendar.
 
 ![Spots View](public/screenshots/spots.png)
