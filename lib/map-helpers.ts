@@ -15,6 +15,16 @@ export type PlacePhotoGalleryEntry = {
   authorNames: string[];
 };
 
+type BuildPlacePhotoGalleryHtmlArgs = {
+  placeName: string;
+  photoGallery: PlacePhotoGalleryEntry[];
+  activeIndex?: number;
+  controlIds?: {
+    previous: string;
+    next: string;
+  };
+};
+
 export function toKebabCase(value) {
   return String(value).replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`);
 }
@@ -217,6 +227,16 @@ export function createPlacePhotoCacheKey(place) {
   return `${name}|${location}`;
 }
 
+export function getNextPlacePhotoIndex(currentIndex: number, direction: number, totalPhotos: number) {
+  if (!Number.isFinite(totalPhotos) || totalPhotos <= 0) {
+    return 0;
+  }
+
+  const normalizedCurrent = Number.isFinite(currentIndex) ? Math.trunc(currentIndex) : 0;
+  const normalizedDirection = Number.isFinite(direction) ? Math.trunc(direction) : 0;
+  return ((normalizedCurrent + normalizedDirection) % totalPhotos + totalPhotos) % totalPhotos;
+}
+
 function normalizePlacePhotoGallery(photos: PlacePhotoLike[], limit = 4): PlacePhotoGalleryEntry[] {
   if (!Array.isArray(photos) || photos.length === 0) {
     return [];
@@ -248,6 +268,48 @@ function normalizePlacePhotoGallery(photos: PlacePhotoLike[], limit = 4): PlaceP
   }
 
   return gallery;
+}
+
+export function buildPlacePhotoGalleryHtml({
+  placeName,
+  photoGallery,
+  activeIndex = 0,
+  controlIds
+}: BuildPlacePhotoGalleryHtmlArgs) {
+  const gallery = Array.isArray(photoGallery)
+    ? photoGallery.filter((entry) => entry?.uri).slice(0, 4)
+    : [];
+
+  if (gallery.length === 0) {
+    return '';
+  }
+
+  const selectedIndex = getNextPlacePhotoIndex(activeIndex, 0, gallery.length);
+  const selectedPhoto = gallery[selectedIndex];
+  const authorLine = Array.from(
+    new Set(Array.isArray(selectedPhoto?.authorNames) ? selectedPhoto.authorNames : [])
+  ).join(', ');
+  const hasControls = gallery.length > 1 && controlIds?.previous && controlIds?.next;
+
+  return [
+    '<div style="margin:8px 0 10px;display:grid;gap:6px;">',
+    '<div style="position:relative;">',
+    `<img src="${escapeHtml(selectedPhoto.uri)}" alt="${escapeHtml(`${placeName} photo ${selectedIndex + 1}`)}" style="width:100%;height:168px;object-fit:cover;display:block;border:1px solid rgba(255,255,255,0.08)" />`,
+    hasControls
+      ? `<button id="${escapeHtml(controlIds.previous)}" type="button" aria-label="Previous photo" style="position:absolute;left:8px;top:50%;transform:translateY(-50%);width:28px;height:28px;border:1px solid #2f2f2f;background:rgba(10,10,10,0.92);color:#FFFFFF;font-family:'JetBrains Mono',monospace;font-size:14px;cursor:pointer">‹</button>`
+      : '',
+    hasControls
+      ? `<button id="${escapeHtml(controlIds.next)}" type="button" aria-label="Next photo" style="position:absolute;right:8px;top:50%;transform:translateY(-50%);width:28px;height:28px;border:1px solid #2f2f2f;background:rgba(10,10,10,0.92);color:#FFFFFF;font-family:'JetBrains Mono',monospace;font-size:14px;cursor:pointer">›</button>`
+      : '',
+    hasControls
+      ? `<div style="position:absolute;right:8px;top:8px;padding:2px 6px;border:1px solid #2f2f2f;background:rgba(10,10,10,0.92);color:#FFFFFF;font-size:10px;font-family:'JetBrains Mono',monospace;letter-spacing:0.05em">${selectedIndex + 1} / ${gallery.length}</div>`
+      : '',
+    '</div>',
+    authorLine
+      ? `<p style="margin:0;color:#6a6a6a;font-size:10px;text-transform:uppercase;letter-spacing:0.05em">Photo credit: ${escapeHtml(authorLine)}</p>`
+      : '',
+    '</div>'
+  ].join('');
 }
 
 export async function fetchPlacePhotoGallery(

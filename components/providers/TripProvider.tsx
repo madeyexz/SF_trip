@@ -36,7 +36,8 @@ import {
 import {
   createLucidePinIcon, createLucidePinIconWithLabel, toCoordinateKey, createTravelTimeCacheKey,
   createRouteRequestCacheKey, requestPlannedRoute,
-  loadGoogleMapsScript, buildInfoWindowAddButton, createPlacePhotoCacheKey, fetchPlacePhotoGallery
+  loadGoogleMapsScript, buildInfoWindowAddButton, buildPlacePhotoGalleryHtml,
+  createPlacePhotoCacheKey, fetchPlacePhotoGallery, getNextPlacePhotoIndex
 } from '@/lib/map-helpers';
 import {
   applyDeviceLocation,
@@ -210,6 +211,7 @@ export default function TripProvider({ children }: { children: ReactNode }) {
   const travelTimeCacheRef = useRef<Map<string, any>>(new Map());
   const plannedRouteCacheRef = useRef<Map<string, any>>(new Map());
   const placePhotoCacheRef = useRef<Map<string, any[]>>(new Map());
+  const placePhotoGalleryIndexRef = useRef<Map<string, number>>(new Map());
   const activePlaceInfoWindowKeyRef = useRef('');
   const plannerHydratedRef = useRef(false);
 
@@ -890,7 +892,10 @@ export default function TripProvider({ children }: { children: ReactNode }) {
     return `<div class="custom-iw" style="max-width:330px;background:#0A0A0A;color:#FFFFFF;padding:12px;font-family:'JetBrains Mono',monospace;font-size:13px"><h3 style="margin:0 0 6px;font-size:16px;color:#FFFFFF">${escapeHtml(event.name)}</h3><p style="margin:4px 0;color:#8a8a8a"><strong style="color:#FFFFFF">Time:</strong> ${escapeHtml(time)} <span style="color:#6a6a6a;font-size:12px">(${escapeHtml(daysLabel)})</span></p><p style="margin:4px 0;color:#8a8a8a"><strong style="color:#FFFFFF">Location:</strong> ${escapeHtml(location)}</p><p style="margin:4px 0;color:#8a8a8a"><strong style="color:#FFFFFF">Travel time:</strong> ${escapeHtml(travel)}</p>${sourceLine}<p style="margin:4px 0;color:#8a8a8a">${escapeHtml(truncate(event.description || '', 220))}</p>${buildInfoWindowAddButton(plannerAction)}${eventLink}</div>`;
   }, []);
 
-  const buildPlaceInfoWindowHtml = useCallback((place, plannerAction, photoGallery?: any[]) => {
+  const buildPlaceInfoWindowHtml = useCallback((place, plannerAction, options?: any) => {
+    const photoGallery = Array.isArray(options?.photoGallery) ? options.photoGallery : [];
+    const activePhotoIndex = Number.isFinite(options?.activePhotoIndex) ? options.activePhotoIndex : 0;
+    const photoControlIds = options?.photoControlIds || null;
     const displayTag = formatTag(normalizePlaceTag(place.tag));
     const placeTag = normalizePlaceTag(place.tag);
     const isAvoid = placeTag === 'avoid';
@@ -924,27 +929,12 @@ export default function TripProvider({ children }: { children: ReactNode }) {
     const linkRow = (safeMapLink || safeCornerLink)
       ? `<div style="display:flex;gap:10px;flex-wrap:wrap">${safeMapLink ? `<a href="${escapeHtml(safeMapLink)}" target="_blank" rel="noreferrer" style="color:#00FF88;text-decoration:none;font-weight:600;font-size:12px;text-transform:uppercase;letter-spacing:0.05em">Open map</a>` : ''}${safeCornerLink ? `<a href="${escapeHtml(safeCornerLink)}" target="_blank" rel="noreferrer" style="color:#00FF88;text-decoration:none;font-weight:600;font-size:12px;text-transform:uppercase;letter-spacing:0.05em">Corner page</a>` : ''}</div>`
       : '';
-    const gallery = Array.isArray(photoGallery)
-      ? photoGallery.filter((entry) => entry?.uri).slice(0, 4)
-      : [];
-    const leadPhoto = gallery[0]?.uri || '';
-    const thumbnailPhotos = gallery.slice(1);
-    const authorLine = Array.from(
-      new Set(gallery.flatMap((entry) => (Array.isArray(entry?.authorNames) ? entry.authorNames : [])))
-    ).join(', ');
-    const photoHtml = leadPhoto
-      ? [
-        '<div style="margin:8px 0 10px;display:grid;gap:6px;">',
-        `<img src="${escapeHtml(leadPhoto)}" alt="${escapeHtml(place.name)}" style="width:100%;height:140px;object-fit:cover;display:block;border:1px solid rgba(255,255,255,0.08)" />`,
-        thumbnailPhotos.length > 0
-          ? `<div style="display:grid;grid-template-columns:repeat(${thumbnailPhotos.length}, minmax(0, 1fr));gap:6px;">${thumbnailPhotos.map((entry, index) => `<img src="${escapeHtml(entry.uri)}" alt="${escapeHtml(`${place.name} photo ${index + 2}`)}" style="width:100%;height:52px;object-fit:cover;display:block;border:1px solid rgba(255,255,255,0.08)" />`).join('')}</div>`
-          : '',
-        authorLine
-          ? `<p style="margin:0;color:#6a6a6a;font-size:10px;text-transform:uppercase;letter-spacing:0.05em">Photo credit: ${escapeHtml(authorLine)}</p>`
-          : '',
-        '</div>'
-      ].join('')
-      : '';
+    const photoHtml = buildPlacePhotoGalleryHtml({
+      placeName: place.name,
+      photoGallery,
+      activeIndex: activePhotoIndex,
+      controlIds: photoControlIds || undefined
+    });
     return `<div class="custom-iw" style="max-width:340px;background:#0A0A0A;color:#FFFFFF;padding:12px;font-family:'JetBrains Mono',monospace;font-size:13px">${avoidBanner}${safeBanner}<h3 style="margin:0 0 6px;font-size:16px;color:#FFFFFF">${escapeHtml(place.name)}</h3>${photoHtml}<p style="margin:4px 0;color:#8a8a8a"><strong style="color:#FFFFFF">Tag:</strong> ${escapeHtml(displayTag)}</p><p style="margin:4px 0;color:#8a8a8a"><strong style="color:#FFFFFF">Location:</strong> ${escapeHtml(place.location || 'Unknown')}</p>${recommendedBy.length > 0 ? `<p style="margin:4px 0;color:#8a8a8a"><strong style="color:#FFFFFF">Recommended by:</strong> ${escapeHtml(recommendedBy.join(', '))}</p>` : ''}${firstRecommendationFriendUrl ? `<p style="margin:4px 0;color:#8a8a8a"><strong style="color:#FFFFFF">Credit:</strong> <a href="${escapeHtml(firstRecommendationFriendUrl)}" target="_blank" rel="noreferrer" style="color:#00FF88;text-decoration:none;font-weight:600">View profile</a></p>` : ''}${firstRecommendationNote ? `<p style="margin:4px 0;color:#8a8a8a"><strong style="color:#FFFFFF">Friend note:</strong> ${escapeHtml(firstRecommendationNote)}</p>` : ''}${place.curatorComment ? `<p style="margin:4px 0;color:#8a8a8a"><strong style="color:#FFFFFF">Curator:</strong> ${escapeHtml(place.curatorComment)}</p>` : ''}${place.description ? `<p style="margin:4px 0;color:#8a8a8a">${escapeHtml(place.description)}</p>` : ''}${place.details ? `<p style="margin:4px 0;color:#8a8a8a">${escapeHtml(place.details)}</p>` : ''}${addButton}${linkRow}</div>`;
   }, []);
 
@@ -1082,37 +1072,75 @@ export default function TripProvider({ children }: { children: ReactNode }) {
             if (!infoWindowRef.current) return;
             const addActionId = selectedDate ? `add-${createPlanId()}` : '';
             const photoCacheKey = createPlacePhotoCacheKey(pwp);
+            const photoControlIds = {
+              previous: `place-photo-prev-${createPlanId()}`,
+              next: `place-photo-next-${createPlanId()}`
+            };
             activePlaceInfoWindowKeyRef.current = photoCacheKey;
+            placePhotoGalleryIndexRef.current.set(photoCacheKey, 0);
             const plannerAction = {
               id: addActionId,
               label: selectedDate ? `Add to ${formatDateDayMonth(selectedDate)}` : 'Pick planner date first',
               enabled: Boolean(selectedDate)
             };
-            const wireAddButton = () => {
-              if (addActionId && window.google?.maps?.event) {
+            const renderPlaceInfoWindow = (gallery) => {
+              const activePhotoIndex = placePhotoGalleryIndexRef.current.get(photoCacheKey) || 0;
+              infoWindowRef.current.setContent(buildPlaceInfoWindowHtml(pwp, plannerAction, {
+                photoGallery: gallery,
+                activePhotoIndex,
+                photoControlIds
+              }));
+              infoWindowRef.current.open({ map: mapRef.current, anchor: marker });
+            };
+            const wireInfoWindowActions = (gallery) => {
+              const hasGalleryControls = Array.isArray(gallery) && gallery.length > 1;
+              if ((addActionId || hasGalleryControls) && window.google?.maps?.event) {
                 window.google.maps.event.addListenerOnce(infoWindowRef.current, 'domready', () => {
                   const btn = document.getElementById(addActionId);
-                  if (!btn) return;
-                  btn.addEventListener('click', (e) => {
-                    e.preventDefault();
-                    addPlaceToDayPlan(pwp);
-                    setStatusMessage(`Added "${pwp.name}" to ${formatDate(selectedDate)}.`);
-                  });
+                  if (btn) {
+                    btn.addEventListener('click', (e) => {
+                      e.preventDefault();
+                      addPlaceToDayPlan(pwp);
+                      setStatusMessage(`Added "${pwp.name}" to ${formatDate(selectedDate)}.`);
+                    });
+                  }
+                  const previousBtn = document.getElementById(photoControlIds.previous);
+                  if (previousBtn && Array.isArray(gallery) && gallery.length > 1) {
+                    previousBtn.addEventListener('click', (e) => {
+                      e.preventDefault();
+                      placePhotoGalleryIndexRef.current.set(
+                        photoCacheKey,
+                        getNextPlacePhotoIndex(placePhotoGalleryIndexRef.current.get(photoCacheKey) || 0, -1, gallery.length)
+                      );
+                      renderPlaceInfoWindow(gallery);
+                      wireInfoWindowActions(gallery);
+                    });
+                  }
+                  const nextBtn = document.getElementById(photoControlIds.next);
+                  if (nextBtn && Array.isArray(gallery) && gallery.length > 1) {
+                    nextBtn.addEventListener('click', (e) => {
+                      e.preventDefault();
+                      placePhotoGalleryIndexRef.current.set(
+                        photoCacheKey,
+                        getNextPlacePhotoIndex(placePhotoGalleryIndexRef.current.get(photoCacheKey) || 0, 1, gallery.length)
+                      );
+                      renderPlaceInfoWindow(gallery);
+                      wireInfoWindowActions(gallery);
+                    });
+                  }
                 });
               }
             };
             const cachedPhotoGallery = placePhotoCacheRef.current.get(photoCacheKey) || [];
-            infoWindowRef.current.setContent(buildPlaceInfoWindowHtml(pwp, plannerAction, cachedPhotoGallery));
-            infoWindowRef.current.open({ map: mapRef.current, anchor: marker });
-            wireAddButton();
+            renderPlaceInfoWindow(cachedPhotoGallery);
+            wireInfoWindowActions(cachedPhotoGallery);
             if (!placePhotoCacheRef.current.has(photoCacheKey) && position) {
               fetchPlacePhotoGallery(pwp.name, { lat: position.lat, lng: position.lng }).then((gallery) => {
                 placePhotoCacheRef.current.set(photoCacheKey, gallery);
                 if (infoWindowRef.current && activePlaceInfoWindowKeyRef.current === photoCacheKey) {
                   infoWindowRef.current.close();
-                  infoWindowRef.current.setContent(buildPlaceInfoWindowHtml(pwp, plannerAction, gallery));
-                  infoWindowRef.current.open({ map: mapRef.current, anchor: marker });
-                  wireAddButton();
+                  renderPlaceInfoWindow(gallery);
+                  wireInfoWindowActions(gallery);
                 }
               });
             }
