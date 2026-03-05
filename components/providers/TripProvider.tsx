@@ -36,7 +36,7 @@ import {
 import {
   createLucidePinIcon, createLucidePinIconWithLabel, toCoordinateKey, createTravelTimeCacheKey,
   createRouteRequestCacheKey, requestPlannedRoute,
-  loadGoogleMapsScript, buildInfoWindowAddButton, fetchPlacePhotoUri
+  loadGoogleMapsScript, buildInfoWindowAddButton, createPlacePhotoCacheKey, fetchPlacePhotoGallery
 } from '@/lib/map-helpers';
 import {
   applyDeviceLocationOrigin,
@@ -54,7 +54,8 @@ const TAG_COLORS = {
   safe: '#00FF88'
 };
 
-const CRIME_HEATMAP_HOURS = 72;
+export const CRIME_LOOKBACK_HOURS_OPTIONS = [1, 24, 72] as const;
+const DEFAULT_CRIME_LOOKBACK_HOURS = 72;
 const CRIME_HEATMAP_LIMIT = 6000;
 const CRIME_REFRESH_INTERVAL_MS = 2 * 60 * 1000;
 const CRIME_IDLE_DEBOUNCE_MS = 450;
@@ -98,6 +99,10 @@ function getCrimeHeatmapProfile(strength) {
   return { weightMultiplier: 1.45, opacity: 0.84, maxIntensity: 3.3, radiusScale: 1 };
 }
 
+function isCrimeLookbackHoursOption(value: number) {
+  return CRIME_LOOKBACK_HOURS_OPTIONS.includes(value as (typeof CRIME_LOOKBACK_HOURS_OPTIONS)[number]);
+}
+
 function buildCrimeBoundsQuery(map) {
   const bounds = map?.getBounds?.();
   const ne = bounds?.getNorthEast?.();
@@ -121,6 +126,7 @@ function buildCrimeBoundsQuery(map) {
 type CrimeLayerMeta = {
   loading: boolean;
   count: number;
+  hours: number;
   generatedAt: string;
   error: string;
 };
@@ -128,6 +134,7 @@ type CrimeLayerMeta = {
 const EMPTY_CRIME_LAYER_META: CrimeLayerMeta = {
   loading: false,
   count: 0,
+  hours: DEFAULT_CRIME_LOOKBACK_HOURS,
   generatedAt: '',
   error: ''
 };
@@ -193,19 +200,22 @@ export default function TripProvider({ children }: { children: ReactNode }) {
   const crimeHeatmapRef = useRef<any>(null);
   const crimeRefreshTimerRef = useRef<number | null>(null);
   const crimeIdleListenerRef = useRef<any>(null);
+  const crimeLookbackHydratedRef = useRef(false);
   const lastCrimeFetchAtRef = useRef(0);
   const lastCrimeQueryRef = useRef('');
   const positionCacheRef = useRef<Map<string, any>>(new Map());
   const geocodeStoreRef = useRef<Map<string, any>>(new Map());
   const travelTimeCacheRef = useRef<Map<string, any>>(new Map());
   const plannedRouteCacheRef = useRef<Map<string, any>>(new Map());
-  const placePhotoCacheRef = useRef<Map<string, string | null>>(new Map());
+  const placePhotoCacheRef = useRef<Map<string, any[]>>(new Map());
+  const activePlaceInfoWindowKeyRef = useRef('');
   const plannerHydratedRef = useRef(false);
 
   const [status, setStatus] = useState('Loading trip map...');
   const [statusError, setStatusError] = useState(false);
   const [crimeLayerMeta, setCrimeLayerMeta] = useState<CrimeLayerMeta>(EMPTY_CRIME_LAYER_META);
   const [crimeHeatmapStrength, setCrimeHeatmapStrength] = useState(DEFAULT_CRIME_HEATMAP_STRENGTH);
+  const [crimeLookbackHours, setCrimeLookbackHours] = useState<number>(DEFAULT_CRIME_LOOKBACK_HOURS);
   const [mapsReady, setMapsReady] = useState(false);
   const [allEvents, setAllEvents] = useState<any[]>([]);
   const [allPlaces, setAllPlaces] = useState<any[]>([]);
@@ -235,6 +245,7 @@ export default function TripProvider({ children }: { children: ReactNode }) {
   const [syncingSourceId, setSyncingSourceId] = useState('');
   const [tripStart, setTripStart] = useState('');
   const [tripEnd, setTripEnd] = useState('');
+  const [showSharedPlaceRecommendations, setShowSharedPlaceRecommendations] = useState(true);
   const [profile, setProfile] = useState<any>(null);
   const [authUserId, setAuthUserId] = useState('');
   const [isSigningOut, setIsSigningOut] = useState(false);
@@ -282,6 +293,21 @@ export default function TripProvider({ children }: { children: ReactNode }) {
       try { localStorage.setItem('hiddenCategories', JSON.stringify([...hiddenCategories])); } catch {}
     }
   }, [hiddenCategories]);
+
+  useEffect(() => {
+    try {
+      const stored = Number.parseInt(localStorage.getItem('crimeLookbackHours') || '', 10);
+      if (isCrimeLookbackHoursOption(stored)) setCrimeLookbackHours(stored);
+    } catch {}
+    crimeLookbackHydratedRef.current = true;
+  }, []);
+
+  useEffect(() => {
+    if (!crimeLookbackHydratedRef.current) return;
+    try {
+      localStorage.setItem('crimeLookbackHours', String(crimeLookbackHours));
+    } catch {}
+  }, [crimeLookbackHours]);
 
   const uniqueDates = useMemo(() => {
     if (tripStart && tripEnd) {
@@ -473,7 +499,7 @@ export default function TripProvider({ children }: { children: ReactNode }) {
     setIsRouteUpdating(false);
   }, []);
 
-  const applyCrimeHeatmapData = useCallback((incidentsInput, generatedAtValue = '') => {
+  const applyCrimeHeatmapData = useCallback((incidentsInput, generatedAtValue = '', hoursValue = DEFAULT_CRIME_LOOKBACK_HOURS) => {
     if (!mapsReady || !mapRef.current || !window.google?.maps?.visualization) return;
     const profile = getCrimeHeatmapProfile(crimeHeatmapStrength);
     const radius = Math.max(12, Math.round(getCrimeHeatmapRadiusForZoom(mapRef.current?.getZoom?.()) * profile.radiusScale));
@@ -511,6 +537,7 @@ export default function TripProvider({ children }: { children: ReactNode }) {
     setCrimeLayerMeta({
       loading: false,
       count: incidents.length,
+      hours: hoursValue,
       generatedAt: resolvedGeneratedAt,
       error: ''
     });
@@ -519,7 +546,7 @@ export default function TripProvider({ children }: { children: ReactNode }) {
   const refreshCrimeHeatmap = useCallback(async ({ force = false }: { force?: boolean } = {}) => {
     if (!mapsReady || !mapRef.current || !window.google?.maps?.visualization) return;
     const boundsQuery = buildCrimeBoundsQuery(mapRef.current);
-    const requestPath = `/api/crime?hours=${CRIME_HEATMAP_HOURS}&limit=${CRIME_HEATMAP_LIMIT}${boundsQuery ? `&${boundsQuery}` : ''}`;
+    const requestPath = `/api/crime?hours=${crimeLookbackHours}&limit=${CRIME_HEATMAP_LIMIT}${boundsQuery ? `&${boundsQuery}` : ''}`;
     const now = Date.now();
     if (!force) {
       const sameQuery = requestPath === lastCrimeQueryRef.current;
@@ -533,20 +560,27 @@ export default function TripProvider({ children }: { children: ReactNode }) {
     try {
       const response = await fetch(requestPath);
       const payload = await response.json().catch(() => null);
+      if (lastCrimeQueryRef.current !== requestPath) return;
       if (!response.ok) {
         throw new Error(payload?.error || `Crime data request failed: ${response.status}`);
       }
       const incidents = Array.isArray(payload?.incidents) ? payload.incidents : [];
-      applyCrimeHeatmapData(incidents, String(payload?.generatedAt || new Date().toISOString()));
+      const responseHours = Number(payload?.hours);
+      applyCrimeHeatmapData(
+        incidents,
+        String(payload?.generatedAt || new Date().toISOString()),
+        isCrimeLookbackHoursOption(responseHours) ? responseHours : crimeLookbackHours
+      );
     } catch (error) {
       console.error('Crime heatmap refresh failed.', error);
+      if (lastCrimeQueryRef.current !== requestPath) return;
       setCrimeLayerMeta((prev) => ({
         ...prev,
         loading: false,
         error: error instanceof Error ? error.message : 'Failed to refresh crime layer.'
       }));
     }
-  }, [mapsReady, applyCrimeHeatmapData]);
+  }, [mapsReady, applyCrimeHeatmapData, crimeLookbackHours]);
 
   const applyRoutePolylineStyle = useCallback((isUpdating) => {
     if (!routePolylineRef.current) return;
@@ -682,7 +716,7 @@ export default function TripProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (hiddenCategories.has('crime')) return;
     void refreshCrimeHeatmap({ force: true });
-  }, [crimeHeatmapStrength, hiddenCategories, refreshCrimeHeatmap]);
+  }, [crimeHeatmapStrength, crimeLookbackHours, hiddenCategories, refreshCrimeHeatmap]);
 
   const addEventToDayPlan = useCallback((event) => {
     if (!selectedDate) { setStatusMessage('Select a specific date before adding events to your day plan.', true); return; }
@@ -838,7 +872,7 @@ export default function TripProvider({ children }: { children: ReactNode }) {
     return `<div class="custom-iw" style="max-width:330px;background:#0A0A0A;color:#FFFFFF;padding:12px;font-family:'JetBrains Mono',monospace;font-size:13px"><h3 style="margin:0 0 6px;font-size:16px;color:#FFFFFF">${escapeHtml(event.name)}</h3><p style="margin:4px 0;color:#8a8a8a"><strong style="color:#FFFFFF">Time:</strong> ${escapeHtml(time)} <span style="color:#6a6a6a;font-size:12px">(${escapeHtml(daysLabel)})</span></p><p style="margin:4px 0;color:#8a8a8a"><strong style="color:#FFFFFF">Location:</strong> ${escapeHtml(location)}</p><p style="margin:4px 0;color:#8a8a8a"><strong style="color:#FFFFFF">Travel time:</strong> ${escapeHtml(travel)}</p>${sourceLine}<p style="margin:4px 0;color:#8a8a8a">${escapeHtml(truncate(event.description || '', 220))}</p>${buildInfoWindowAddButton(plannerAction)}${eventLink}</div>`;
   }, []);
 
-  const buildPlaceInfoWindowHtml = useCallback((place, plannerAction, photoUri?: string | null) => {
+  const buildPlaceInfoWindowHtml = useCallback((place, plannerAction, photoGallery?: any[]) => {
     const displayTag = formatTag(normalizePlaceTag(place.tag));
     const placeTag = normalizePlaceTag(place.tag);
     const isAvoid = placeTag === 'avoid';
@@ -866,13 +900,34 @@ export default function TripProvider({ children }: { children: ReactNode }) {
     const firstRecommendationNote = Array.isArray(place.recommendations)
       ? String(place.recommendations.find((recommendation) => recommendation?.note)?.note || '').trim()
       : '';
+    const firstRecommendationFriendUrl = Array.isArray(place.recommendations)
+      ? getSafeExternalHref(place.recommendations.find((recommendation) => recommendation?.friendUrl)?.friendUrl)
+      : '';
     const linkRow = (safeMapLink || safeCornerLink)
       ? `<div style="display:flex;gap:10px;flex-wrap:wrap">${safeMapLink ? `<a href="${escapeHtml(safeMapLink)}" target="_blank" rel="noreferrer" style="color:#00FF88;text-decoration:none;font-weight:600;font-size:12px;text-transform:uppercase;letter-spacing:0.05em">Open map</a>` : ''}${safeCornerLink ? `<a href="${escapeHtml(safeCornerLink)}" target="_blank" rel="noreferrer" style="color:#00FF88;text-decoration:none;font-weight:600;font-size:12px;text-transform:uppercase;letter-spacing:0.05em">Corner page</a>` : ''}</div>`
       : '';
-    const photoHtml = photoUri
-      ? `<img src="${escapeHtml(photoUri)}" alt="${escapeHtml(place.name)}" style="width:100%;height:140px;object-fit:cover;margin:8px 0;display:block;border:1px solid rgba(255,255,255,0.08)" />`
+    const gallery = Array.isArray(photoGallery)
+      ? photoGallery.filter((entry) => entry?.uri).slice(0, 4)
+      : [];
+    const leadPhoto = gallery[0]?.uri || '';
+    const thumbnailPhotos = gallery.slice(1);
+    const authorLine = Array.from(
+      new Set(gallery.flatMap((entry) => (Array.isArray(entry?.authorNames) ? entry.authorNames : [])))
+    ).join(', ');
+    const photoHtml = leadPhoto
+      ? [
+        '<div style="margin:8px 0 10px;display:grid;gap:6px;">',
+        `<img src="${escapeHtml(leadPhoto)}" alt="${escapeHtml(place.name)}" style="width:100%;height:140px;object-fit:cover;display:block;border:1px solid rgba(255,255,255,0.08)" />`,
+        thumbnailPhotos.length > 0
+          ? `<div style="display:grid;grid-template-columns:repeat(${thumbnailPhotos.length}, minmax(0, 1fr));gap:6px;">${thumbnailPhotos.map((entry, index) => `<img src="${escapeHtml(entry.uri)}" alt="${escapeHtml(`${place.name} photo ${index + 2}`)}" style="width:100%;height:52px;object-fit:cover;display:block;border:1px solid rgba(255,255,255,0.08)" />`).join('')}</div>`
+          : '',
+        authorLine
+          ? `<p style="margin:0;color:#6a6a6a;font-size:10px;text-transform:uppercase;letter-spacing:0.05em">Photo credit: ${escapeHtml(authorLine)}</p>`
+          : '',
+        '</div>'
+      ].join('')
       : '';
-    return `<div class="custom-iw" style="max-width:340px;background:#0A0A0A;color:#FFFFFF;padding:12px;font-family:'JetBrains Mono',monospace;font-size:13px">${avoidBanner}${safeBanner}<h3 style="margin:0 0 6px;font-size:16px;color:#FFFFFF">${escapeHtml(place.name)}</h3>${photoHtml}<p style="margin:4px 0;color:#8a8a8a"><strong style="color:#FFFFFF">Tag:</strong> ${escapeHtml(displayTag)}</p><p style="margin:4px 0;color:#8a8a8a"><strong style="color:#FFFFFF">Location:</strong> ${escapeHtml(place.location || 'Unknown')}</p>${recommendedBy.length > 0 ? `<p style="margin:4px 0;color:#8a8a8a"><strong style="color:#FFFFFF">Recommended by:</strong> ${escapeHtml(recommendedBy.join(', '))}</p>` : ''}${firstRecommendationNote ? `<p style="margin:4px 0;color:#8a8a8a"><strong style="color:#FFFFFF">Friend note:</strong> ${escapeHtml(firstRecommendationNote)}</p>` : ''}${place.curatorComment ? `<p style="margin:4px 0;color:#8a8a8a"><strong style="color:#FFFFFF">Curator:</strong> ${escapeHtml(place.curatorComment)}</p>` : ''}${place.description ? `<p style="margin:4px 0;color:#8a8a8a">${escapeHtml(place.description)}</p>` : ''}${place.details ? `<p style="margin:4px 0;color:#8a8a8a">${escapeHtml(place.details)}</p>` : ''}${addButton}${linkRow}</div>`;
+    return `<div class="custom-iw" style="max-width:340px;background:#0A0A0A;color:#FFFFFF;padding:12px;font-family:'JetBrains Mono',monospace;font-size:13px">${avoidBanner}${safeBanner}<h3 style="margin:0 0 6px;font-size:16px;color:#FFFFFF">${escapeHtml(place.name)}</h3>${photoHtml}<p style="margin:4px 0;color:#8a8a8a"><strong style="color:#FFFFFF">Tag:</strong> ${escapeHtml(displayTag)}</p><p style="margin:4px 0;color:#8a8a8a"><strong style="color:#FFFFFF">Location:</strong> ${escapeHtml(place.location || 'Unknown')}</p>${recommendedBy.length > 0 ? `<p style="margin:4px 0;color:#8a8a8a"><strong style="color:#FFFFFF">Recommended by:</strong> ${escapeHtml(recommendedBy.join(', '))}</p>` : ''}${firstRecommendationFriendUrl ? `<p style="margin:4px 0;color:#8a8a8a"><strong style="color:#FFFFFF">Credit:</strong> <a href="${escapeHtml(firstRecommendationFriendUrl)}" target="_blank" rel="noreferrer" style="color:#00FF88;text-decoration:none;font-weight:600">View profile</a></p>` : ''}${firstRecommendationNote ? `<p style="margin:4px 0;color:#8a8a8a"><strong style="color:#FFFFFF">Friend note:</strong> ${escapeHtml(firstRecommendationNote)}</p>` : ''}${place.curatorComment ? `<p style="margin:4px 0;color:#8a8a8a"><strong style="color:#FFFFFF">Curator:</strong> ${escapeHtml(place.curatorComment)}</p>` : ''}${place.description ? `<p style="margin:4px 0;color:#8a8a8a">${escapeHtml(place.description)}</p>` : ''}${place.details ? `<p style="margin:4px 0;color:#8a8a8a">${escapeHtml(place.details)}</p>` : ''}${addButton}${linkRow}</div>`;
   }, []);
 
   const renderCurrentSelection = useCallback(
@@ -901,6 +956,7 @@ export default function TripProvider({ children }: { children: ReactNode }) {
           });
           marker.addEventListener('gmp-click', () => {
             if (!infoWindowRef.current) return;
+            activePlaceInfoWindowKeyRef.current = '';
             const addActionId = selectedDate ? `add-${createPlanId()}` : '';
             const plannerAction = {
               id: addActionId,
@@ -961,6 +1017,7 @@ export default function TripProvider({ children }: { children: ReactNode }) {
           });
           polygon.addListener('click', (event: any) => {
             if (!infoWindowRef.current) return;
+            activePlaceInfoWindowKeyRef.current = '';
             const plannerAction = { id: '', label: '', enabled: false };
             infoWindowRef.current.setContent(buildPlaceInfoWindowHtml(pwp, plannerAction));
             infoWindowRef.current.setPosition(event.latLng || position);
@@ -1006,6 +1063,8 @@ export default function TripProvider({ children }: { children: ReactNode }) {
           marker.addEventListener('gmp-click', () => {
             if (!infoWindowRef.current) return;
             const addActionId = selectedDate ? `add-${createPlanId()}` : '';
+            const photoCacheKey = createPlacePhotoCacheKey(pwp);
+            activePlaceInfoWindowKeyRef.current = photoCacheKey;
             const plannerAction = {
               id: addActionId,
               label: selectedDate ? `Add to ${formatDateDayMonth(selectedDate)}` : 'Pick planner date first',
@@ -1024,17 +1083,16 @@ export default function TripProvider({ children }: { children: ReactNode }) {
                 });
               }
             };
-            const cachedPhoto = placePhotoCacheRef.current.get(pwp.name);
-            infoWindowRef.current.setContent(buildPlaceInfoWindowHtml(pwp, plannerAction, cachedPhoto ?? undefined));
+            const cachedPhotoGallery = placePhotoCacheRef.current.get(photoCacheKey) || [];
+            infoWindowRef.current.setContent(buildPlaceInfoWindowHtml(pwp, plannerAction, cachedPhotoGallery));
             infoWindowRef.current.open({ map: mapRef.current, anchor: marker });
             wireAddButton();
-            const placeTag = normalizePlaceTag(pwp.tag);
-            if (placeTag === 'sightseeing' && !placePhotoCacheRef.current.has(pwp.name) && position) {
-              fetchPlacePhotoUri(pwp.name, { lat: position.lat, lng: position.lng }).then((uri) => {
-                placePhotoCacheRef.current.set(pwp.name, uri);
-                if (uri && infoWindowRef.current) {
+            if (!placePhotoCacheRef.current.has(photoCacheKey) && position) {
+              fetchPlacePhotoGallery(pwp.name, { lat: position.lat, lng: position.lng }).then((gallery) => {
+                placePhotoCacheRef.current.set(photoCacheKey, gallery);
+                if (infoWindowRef.current && activePlaceInfoWindowKeyRef.current === photoCacheKey) {
                   infoWindowRef.current.close();
-                  infoWindowRef.current.setContent(buildPlaceInfoWindowHtml(pwp, plannerAction, uri));
+                  infoWindowRef.current.setContent(buildPlaceInfoWindowHtml(pwp, plannerAction, gallery));
                   infoWindowRef.current.open({ map: mapRef.current, anchor: marker });
                   wireAddButton();
                 }
@@ -1109,6 +1167,7 @@ export default function TripProvider({ children }: { children: ReactNode }) {
       setTripStart(config.tripStart || '');
       setTripEnd(config.tripEnd || '');
       setBaseLocationText(config.baseLocation || '');
+      setShowSharedPlaceRecommendations(config.showSharedPlaceRecommendations ?? true);
       const loadedEvents = Array.isArray(eventsPayload.events) ? eventsPayload.events : [];
       const loadedPlaces = Array.isArray(eventsPayload.places) ? eventsPayload.places : [];
       const loadedSources = Array.isArray(sourcesPayload?.sources) ? sourcesPayload.sources : [];
@@ -1478,6 +1537,22 @@ export default function TripProvider({ children }: { children: ReactNode }) {
     setBaseLocationVersion((v) => v + 1);
   }, [tripStart, tripEnd, mapsReady, geocode, setBaseMarker]);
 
+  const handleSaveSharedPlaceRecommendations = useCallback(async (enabled) => {
+    await fetchJson('/api/config', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        tripStart,
+        tripEnd,
+        showSharedPlaceRecommendations: enabled
+      }),
+    });
+    const eventsPayload = await fetchJson('/api/events');
+    setShowSharedPlaceRecommendations(Boolean(enabled));
+    setAllPlaces(Array.isArray(eventsPayload?.places) ? eventsPayload.places : []);
+    setStatusMessage(enabled ? 'Shared recommendations enabled.' : 'Shared recommendations hidden.');
+  }, [tripStart, tripEnd, setStatusMessage]);
+
   const toggleCategory = useCallback((category) => {
     setHiddenCategories((prev) => {
       const next = new Set(prev);
@@ -1504,6 +1579,7 @@ export default function TripProvider({ children }: { children: ReactNode }) {
     status, statusError, mapsReady, isInitializing,
     crimeLayerMeta,
     crimeHeatmapStrength, setCrimeHeatmapStrength,
+    crimeLookbackHours, setCrimeLookbackHours, crimeLookbackHourOptions: CRIME_LOOKBACK_HOURS_OPTIONS,
     allEvents, allPlaces, visibleEvents, visiblePlaces,
     selectedDate, setSelectedDate, showAllEvents, setShowAllEvents,
     travelMode, setTravelMode, baseLocationText, setBaseLocationText,
@@ -1517,6 +1593,7 @@ export default function TripProvider({ children }: { children: ReactNode }) {
     newSourceType, setNewSourceType, newSourceUrl, setNewSourceUrl,
     newSourceLabel, setNewSourceLabel, isSavingSource, syncingSourceId,
     tripStart, setTripStart, tripEnd, setTripEnd,
+    showSharedPlaceRecommendations, setShowSharedPlaceRecommendations,
     // Derived
     placeTagOptions, filteredPlaces, eventLookup, placeLookup,
     uniqueDates, eventsByDate, planItemsByDate,
@@ -1527,7 +1604,7 @@ export default function TripProvider({ children }: { children: ReactNode }) {
     handleSignOut,
     handleSync, handleDeviceLocation,
     handleCreateSource, handleToggleSourceStatus, handleDeleteSource, handleSyncSource,
-    handleSaveTripDates, handleSaveBaseLocation,
+    handleSaveTripDates, handleSaveBaseLocation, handleSaveSharedPlaceRecommendations,
     handleExportPlannerIcs, handleAddDayPlanToGoogleCalendar,
     addEventToDayPlan, addPlaceToDayPlan, removePlanItem, clearDayPlan, startPlanDrag,
     shiftCalendarMonth,

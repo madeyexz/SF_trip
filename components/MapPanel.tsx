@@ -21,6 +21,10 @@ function formatCrimeUpdatedAt(isoTimestamp) {
   return `updated ${h}h ${m}m ago`;
 }
 
+function formatCrimeWindowLabel(hours) {
+  return hours === 1 ? 'last 1h' : `last ${hours}h`;
+}
+
 function FilterChip({ active, color, icon: Icon, label, onClick }) {
   return (
     <button
@@ -58,13 +62,16 @@ export default function MapPanel() {
     crimeLayerMeta,
     crimeHeatmapStrength,
     setCrimeHeatmapStrength,
+    crimeLookbackHours,
+    setCrimeLookbackHours,
+    crimeLookbackHourOptions,
   } = useTrip();
   const isCrimeVisible = !hiddenCategories.has('crime');
   const crimeStatusText = crimeLayerMeta.loading
     ? 'Updating live crime feed...'
     : crimeLayerMeta.error
       ? `Update failed: ${crimeLayerMeta.error}`
-      : `${crimeLayerMeta.count.toLocaleString()} incidents in last 72h · ${formatCrimeUpdatedAt(crimeLayerMeta.generatedAt)}`;
+      : `${crimeLayerMeta.count.toLocaleString()} incidents in ${formatCrimeWindowLabel(crimeLayerMeta.hours || crimeLookbackHours)} · ${formatCrimeUpdatedAt(crimeLayerMeta.generatedAt)}`;
 
   return (
     <section className="flex flex-col min-h-0 h-full" ref={mapPanelRef}>
@@ -115,25 +122,49 @@ export default function MapPanel() {
               </div>
               <span className="rounded-none bg-danger-light px-1.5 py-0.5 text-[0.6rem] font-semibold text-[#FF4444]">ON</span>
             </div>
-            <div className="mt-1.5 flex items-center gap-1">
-              {[
-                { id: 'low', label: 'Low' },
-                { id: 'medium', label: 'Medium' },
-                { id: 'high', label: 'High' },
-              ].map((level) => (
-                <button
-                  key={level.id}
-                  type="button"
-                  onClick={() => setCrimeHeatmapStrength(level.id)}
-                  className={`rounded-none px-1.5 py-0.5 text-[0.6rem] font-semibold border transition-colors ${
-                    crimeHeatmapStrength === level.id
-                      ? 'bg-danger-light text-[#FF4444] border-[rgba(255,68,68,0.3)]'
-                      : 'bg-transparent text-foreground-secondary border-border hover:border-[rgba(255,68,68,0.3)]'
-                  }`}
-                >
-                  {level.label}
-                </button>
-              ))}
+            <div className="mt-1.5 space-y-1.5">
+              <div>
+                <p className="text-[0.52rem] font-semibold tracking-[0.12em] text-foreground-secondary">INTENSITY</p>
+                <div className="mt-1 flex items-center gap-1">
+                  {[
+                    { id: 'low', label: 'Low' },
+                    { id: 'medium', label: 'Medium' },
+                    { id: 'high', label: 'High' },
+                  ].map((level) => (
+                    <button
+                      key={level.id}
+                      type="button"
+                      onClick={() => setCrimeHeatmapStrength(level.id)}
+                      className={`rounded-none px-1.5 py-0.5 text-[0.6rem] font-semibold border transition-colors ${
+                        crimeHeatmapStrength === level.id
+                          ? 'bg-danger-light text-[#FF4444] border-[rgba(255,68,68,0.3)]'
+                          : 'bg-transparent text-foreground-secondary border-border hover:border-[rgba(255,68,68,0.3)]'
+                      }`}
+                    >
+                      {level.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <p className="text-[0.52rem] font-semibold tracking-[0.12em] text-foreground-secondary">WINDOW</p>
+                <div className="mt-1 flex items-center gap-1">
+                  {crimeLookbackHourOptions.map((hours) => (
+                    <button
+                      key={hours}
+                      type="button"
+                      onClick={() => setCrimeLookbackHours(hours)}
+                      className={`rounded-none px-1.5 py-0.5 text-[0.6rem] font-semibold border transition-colors ${
+                        crimeLookbackHours === hours
+                          ? 'bg-danger-light text-[#FF4444] border-[rgba(255,68,68,0.3)]'
+                          : 'bg-transparent text-foreground-secondary border-border hover:border-[rgba(255,68,68,0.3)]'
+                      }`}
+                    >
+                      {hours}H
+                    </button>
+                  ))}
+                </div>
+              </div>
             </div>
             <div className="mt-1.5 h-1.5 w-full rounded-none bg-gradient-to-r from-[#FF8800] via-[#FF4444] to-[#7f1d1d]" />
             <p className={`mt-1.5 text-[0.64rem] leading-tight ${crimeLayerMeta.error ? 'text-[#FF4444] font-semibold' : 'text-foreground-secondary'}`}>

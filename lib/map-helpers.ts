@@ -1,8 +1,18 @@
-import { escapeHtml } from './helpers';
+import { escapeHtml } from './helpers.ts';
 
 type LatLngLike = {
   lat: number | (() => number);
   lng: number | (() => number);
+};
+
+type PlacePhotoLike = {
+  authorAttributions?: Array<{ displayName?: string }>;
+  getURI?: (options: { maxWidth: number; maxHeight: number }) => string;
+};
+
+export type PlacePhotoGalleryEntry = {
+  uri: string;
+  authorNames: string[];
 };
 
 export function toKebabCase(value) {
@@ -196,25 +206,76 @@ export function buildInfoWindowAddButton(plannerAction) {
   `;
 }
 
-export async function fetchPlacePhotoUri(
+export function createPlacePhotoCacheKey(place) {
+  const id = String(place?.id || '').trim();
+  if (id) {
+    return id;
+  }
+
+  const name = String(place?.name || '').trim();
+  const location = String(place?.location || '').trim();
+  return `${name}|${location}`;
+}
+
+function normalizePlacePhotoGallery(photos: PlacePhotoLike[], limit = 4): PlacePhotoGalleryEntry[] {
+  if (!Array.isArray(photos) || photos.length === 0) {
+    return [];
+  }
+
+  const gallery = [];
+
+  for (const photo of photos) {
+    if (gallery.length >= limit) {
+      break;
+    }
+
+    const uri = typeof photo?.getURI === 'function'
+      ? photo.getURI({ maxWidth: 400, maxHeight: 200 })
+      : '';
+
+    if (!uri) {
+      continue;
+    }
+
+    gallery.push({
+      uri,
+      authorNames: Array.isArray(photo?.authorAttributions)
+        ? photo.authorAttributions
+          .map((attribution) => String(attribution?.displayName || '').trim())
+          .filter(Boolean)
+        : []
+    });
+  }
+
+  return gallery;
+}
+
+export async function fetchPlacePhotoGallery(
   placeName: string,
   location: LatLngLike
-): Promise<string | null> {
+): Promise<PlacePhotoGalleryEntry[]> {
   try {
     const { Place } = await window.google.maps.importLibrary('places') as any;
-    if (!Place) return null;
+    if (!Place) return [];
     const point = toLatLngLiteral(location);
-    if (!point) return null;
+    if (!point) return [];
     const { places } = await Place.searchByText({
       textQuery: placeName,
       fields: ['photos'],
       locationBias: new window.google.maps.Circle({ center: point, radius: 500 }),
       maxResultCount: 1,
     });
-    if (!places?.length || !places[0].photos?.length) return null;
-    return places[0].photos[0].getURI({ maxWidth: 400, maxHeight: 200 });
+    return normalizePlacePhotoGallery(places?.[0]?.photos || []);
   } catch (e) {
     console.warn('[Places photo] lookup failed for', placeName, e);
-    return null;
+    return [];
   }
+}
+
+export async function fetchPlacePhotoUri(
+  placeName: string,
+  location: LatLngLike
+): Promise<string | null> {
+  const gallery = await fetchPlacePhotoGallery(placeName, location);
+  return gallery[0]?.uri || null;
 }

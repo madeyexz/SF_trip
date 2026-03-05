@@ -20,7 +20,8 @@ export default function ConfigPage() {
     newSourceLabel, setNewSourceLabel, isSavingSource, syncingSourceId,
     handleCreateSource, handleToggleSourceStatus, handleDeleteSource, handleSyncSource,
     tripStart, tripEnd, handleSaveTripDates,
-    baseLocationText, handleSaveBaseLocation
+    baseLocationText, handleSaveBaseLocation,
+    showSharedPlaceRecommendations, handleSaveSharedPlaceRecommendations
   } = useTrip();
 
   const [localTripStart, setLocalTripStart] = useState(tripStart);
@@ -157,6 +158,42 @@ export default function ConfigPage() {
               {locationSaveState === 'saving' ? 'Saving...' : locationSaveState === 'saved' ? <><Check size={14} />Saved</> : 'Save'}
             </Button>
           </form>
+        </Card>
+
+        <div className="flex items-center justify-between gap-4">
+          <div>
+            <h2 className="m-0 text-xl font-extrabold tracking-tight uppercase" style={{ fontFamily: "var(--font-space-grotesk, 'Space Grotesk'), sans-serif" }}>Shared Recommendations</h2>
+            <p className="mt-0.5 text-muted text-[0.82rem]">Show or hide the shared Winston map recommendations for your account.</p>
+          </div>
+        </div>
+        <Card className="p-3 flex items-start justify-between gap-4 max-sm:flex-col">
+          <div className="min-w-0">
+            <p className="m-0 text-sm font-semibold text-foreground uppercase tracking-wide">Winston Recommendations</p>
+            <p className="mt-1 mb-0 text-[0.82rem] text-muted leading-relaxed">
+              Shared across all users. Credit:{' '}
+              <a className="text-accent no-underline hover:underline" href="https://x.com/hsu_winston" target="_blank" rel="noreferrer">
+                @hsu_winston
+              </a>
+            </p>
+          </div>
+          <div className="flex items-center gap-1.5 shrink-0">
+            <Button
+              type="button"
+              size="sm"
+              variant={showSharedPlaceRecommendations ? 'default' : 'secondary'}
+              onClick={() => { void handleSaveSharedPlaceRecommendations(true); }}
+            >
+              On
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant={!showSharedPlaceRecommendations ? 'danger' : 'secondary'}
+              onClick={() => { void handleSaveSharedPlaceRecommendations(false); }}
+            >
+              Off
+            </Button>
+          </div>
         </Card>
 
         <div className="flex items-center justify-between gap-4">

@@ -82,6 +82,7 @@ export default function SpotsItinerary() {
             (() => {
               const safeMapLink = getSafeExternalHref(place.mapLink);
               const safeCornerLink = getSafeExternalHref(place.cornerLink);
+              const safeFriendUrl = getSafeExternalHref(place.recommendations?.find((recommendation) => recommendation?.friendUrl)?.friendUrl);
               return (
                 <Card className="p-3.5 hover:border-accent-border hover:shadow-[0_0_0_3px_var(--color-accent-glow)]" key={place.id || `${place.name}-${place.location}`}>
                   <div className="flex gap-2 justify-between items-start">
@@ -96,6 +97,12 @@ export default function SpotsItinerary() {
                   <p className="my-0.5 text-[0.82rem] text-foreground-secondary leading-relaxed"><strong>Location:</strong> {place.location}</p>
                   {Array.isArray(place.recommendedBy) && place.recommendedBy.length > 0 ? (
                     <p className="my-0.5 text-[0.82rem] text-foreground-secondary leading-relaxed"><strong>Recommended by:</strong> {place.recommendedBy.join(', ')}</p>
+                  ) : null}
+                  {safeFriendUrl ? (
+                    <p className="my-0.5 text-[0.82rem] text-foreground-secondary leading-relaxed">
+                      <strong>Credit:</strong>{' '}
+                      <a className="text-accent no-underline hover:underline" href={safeFriendUrl} target="_blank" rel="noreferrer">View profile</a>
+                    </p>
                   ) : null}
                   {Array.isArray(place.recommendations) && place.recommendations[0]?.note ? (
                     <p className="my-0.5 text-[0.82rem] text-foreground-secondary leading-relaxed"><strong>Friend note:</strong> {place.recommendations[0].note}</p>
