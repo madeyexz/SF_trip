@@ -10,6 +10,7 @@ export function normalizePlaceTag(tag) {
   if (value === 'eat' || value === 'food' || value === 'restaurant' || value === 'restaurants') return 'eat';
   if (value === 'go out' || value === 'nightlife') return 'go out';
   if (value === 'shop' || value === 'shops') return 'shops';
+  if (value === 'sightseeing' || value === 'sight' || value === 'landmark' || value === 'landmarks') return 'sightseeing';
   if (value === 'avoid') return 'avoid';
   if (value === 'safe') return 'safe';
   return 'cafes';

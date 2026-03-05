@@ -24,7 +24,7 @@ const DEFAULT_RSS_MAX_ITEMS_PER_SYNC = 3;
 const DEFAULT_RSS_STATE_MAX_ITEMS = 500;
 const SOURCE_TYPES = new Set(['event', 'spot']);
 const SOURCE_STATUSES = new Set(['active', 'paused']);
-const SPOT_TAGS = ['eat', 'bar', 'cafes', 'go out', 'shops', 'avoid', 'safe'];
+const SPOT_TAGS = ['eat', 'bar', 'cafes', 'go out', 'shops', 'sightseeing', 'avoid', 'safe'];
 const CONVEX_EVENT_FIELDS = [
   'id',
   'name',
@@ -1692,6 +1692,7 @@ function normalizeSpotTag(tag, fallbackText) {
   if (/(bar|cocktail|wine|pub|brewery)/.test(haystack)) return 'bar';
   if (/(shop|store|boutique|retail|market)/.test(haystack)) return 'shops';
   if (/(club|night|party|dance|music venue|late night)/.test(haystack)) return 'go out';
+  if (/\b(sightseeing|landmark|museum|bridge|tower|trail|viewpoint|monument)\b/.test(haystack)) return 'sightseeing';
   return 'eat';
 }
 
