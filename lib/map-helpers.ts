@@ -1,5 +1,7 @@
 import { escapeHtml } from './helpers.ts';
 
+export const PLACE_SEARCH_TAG_OPTIONS = ['eat', 'bar', 'cafes', 'go out', 'shops', 'sightseeing'] as const;
+
 type LatLngLike = {
   lat: number | (() => number);
   lng: number | (() => number);
@@ -244,6 +246,93 @@ export function createPlacePhotoCacheKey(place) {
   const name = String(place?.name || '').trim();
   const location = String(place?.location || '').trim();
   return `${name}|${location}`;
+}
+
+function cleanText(value: unknown) {
+  return String(value || '').replace(/\s+/g, ' ').trim();
+}
+
+function slugify(value: unknown) {
+  return cleanText(value)
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+}
+
+export function guessPlaceSearchTag(typesInput: unknown, fallbackTextInput = '') {
+  const types = Array.isArray(typesInput)
+    ? typesInput.map((value) => cleanText(value).toLowerCase()).filter(Boolean)
+    : [];
+  const fallbackText = cleanText(fallbackTextInput).toLowerCase();
+  const haystack = [...types, fallbackText].join(' ');
+
+  if (/(cafe|coffee_shop|tea_house|bakery|brunch_restaurant)/.test(haystack)) return 'cafes';
+  if (/(bar|pub|wine_bar|cocktail_bar|brewery|night_club)/.test(haystack)) return 'bar';
+  if (/(store|book_store|clothing_store|shopping_mall|market|gift_shop|boutique)/.test(haystack)) return 'shops';
+  if (/(night_club|event_venue|live_music_venue|dance_hall)/.test(haystack)) return 'go out';
+  if (/(museum|tourist_attraction|art_gallery|historical_landmark|park|monument|bridge)/.test(haystack)) return 'sightseeing';
+  return 'eat';
+}
+
+export function normalizePlacesTextSearchResults(resultsInput: unknown) {
+  const results = Array.isArray(resultsInput) ? resultsInput : [];
+
+  return results
+    .map((result, index) => {
+      const name = cleanText((result as any)?.displayName?.text || (result as any)?.displayName || (result as any)?.name);
+      const location = cleanText((result as any)?.formattedAddress || (result as any)?.locationText || (result as any)?.address);
+      const placeId = cleanText((result as any)?.id || (result as any)?.placeId);
+      const types = Array.isArray((result as any)?.types)
+        ? (result as any).types.map((value: unknown) => cleanText(value)).filter(Boolean)
+        : [];
+      const point = toLatLngLiteral((result as any)?.location);
+      if (!name || !location || !point) {
+        return null;
+      }
+
+      const queryText = `${name} ${location}`.trim();
+      return {
+        id: placeId || `search-result-${index + 1}-${slugify(queryText) || 'place'}`,
+        placeId,
+        name,
+        location,
+        lat: point.lat,
+        lng: point.lng,
+        mapLink: `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(queryText)}`,
+        types,
+        suggestedTag: guessPlaceSearchTag(types, queryText)
+      };
+    })
+    .filter(Boolean);
+}
+
+export function buildCustomSpotPayloadFromSearchResult(resultInput: any, tagInput: unknown) {
+  const result = resultInput && typeof resultInput === 'object' ? resultInput : {};
+  const name = cleanText(result.name);
+  const location = cleanText(result.location);
+  const mapLink = cleanText(result.mapLink);
+  const requestedTag = cleanText(tagInput).toLowerCase();
+  const tag = (PLACE_SEARCH_TAG_OPTIONS as readonly string[]).includes(requestedTag)
+    ? requestedTag
+    : guessPlaceSearchTag(result.types, `${name} ${location}`);
+  const types = Array.isArray(result.types) ? result.types.map((value: unknown) => cleanText(value)).filter(Boolean) : [];
+  const lat = Number(result.lat);
+  const lng = Number(result.lng);
+
+  return {
+    id: cleanText(result.placeId || result.id),
+    sourceKey: cleanText(result.placeId) ? `google-place:${cleanText(result.placeId)}` : '',
+    name,
+    tag,
+    location,
+    mapLink,
+    cornerLink: '',
+    curatorComment: '',
+    description: types.length > 0 ? `Saved from map search · ${types.slice(0, 3).join(', ')}` : 'Saved from map search',
+    details: types.length > 0 ? `Google types: ${types.join(', ')}` : 'Saved from map search',
+    ...(Number.isFinite(lat) ? { lat } : {}),
+    ...(Number.isFinite(lng) ? { lng } : {})
+  };
 }
 
 export function getNextPlacePhotoIndex(currentIndex: number, direction: number, totalPhotos: number) {

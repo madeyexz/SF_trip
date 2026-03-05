@@ -1,9 +1,14 @@
 'use client';
 
 import { useEffect } from 'react';
-import { Calendar, House, Siren } from 'lucide-react';
+import { Calendar, House, Search, Siren, X } from 'lucide-react';
 import { useTrip, TAG_COLORS, getTagIconComponent } from '@/components/providers/TripProvider';
 import { formatTag } from '@/lib/helpers';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue
+} from '@/components/ui/select';
 import StatusBar from '@/components/StatusBar';
 
 const EVENT_COLOR = '#FF8800';
@@ -66,6 +71,19 @@ export default function MapPanel() {
     crimeLookbackHours,
     setCrimeLookbackHours,
     crimeLookbackHourOptions,
+    mapSearchQuery,
+    setMapSearchQuery,
+    isSearchingMapLocation,
+    searchLocationError,
+    placeSearchResults,
+    searchResultTagDrafts,
+    savingSearchResultId,
+    hasSearchLocation,
+    handleSearchMapLocation,
+    handleClearSearchLocation,
+    handleSetSearchResultTag,
+    handleFocusSearchResult,
+    handleSaveSearchResultAsSpot,
     setMapRuntimeActive,
   } = useTrip();
   const isCrimeVisible = !hiddenCategories.has('crime');
@@ -119,6 +137,105 @@ export default function MapPanel() {
       </div>
       <div className="relative flex-1 min-h-0 map-container-responsive">
         <div id="map" ref={mapElementRef} />
+        <form
+          className="absolute top-3 left-3 z-20 w-[min(360px,calc(100%-24px))] border border-border bg-[rgba(10,10,10,0.94)] px-3 py-2.5"
+          onSubmit={(event) => {
+            event.preventDefault();
+            void handleSearchMapLocation(mapSearchQuery);
+          }}
+        >
+          <div className="flex items-center gap-1.5 text-[0.68rem] font-semibold uppercase tracking-[0.12em] text-foreground-secondary">
+            <Search size={13} className="text-accent" />
+            <span>{'// Search Location'}</span>
+          </div>
+          <div className="mt-2 flex items-center gap-2">
+            <Input
+              type="text"
+              value={mapSearchQuery}
+              onChange={(event) => setMapSearchQuery(event.target.value)}
+              placeholder='TRY "CAFE NEARBY" OR "SUSHI MISSION"'
+              aria-label="Search location"
+              autoComplete="off"
+              className="min-h-[34px] bg-bg-elevated text-[0.78rem]"
+            />
+            <Button
+              type="submit"
+              size="sm"
+              className="min-h-[34px] shrink-0 px-3"
+              disabled={isSearchingMapLocation}
+            >
+              {isSearchingMapLocation ? '...' : 'Search'}
+            </Button>
+            {hasSearchLocation ? (
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                className="min-h-[34px] shrink-0 px-2.5"
+                onClick={handleClearSearchLocation}
+                disabled={isSearchingMapLocation}
+                aria-label="Clear search pin"
+              >
+                <X size={13} />
+              </Button>
+            ) : null}
+          </div>
+          <p className={`mt-2 mb-0 text-[0.64rem] leading-tight ${searchLocationError ? 'text-[#FF4444]' : 'text-foreground-secondary'}`}>
+            {searchLocationError || 'Searches return multiple pinned places. Save any result into a trip category.'}
+          </p>
+          {placeSearchResults.length > 0 ? (
+            <div className="mt-2 max-h-[280px] overflow-y-auto border-t border-border pt-2">
+              <div className="mb-2 flex items-center justify-between gap-2">
+                <p className="m-0 text-[0.62rem] font-semibold uppercase tracking-[0.12em] text-foreground-secondary">
+                  {placeSearchResults.length} results pinned
+                </p>
+                <p className="m-0 text-[0.6rem] text-muted">SAVE INTO EXISTING SPOT CATEGORIES</p>
+              </div>
+              <div className="space-y-2">
+                {placeSearchResults.map((result, index) => {
+                  const selectedTag = searchResultTagDrafts[result.id] || result.suggestedTag || 'eat';
+                  const isSavingResult = savingSearchResultId === result.id;
+                  return (
+                    <div key={result.id} className="border border-border bg-bg-elevated px-2.5 py-2">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <p className="m-0 text-[0.64rem] font-semibold uppercase tracking-[0.12em] text-accent">
+                            Result {index + 1}
+                          </p>
+                          <p className="mt-1 mb-0 text-[0.78rem] font-semibold text-foreground leading-snug">{result.name}</p>
+                          <p className="mt-1 mb-0 text-[0.68rem] leading-snug text-foreground-secondary">{result.location}</p>
+                        </div>
+                        {result.savedTag ? (
+                          <span className="shrink-0 border border-accent-border bg-accent-light px-1.5 py-0.5 text-[0.58rem] font-semibold uppercase tracking-[0.12em] text-accent">
+                            Saved · {formatTag(result.savedTag)}
+                          </span>
+                        ) : null}
+                      </div>
+                      <div className="mt-2 grid grid-cols-[minmax(0,1fr)_auto_auto] gap-2 max-sm:grid-cols-1">
+                        <Select value={selectedTag} onValueChange={(value) => handleSetSearchResultTag(result.id, value)}>
+                          <SelectTrigger className="min-h-[32px] bg-card px-2.5 py-1 text-[0.72rem] uppercase">
+                            <SelectValue placeholder="Category" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {['eat', 'bar', 'cafes', 'go out', 'shops', 'sightseeing'].map((tag) => (
+                              <SelectItem key={tag} value={tag}>{formatTag(tag)}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <Button type="button" size="sm" variant="secondary" className="min-h-[32px] px-2.5" onClick={() => handleFocusSearchResult(result.id)}>
+                          Focus
+                        </Button>
+                        <Button type="button" size="sm" className="min-h-[32px] px-2.5" disabled={isSavingResult} onClick={() => { void handleSaveSearchResultAsSpot(result.id); }}>
+                          {isSavingResult ? 'Saving...' : 'Save Spot'}
+                        </Button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          ) : null}
+        </form>
         {isCrimeVisible ? (
           <div className="absolute top-3 right-3 z-20 w-[196px] rounded-none border border-[rgba(255,68,68,0.3)] bg-[rgba(10,10,10,0.92)] backdrop-blur-sm px-2.5 py-2 shadow-[0_8px_24px_rgba(255,68,68,0.15)]">
             <div className="flex items-center justify-between gap-2">

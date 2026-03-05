@@ -6,6 +6,7 @@ import { ConvexHttpClient } from 'convex/browser';
 import { getScopedConvexClient } from './convex-client-context.ts';
 import { mapAsyncWithConcurrency } from './async-map.ts';
 import { validateIngestionSourceUrlForFetch } from './security-server.ts';
+import { loadCustomSpotsPayload } from './custom-spots.ts';
 
 const DOC_LOCATION_FILE = path.join(process.cwd(), 'docs', 'my_location.md');
 const DATA_DIR = path.join(process.cwd(), 'data');
@@ -420,6 +421,7 @@ export async function loadEventsPayload() {
   const calendars = appendRequiredDefaultSourceUrls(sourceCalendars, 'event');
   const tripConfig = await loadTripConfig();
   const spotsPayload = await loadSpotsFromConvex();
+  const customSpots = await loadCustomSpotsPayload();
   const placeRecommendations = await loadPlaceRecommendationsFromConvex();
   const convexPayload = await loadEventsFromConvex(calendars);
   const convexEvents = Array.isArray(convexPayload?.events) ? convexPayload.events : [];
@@ -444,11 +446,12 @@ export async function loadEventsPayload() {
     hydratedSpots.length > 0 ? hydratedSpots : fallbackPlaces,
     fallbackPlaces
   );
-  const places = mergePlaceRecommendationsIntoPlaces(
+  const recommendedPlaces = mergePlaceRecommendationsIntoPlaces(
     placeBase,
     hydratedRecommendations,
     { enabled: tripConfig.showSharedPlaceRecommendations }
   );
+  const places = mergeCustomSpotsIntoPlaces(recommendedPlaces, customSpots);
 
   if (hydrationStats.updatedRows > 0) {
     console.info('Coordinate enrichment summary:', hydrationStats);
@@ -499,11 +502,12 @@ export async function loadEventsPayload() {
     const cachedPlacesBase = Array.isArray(payload?.places)
       ? mergeStaticRegionPlaces((await _enrichPlacesWithCoordinates(payload.places)).rows, fallbackPlaces)
       : [];
-    const cachedPlaces = mergePlaceRecommendationsIntoPlaces(
+    const cachedPlacesWithRecommendations = mergePlaceRecommendationsIntoPlaces(
       cachedPlacesBase.length > 0 ? cachedPlacesBase : places,
       hydratedRecommendations,
       { enabled: tripConfig.showSharedPlaceRecommendations }
     );
+    const cachedPlaces = mergeCustomSpotsIntoPlaces(cachedPlacesWithRecommendations, customSpots);
     return {
       ...payload,
       events: cachedEvents.length > 0 ? cachedEvents : payload?.events || [],
@@ -614,6 +618,7 @@ export async function syncEvents() {
   const nowIso = new Date().toISOString();
   const sourceSnapshot = await getSourceSnapshotForSync();
   const tripConfig = await loadTripConfig();
+  const customSpots = await loadCustomSpotsPayload();
   const rssFallbackStateBySourceUrl = await loadRssSeenBySourceUrlFromEventsCache();
   const eventSyncResult = await syncEventsFromSources({
     eventSources: sourceSnapshot.eventSources,
@@ -631,9 +636,10 @@ export async function syncEvents() {
   const mergedPlaces = mergePlaceRecommendationsIntoPlaces(fallbackPlaces, placeRecommendations, {
     enabled: tripConfig.showSharedPlaceRecommendations
   });
+  const responsePlaces = mergeCustomSpotsIntoPlaces(mergedPlaces, customSpots);
   const allErrors = [...eventSyncResult.errors, ...spotSyncResult.errors];
 
-  const payload = {
+  const cachePayload = {
     meta: {
       syncedAt: nowIso,
       calendars: eventSyncResult.sourceUrls,
@@ -645,8 +651,16 @@ export async function syncEvents() {
     events: eventSyncResult.events,
     places: mergedPlaces
   };
+  const payload = {
+    ...cachePayload,
+    meta: {
+      ...cachePayload.meta,
+      spotCount: responsePlaces.length
+    },
+    places: responsePlaces
+  };
 
-  await writeTextFileBestEffort(EVENTS_CACHE_FILE, JSON.stringify(payload, null, 2), {
+  await writeTextFileBestEffort(EVENTS_CACHE_FILE, JSON.stringify(cachePayload, null, 2), {
     ensureDataDir: true,
     label: 'events cache'
   });
@@ -2471,6 +2485,23 @@ function mergeStaticRegionPlaces(basePlaces, staticPlaces) {
   }
 
   return Array.from(merged.values());
+}
+
+function mergeCustomSpotsIntoPlaces(placesInput, customSpotsInput) {
+  const merged = new Map();
+  const basePlaces = Array.isArray(placesInput) ? placesInput.map(normalizePlaceCoordinates) : [];
+  const customSpots = Array.isArray(customSpotsInput) ? customSpotsInput.map(normalizePlaceCoordinates) : [];
+
+  for (const place of basePlaces) {
+    merged.set(buildPlaceMergeKey(place), place);
+  }
+
+  for (const customSpot of customSpots) {
+    merged.set(buildPlaceMergeKey(customSpot), customSpot);
+  }
+
+  return Array.from(merged.values())
+    .sort((left, right) => `${left.tag}|${left.name}`.localeCompare(`${right.tag}|${right.name}`));
 }
 
 function isRegionOverlayPlace(place) {

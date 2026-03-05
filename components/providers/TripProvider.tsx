@@ -34,10 +34,11 @@ import {
   MAX_ROUTE_STOPS
 } from '@/lib/planner-helpers';
 import {
-  createLucidePinIcon, createLucidePinIconWithLabel, toCoordinateKey, createTravelTimeCacheKey,
+  createLucidePinIcon, createLucidePinIconWithLabel, toCoordinateKey, toLatLngLiteral, createTravelTimeCacheKey,
   createRouteRequestCacheKey, requestPlannedRoute,
   loadGoogleMapsScript, buildInfoWindowAddButton, buildPlacePhotoGalleryHtml,
-  createPlacePhotoCacheKey, fetchPlacePhotoGallery, getNextPlacePhotoIndex
+  createPlacePhotoCacheKey, fetchPlacePhotoGallery, getNextPlacePhotoIndex,
+  normalizePlacesTextSearchResults, buildCustomSpotPayloadFromSearchResult
 } from '@/lib/map-helpers';
 import {
   applyDeviceLocation,
@@ -198,6 +199,7 @@ export default function TripProvider({ children }: { children: ReactNode }) {
   const infoWindowRef = useRef<any>(null);
   const baseMarkerRef = useRef<any>(null);
   const baseLatLngRef = useRef<any>(null);
+  const searchResultMarkersRef = useRef<any[]>([]);
   const deviceLocationMarkerRef = useRef<any>(null);
   const deviceLocationLatLngRef = useRef<any>(null);
   const markersRef = useRef<any[]>([]);
@@ -237,6 +239,12 @@ export default function TripProvider({ children }: { children: ReactNode }) {
   const [showAllEvents, setShowAllEvents] = useState(true);
   const [travelMode, setTravelMode] = useState('WALKING');
   const [baseLocationText, setBaseLocationText] = useState('');
+  const [mapSearchQuery, setMapSearchQuery] = useState('');
+  const [isSearchingMapLocation, setIsSearchingMapLocation] = useState(false);
+  const [searchLocationError, setSearchLocationError] = useState('');
+  const [placeSearchResults, setPlaceSearchResults] = useState<any[]>([]);
+  const [searchResultTagDrafts, setSearchResultTagDrafts] = useState<Record<string, string>>({});
+  const [savingSearchResultId, setSavingSearchResultId] = useState('');
   const [isSyncing, setIsSyncing] = useState(false);
   const [isInitializing, setIsInitializing] = useState(true);
   const [placeTagFilter, setPlaceTagFilter] = useState('all');
@@ -506,6 +514,16 @@ export default function TripProvider({ children }: { children: ReactNode }) {
     regionPolygonsRef.current = [];
   }, []);
 
+  const clearSearchResultMarkers = useCallback(() => {
+    for (const marker of searchResultMarkersRef.current) {
+      marker.map = null;
+    }
+    searchResultMarkersRef.current = [];
+    if (infoWindowRef.current?.close) {
+      infoWindowRef.current.close();
+    }
+  }, []);
+
   const clearRoute = useCallback(() => {
     if (routePolylineRef.current) { routePolylineRef.current.setMap(null); routePolylineRef.current = null; }
     setIsRouteUpdating(false);
@@ -535,6 +553,7 @@ export default function TripProvider({ children }: { children: ReactNode }) {
       baseMarkerRef.current.map = null;
       baseMarkerRef.current = null;
     }
+    clearSearchResultMarkers();
     if (deviceLocationMarkerRef.current) {
       deviceLocationMarkerRef.current.map = null;
       deviceLocationMarkerRef.current = null;
@@ -545,7 +564,7 @@ export default function TripProvider({ children }: { children: ReactNode }) {
     mapRef.current = null;
     activePlaceInfoWindowKeyRef.current = '';
     setMapsReady(false);
-  }, [clearMapMarkers, clearRoute]);
+  }, [clearMapMarkers, clearRoute, clearSearchResultMarkers]);
 
   const applyCrimeHeatmapData = useCallback((incidentsInput, generatedAtValue = '', hoursValue = DEFAULT_CRIME_LOOKBACK_HOURS) => {
     if (!mapsReady || !mapRef.current || !window.google?.maps?.visualization) return;
@@ -780,6 +799,59 @@ export default function TripProvider({ children }: { children: ReactNode }) {
       content: createLucidePinIcon(iconNode, '#00FF88')
     });
   }, []);
+
+  const focusSearchResultsOnMap = useCallback((results) => {
+    if (!mapRef.current || !window.google?.maps) return;
+    const searchResults = Array.isArray(results) ? results : [];
+    if (searchResults.length === 0) return;
+    if (searchResults.length === 1) {
+      const onlyResult = searchResults[0];
+      focusMapOnOrigin({ lat: onlyResult.lat, lng: onlyResult.lng }, 14);
+      return;
+    }
+
+    const bounds = new window.google.maps.LatLngBounds();
+    for (const result of searchResults) {
+      if (Number.isFinite(result?.lat) && Number.isFinite(result?.lng)) {
+        bounds.extend({ lat: result.lat, lng: result.lng });
+      }
+    }
+    mapRef.current.fitBounds(bounds, 80);
+  }, [focusMapOnOrigin]);
+
+  const buildSearchResultInfoWindowHtml = useCallback((result, index) => {
+    const safeMapLink = getSafeExternalHref(result?.mapLink);
+    const types = Array.isArray(result?.types) && result.types.length > 0
+      ? result.types.slice(0, 4).join(', ')
+      : 'Search result';
+
+    return `<div class="custom-iw" style="max-width:320px;background:#0A0A0A;color:#FFFFFF;padding:12px;font-family:'JetBrains Mono',monospace;font-size:13px"><p style="margin:0 0 6px;color:#00FF88;font-size:11px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase">Result ${escapeHtml(String(index + 1))}</p><h3 style="margin:0 0 6px;font-size:16px;color:#FFFFFF">${escapeHtml(result?.name || 'Place')}</h3><p style="margin:4px 0;color:#8a8a8a"><strong style="color:#FFFFFF">Location:</strong> ${escapeHtml(result?.location || 'Unknown')}</p><p style="margin:4px 0;color:#8a8a8a"><strong style="color:#FFFFFF">Suggested tag:</strong> ${escapeHtml(formatTag(result?.suggestedTag || 'eat'))}</p><p style="margin:4px 0;color:#8a8a8a"><strong style="color:#FFFFFF">Types:</strong> ${escapeHtml(types)}</p>${safeMapLink ? `<a href="${escapeHtml(safeMapLink)}" target="_blank" rel="noreferrer" style="color:#00FF88;text-decoration:none;font-weight:600;font-size:12px;text-transform:uppercase;letter-spacing:0.05em">Open map</a>` : ''}</div>`;
+  }, []);
+
+  const renderSearchResultMarkers = useCallback((results) => {
+    if (!mapRef.current || !window.google?.maps?.marker) return;
+    clearSearchResultMarkers();
+    const searchResults = Array.isArray(results) ? results : [];
+
+    for (const [index, result] of searchResults.entries()) {
+      if (!Number.isFinite(result?.lat) || !Number.isFinite(result?.lng)) {
+        continue;
+      }
+      const marker = new window.google.maps.marker.AdvancedMarkerElement({
+        map: mapRef.current,
+        position: { lat: result.lat, lng: result.lng },
+        title: result.name,
+        content: createLucidePinIconWithLabel(mapPinIconNode, '#FFFFFF', String(index + 1)),
+        gmpClickable: true
+      });
+      marker.addEventListener('gmp-click', () => {
+        if (!infoWindowRef.current) return;
+        infoWindowRef.current.setContent(buildSearchResultInfoWindowHtml(result, index));
+        infoWindowRef.current.open({ map: mapRef.current, anchor: marker });
+      });
+      searchResultMarkersRef.current.push(marker);
+    }
+  }, [buildSearchResultInfoWindowHtml, clearSearchResultMarkers]);
 
   const setDeviceLocationMarker = useCallback((latLng, title) => {
     if (!mapRef.current || !window.google?.maps?.marker) return;
@@ -1406,6 +1478,11 @@ export default function TripProvider({ children }: { children: ReactNode }) {
   }, [baseLocationText, geocode, mapsReady, setBaseMarker]);
 
   useEffect(() => {
+    if (!mapsReady || !mapRef.current || placeSearchResults.length === 0) return;
+    renderSearchResultMarkers(placeSearchResults);
+  }, [mapsReady, placeSearchResults, renderSearchResultMarkers]);
+
+  useEffect(() => {
     if (!isAuthenticated) {
       setSources([]);
       return;
@@ -1592,6 +1669,134 @@ export default function TripProvider({ children }: { children: ReactNode }) {
       DEVICE_LOCATION_OPTIONS
     );
   }, [allEvents, effectiveDateFilter, filteredPlaces, focusMapOnOrigin, mapsReady, renderCurrentSelection, setDeviceLocationMarker, setStatusMessage, travelMode]);
+
+  const handleSetSearchResultTag = useCallback((resultId, tag) => {
+    setSearchResultTagDrafts((prev) => ({
+      ...prev,
+      [resultId]: tag
+    }));
+  }, []);
+
+  const handleFocusSearchResult = useCallback((resultId) => {
+    const result = placeSearchResults.find((candidate) => candidate.id === resultId);
+    if (!result) return;
+    focusMapOnOrigin({ lat: result.lat, lng: result.lng }, 15);
+    setStatusMessage(`Focused "${result.name}".`);
+  }, [focusMapOnOrigin, placeSearchResults, setStatusMessage]);
+
+  const handleSaveSearchResultAsSpot = useCallback(async (resultId) => {
+    const result = placeSearchResults.find((candidate) => candidate.id === resultId);
+    if (!result) return;
+    const selectedTag = searchResultTagDrafts[resultId] || result.suggestedTag || 'eat';
+
+    setSavingSearchResultId(resultId);
+    try {
+      const payload = buildCustomSpotPayloadFromSearchResult(result, selectedTag);
+      const response = await fetchJson('/api/custom-spots', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      const savedSpot = response?.spot;
+      if (!savedSpot) {
+        throw new Error('Saved spot payload missing from response.');
+      }
+
+      setAllPlaces((prev) => {
+        const nextPlaces = prev.filter((place) => place.id !== savedSpot.id);
+        nextPlaces.push(savedSpot);
+        return nextPlaces.sort((left, right) => `${left.tag}|${left.name}`.localeCompare(`${right.tag}|${right.name}`));
+      });
+      setPlaceSearchResults((prev) => prev.map((candidate) => (
+        candidate.id === resultId
+          ? {
+              ...candidate,
+              savedSpotId: savedSpot.id,
+              savedTag: savedSpot.tag
+            }
+          : candidate
+      )));
+      setStatusMessage(`Saved "${savedSpot.name}" to ${formatTag(savedSpot.tag)}.`);
+    } catch (error) {
+      setStatusMessage(error instanceof Error ? error.message : 'Failed to save search result.', true);
+    } finally {
+      setSavingSearchResultId('');
+    }
+  }, [placeSearchResults, searchResultTagDrafts, setStatusMessage]);
+
+  const handleSearchMapLocation = useCallback(async (queryInput) => {
+    if (isSearchingMapLocation) return;
+    const trimmedQuery = String(queryInput || '').trim();
+    setMapSearchQuery(trimmedQuery);
+
+    if (!trimmedQuery) {
+      const message = 'Enter a location to search.';
+      setSearchLocationError(message);
+      setStatusMessage(message, true);
+      return;
+    }
+
+    if (!mapsReady || !window.google?.maps || !mapRef.current) {
+      const message = 'Open a map view before searching for a location.';
+      setSearchLocationError(message);
+      setStatusMessage(message, true);
+      return;
+    }
+
+    setIsSearchingMapLocation(true);
+    setSearchLocationError('');
+    setStatusMessage(`Searching for "${trimmedQuery}"...`);
+    try {
+      const { Place } = await window.google.maps.importLibrary('places') as any;
+      if (!Place?.searchByText) {
+        throw new Error('Google Places search is not available for this map key.');
+      }
+
+      const centerPoint = toLatLngLiteral(mapRef.current?.getCenter?.()) || toLatLngLiteral(baseLatLngRef.current) || { lat: 37.7749, lng: -122.4194 };
+      const searchRadius = /\bnearby\b|\bnear me\b/.test(trimmedQuery.toLowerCase()) ? 4500 : 12000;
+      const { places } = await Place.searchByText({
+        textQuery: trimmedQuery,
+        fields: ['id', 'displayName', 'formattedAddress', 'location', 'types'],
+        locationBias: new window.google.maps.Circle({ center: centerPoint, radius: searchRadius }),
+        maxResultCount: 8
+      });
+      const normalizedResults = normalizePlacesTextSearchResults(places);
+
+      if (normalizedResults.length === 0) {
+        const message = `No places found for "${trimmedQuery}".`;
+        clearSearchResultMarkers();
+        setPlaceSearchResults([]);
+        setSearchResultTagDrafts({});
+        setSearchLocationError(message);
+        setStatusMessage(message, true);
+        return;
+      }
+
+      setPlaceSearchResults(normalizedResults);
+      setSearchResultTagDrafts((prev) => Object.fromEntries(
+        normalizedResults.map((result) => [result.id, prev[result.id] || result.suggestedTag || 'eat'])
+      ));
+      setSearchLocationError('');
+      focusSearchResultsOnMap(normalizedResults);
+      setStatusMessage(`Found ${normalizedResults.length} places for "${trimmedQuery}".`);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Could not search for that location.';
+      setSearchLocationError(message);
+      setStatusMessage(message, true);
+    } finally {
+      setIsSearchingMapLocation(false);
+    }
+  }, [clearSearchResultMarkers, focusSearchResultsOnMap, isSearchingMapLocation, mapsReady, setStatusMessage]);
+
+  const handleClearSearchLocation = useCallback(() => {
+    clearSearchResultMarkers();
+    setMapSearchQuery('');
+    setPlaceSearchResults([]);
+    setSearchResultTagDrafts({});
+    setSavingSearchResultId('');
+    setSearchLocationError('');
+    setStatusMessage('Cleared search results.');
+  }, [clearSearchResultMarkers, setStatusMessage]);
 
   const handleCreateSource = useCallback(async (event) => {
     event.preventDefault();
@@ -1783,6 +1988,9 @@ export default function TripProvider({ children }: { children: ReactNode }) {
     allEvents, allPlaces, visibleEvents, visiblePlaces,
     selectedDate, setSelectedDate, showAllEvents, setShowAllEvents,
     travelMode, setTravelMode, baseLocationText, setBaseLocationText,
+    mapSearchQuery, setMapSearchQuery, isSearchingMapLocation, searchLocationError,
+    placeSearchResults, searchResultTagDrafts, savingSearchResultId,
+    hasSearchLocation: placeSearchResults.length > 0,
     isSyncing, placeTagFilter, setPlaceTagFilter, hiddenCategories, toggleCategory,
     calendarMonthISO, setCalendarMonthISO,
     plannerByDate,
@@ -1804,6 +2012,8 @@ export default function TripProvider({ children }: { children: ReactNode }) {
     setMapRuntimeActive,
     handleSignOut,
     handleSync, handleDeviceLocation,
+    handleSearchMapLocation, handleClearSearchLocation, handleSetSearchResultTag,
+    handleFocusSearchResult, handleSaveSearchResultAsSpot,
     handleCreateSource, handleToggleSourceStatus, handleDeleteSource, handleSyncSource,
     handleSaveTripDates, handleSaveBaseLocation, handleSaveSharedPlaceRecommendations,
     handleExportPlannerIcs, handleAddDayPlanToGoogleCalendar,

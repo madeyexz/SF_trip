@@ -70,6 +70,25 @@ export default defineSchema({
     lastSeenAt: v.optional(v.string()),
     updatedAt: v.optional(v.string())
   }),
+  customSpots: defineTable({
+    id: v.string(),
+    userId: v.string(),
+    sourceKey: v.string(),
+    name: v.string(),
+    tag: v.string(),
+    location: v.string(),
+    mapLink: v.string(),
+    cornerLink: v.string(),
+    curatorComment: v.string(),
+    description: v.string(),
+    details: v.string(),
+    lat: v.optional(v.number()),
+    lng: v.optional(v.number()),
+    createdAt: v.string(),
+    updatedAt: v.string()
+  })
+    .index('by_user_source_key', ['userId', 'sourceKey'])
+    .index('by_user_updated_at', ['userId', 'updatedAt']),
   placeRecommendations: defineTable({
     placeKey: v.string(),
     placeName: v.string(),

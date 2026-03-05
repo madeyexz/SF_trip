@@ -55,6 +55,21 @@ describe('schema migration guards', () => {
     assert.equal(placeRecommendationsSource.includes(".index('by_place_friend', ['placeKey', 'friendName'])"), true);
     assert.equal(placeRecommendationsSource.includes("friendUrl: v.optional(v.string())"), true);
   });
+
+  it('stores user custom spots in a dedicated table with user-scoped indexes', async () => {
+    const schemaSource = await readConvexFile('./schema.ts');
+    const customSpotsBlock = schemaSource.match(/customSpots: defineTable\(\{[\s\S]*?\)\s*\.index\('by_user_updated_at', \['userId', 'updatedAt'\]\),/);
+    assert.notEqual(customSpotsBlock, null);
+    const customSpotsSource = customSpotsBlock?.[0] || '';
+
+    assert.equal(customSpotsSource.includes('customSpots: defineTable({'), true);
+    assert.equal(customSpotsSource.includes('userId: v.string()'), true);
+    assert.equal(customSpotsSource.includes('sourceKey: v.string()'), true);
+    assert.equal(customSpotsSource.includes('tag: v.string()'), true);
+    assert.equal(customSpotsSource.includes(".index('by_user_source_key', ['userId', 'sourceKey'])"), true);
+    assert.equal(customSpotsSource.includes(".index('by_user_updated_at', ['userId', 'updatedAt'])"), true);
+    assert.equal(customSpotsSource.includes('roomCode'), false);
+  });
 });
 
 describe('trip config api guards', () => {
