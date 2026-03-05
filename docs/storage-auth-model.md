@@ -1,20 +1,14 @@
-# Storage and Auth Model (Current)
+# Storage and Auth Model
 
-This document describes how the app currently uses local browser storage, local server files, and Convex, plus how the admin password gates privileged actions.
+This document describes the current personal-only model.
 
-## 1) Storage Layers
+## Storage Layers
 
-### Browser localStorage (per browser profile)
+### Browser
 
-- Planner data (default): `sf-trip-day-plans-v1`
-- Planner mode preference: `sf-trip-planner-mode-v1` (`local` or `shared`)
-- Shared room preference: `sf-trip-shared-room-v1`
-- Shared planner local cache copy: `sf-trip-day-plans-v1:shared:<roomId>`
-- Geocode cache in browser: `sf-trip-geocode-cache-v1`
-
-Behavior:
-- Planner always writes to localStorage first.
-- In shared mode, local cache is still used for immediate UX, then synced to server when unlocked.
+- No planner or source data is persisted in `localStorage`.
+- Geocode cache stays in memory only.
+- UI-only preferences such as hidden map categories may still use browser storage.
 
 ### Local server files (`data/`)
 
@@ -23,95 +17,53 @@ Behavior:
 - `data/route-cache.json`
 - `data/trip-config.json`
 
-Behavior:
-- Used as local fallback and cache, including when Convex is unavailable.
-- Useful for local/dev resilience.
+These files are local fallbacks and write-through caches for development resilience and offline-ish recovery when Convex is unavailable.
 
-### Convex (remote DB, when `CONVEX_URL` is configured)
+### Convex
 
-Tables used:
-- `events`, `spots`, `sources`, `syncMeta`
-- `plannerState` (shared planner by `roomId`)
-- `geocodeCache`, `routeCache`
-- `tripConfig`
+Primary tables in use:
+- `events`
+- `spots`
+- `sources`
+- `syncMeta`
+- `plannerEntries`
+- `geocodeCache`
+- `routeCache`
 
-Behavior:
-- `/api/events` reads from Convex first; falls back to local/sample when needed.
-- `/api/sync` writes synced data to Convex and local caches.
-- Shared planner persistence is in Convex (`plannerState`) by room ID.
+User profile and trip configuration live on the authenticated user document in `users`.
 
-## 2) Planner: Local vs Shared
+## Auth Model
 
-### Local mode
+- The app uses Convex auth.
+- API routes that mutate personal data require an authenticated Convex client.
+- There is no owner role, shared planner room, or pair membership layer.
 
-- Planner data stays in browser localStorage only.
-- No admin session required.
-- No remote planner read/write.
+Profile shape returned by `/api/me`:
+- `userId`
+- `email`
 
-### Shared mode (2-person mode)
+## Planner Model
 
-- Requires:
-  - Valid admin session (password unlock),
-  - Valid room ID (2-64 chars, `a-z`, `0-9`, `_`, `-`),
-  - Convex connectivity for remote persistence.
-- Reads from `GET /api/planner?roomId=<id>`.
-- Writes to `POST /api/planner?roomId=<id>` (debounced from client).
-- If remote call fails, app continues with local cache and logs an error.
+- Planner state is personal-only.
+- Convex stores planner rows in `plannerEntries`, keyed by `userId`.
+- `GET /api/planner` returns the authenticated user's `plannerByDate`.
+- `POST /api/planner` fully replaces the authenticated user's planner rows.
 
-## 3) Admin Password and Session
+## Sources Model
 
-Server env vars:
-- `APP_ADMIN_PASSWORD` (required for auth-protected actions)
-- `APP_SESSION_SECRET` (optional; defaults to `APP_ADMIN_PASSWORD` if omitted)
+- Sources are personal-only.
+- Convex stores source rows in `sources`, keyed by `userId`.
+- Default required sources are appended at read time and exposed as read-only in the UI.
+- User-created sources can be created, paused, resumed, synced, or deleted.
 
-Session details:
-- Cookie name: `sf_trip_admin_session`
-- `HttpOnly`, `SameSite=Lax`, `Secure` in production
-- Max age: 12 hours
+## Sync Behavior
 
-Auth endpoints:
-- `GET /api/auth/session` -> current auth status
-- `POST /api/auth/session` with `{ "password": "..." }` -> unlocks, sets cookie
-- `DELETE /api/auth/session` -> locks, clears cookie
+- `/api/events` reads from Convex first, then falls back to local cache or sample data when needed.
+- `/api/sync` syncs the authenticated user's sources, writes results to Convex, and updates local caches.
+- RSS ingestion still depends on `FIRECRAWL_API_KEY`.
 
-Failure modes:
-- `503` when password is not configured on server.
-- `401` when password/session is missing or invalid.
+## Notes
 
-## 4) What Is Password-Protected
-
-Protected (requires unlocked admin session):
-- `POST /api/sync`
-- `POST /api/config`
-- `POST /api/sources`
-- `PATCH|POST(sync)|DELETE /api/sources/[sourceId]`
-- `GET|POST /api/planner` when `roomId` is provided
-
-Not protected:
-- `GET /api/events`
-- `GET /api/config`
-- `GET /api/sources`
-- Planner local mode operations in browser
-
-## 5) Firecrawl and Sync
-
-- Firecrawl is only invoked during sync flows inside server sync logic.
-- Since sync is admin-protected, Firecrawl usage is effectively admin-gated.
-- Missing `FIRECRAWL_API_KEY` will surface sync-stage errors for RSS extraction.
-
-## 6) Password Operations (Recommended)
-
-Do not commit actual passwords into repo docs or source.
-
-Use env var `APP_ADMIN_PASSWORD` in:
-- Local `.env` / `.env.local`
-- Vercel envs (`development`, `preview`, `production`)
-
-If rotating password:
-1. Update local env.
-2. Update Vercel env for all target environments.
-3. Redeploy/restart so server picks up new env value.
-4. Re-login in Config (old session cookie becomes invalid if signing secret/password changed).
-
-Optional hardening:
-- Set a dedicated `APP_SESSION_SECRET` so session signing is independent of password rotation.
+- `events`, `spots`, and `syncMeta` are still global tables today.
+- `sources` and `plannerEntries` are already personal-only.
+- If we later add friend recommendations, they should be modeled as annotations on top of canonical events, not as a return to shared planner state.

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, type ReactNode } from 'react';
+import { useSyncExternalStore, type ReactNode } from 'react';
 import {
   LazyMotion,
   domAnimation,
@@ -15,8 +15,11 @@ import {
 // This prevents hydration mismatches from useReducedMotion returning null on the server.
 function useReducedMotionSafe(): boolean {
   const prefersReduced = useReducedMotion();
-  const [mounted, setMounted] = useState(false);
-  useEffect(() => setMounted(true), []);
+  const mounted = useSyncExternalStore(
+    () => () => {},
+    () => true,
+    () => false
+  );
   return mounted ? !!prefersReduced : false;
 }
 

@@ -200,10 +200,10 @@ function getRequiredDefaultSpotUrls() {
     .filter(Boolean);
 }
 
-function getRequiredDefaultSources(roomCode = '') {
+function getRequiredDefaultSources() {
   const defaultEventSources = getCalendarUrls().map((url) => ({
     id: `fallback-event-${url}`,
-    roomCode,
+    userId: '',
     sourceType: 'event',
     url,
     label: url,
@@ -212,7 +212,7 @@ function getRequiredDefaultSources(roomCode = '') {
   }));
   const defaultSpotSources = getRequiredDefaultSpotUrls().map((url) => ({
     id: `fallback-spot-${url}`,
-    roomCode,
+    userId: '',
     sourceType: 'spot',
     url,
     label: url,
@@ -225,7 +225,7 @@ function getRequiredDefaultSources(roomCode = '') {
 
 function markRequiredSourcesReadonly(sources) {
   const requiredDefaultKeys = new Set(
-    getRequiredDefaultSources('')
+    getRequiredDefaultSources()
       .map((source) => buildSourceKey(source.sourceType, source.url))
   );
 
@@ -242,9 +242,9 @@ function markRequiredSourcesReadonly(sources) {
   });
 }
 
-function appendMissingRequiredDefaultSources(sources, roomCode = '') {
+function appendMissingRequiredDefaultSources(sources) {
   const nextSources = markRequiredSourcesReadonly(sources);
-  const requiredDefaults = getRequiredDefaultSources(roomCode);
+  const requiredDefaults = getRequiredDefaultSources();
   const seenSourceKeys = new Set(
     nextSources.map((source) => buildSourceKey(source?.sourceType, source?.url))
   );
@@ -309,7 +309,7 @@ export async function loadSourcesPayload() {
 export async function createSourcePayload(input) {
   const client = createConvexClient();
   if (!client) {
-    throw new Error('CONVEX_URL is missing. Configure Convex to persist room sources.');
+    throw new Error('CONVEX_URL is missing. Configure Convex to persist personal sources.');
   }
 
   const sourceType = cleanText(input?.sourceType).toLowerCase();
@@ -337,7 +337,7 @@ export async function createSourcePayload(input) {
 export async function updateSourcePayload(sourceId, input) {
   const client = createConvexClient();
   if (!client) {
-    throw new Error('CONVEX_URL is missing. Configure Convex to persist room sources.');
+    throw new Error('CONVEX_URL is missing. Configure Convex to persist personal sources.');
   }
 
   const patch = {};
@@ -374,7 +374,7 @@ export async function updateSourcePayload(sourceId, input) {
 export async function deleteSourcePayload(sourceId) {
   const client = createConvexClient();
   if (!client) {
-    throw new Error('CONVEX_URL is missing. Configure Convex to persist room sources.');
+    throw new Error('CONVEX_URL is missing. Configure Convex to persist personal sources.');
   }
 
   const result = await client.mutation('sources:deleteSource', {
@@ -1762,7 +1762,7 @@ function normalizeSourceRecord(source) {
 
   return {
     id: cleanText(source._id || source.id),
-    roomCode: cleanText(source.roomCode),
+    userId: cleanText(source.userId),
     sourceType,
     url,
     label: cleanText(source.label) || url,

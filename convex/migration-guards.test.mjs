@@ -19,6 +19,7 @@ describe('schema migration guards', () => {
     assert.equal(schemaSource.includes('profileCreatedAt'), false);
     assert.equal(schemaSource.includes('profileUpdatedAt'), false);
     assert.equal(schemaSource.includes('tripUpdatedAt'), false);
+    assert.equal(schemaSource.includes('role: v.optional(v.union(v.literal(\'owner\'), v.literal(\'member\')))'), false);
     assert.equal(schemaSource.includes('name: v.optional(v.string())'), false);
     assert.equal(schemaSource.includes('image: v.optional(v.string())'), false);
     assert.equal(schemaSource.includes('phone: v.optional(v.string())'), false);
@@ -31,6 +32,15 @@ describe('schema migration guards', () => {
     const schemaSource = await readConvexFile('./schema.ts');
     assert.equal(schemaSource.includes('pairRooms: defineTable({'), false);
     assert.equal(schemaSource.includes('members: v.optional(v.array(v.object({'), false);
+  });
+
+  it('stores sources by user id instead of room code', async () => {
+    const schemaSource = await readConvexFile('./schema.ts');
+    assert.equal(schemaSource.includes('roomCode: v.string()'), false);
+    assert.equal(schemaSource.includes('userId: v.string()'), true);
+    assert.equal(schemaSource.includes(".index('by_user_type_status', ['userId', 'sourceType', 'status'])"), true);
+    assert.equal(schemaSource.includes(".index('by_user_url', ['userId', 'url'])"), true);
+    assert.equal(schemaSource.includes(".index('by_user_updated_at', ['userId', 'updatedAt'])"), true);
   });
 });
 

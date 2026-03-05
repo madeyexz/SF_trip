@@ -164,7 +164,6 @@ export default function PlannerItinerary() {
                 const itemClass = [
                   'planner-item',
                   item.kind === 'event' ? 'planner-item-event' : 'planner-item-place',
-                  'planner-item-owner-mine',
                   activePlanId === item.id ? 'planner-item-active' : ''
                 ].filter(Boolean).join(' ');
 

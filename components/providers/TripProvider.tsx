@@ -218,7 +218,7 @@ export default function TripProvider({ children }: { children: ReactNode }) {
   const hiddenCategoriesRef = useRef<Set<string>>(new Set());
   const hiddenCategoriesHydrated = useRef(false);
   const [calendarMonthISO, setCalendarMonthISO] = useState('');
-  const [plannerByDateMine, setPlannerByDateMine] = useState<Record<string, any[]>>({});
+  const [plannerByDate, setPlannerByDate] = useState<Record<string, any[]>>({});
   const [activePlanId, setActivePlanId] = useState('');
   const [routeSummary, setRouteSummary] = useState('');
   const [isRouteUpdating, setIsRouteUpdating] = useState(false);
@@ -234,8 +234,6 @@ export default function TripProvider({ children }: { children: ReactNode }) {
   const [profile, setProfile] = useState<any>(null);
   const [authUserId, setAuthUserId] = useState('');
   const [isSigningOut, setIsSigningOut] = useState(false);
-  const plannerByDate = plannerByDateMine;
-
   const placeTagOptions = useMemo(() => {
     const tags = new Set<string>();
     for (const place of allPlaces) tags.add(normalizePlaceTag(place.tag));
@@ -290,11 +288,11 @@ export default function TripProvider({ children }: { children: ReactNode }) {
       const d = normalizeDateKey(e.startDateISO);
       if (d) dateSet.add(d);
     }
-    for (const d of Object.keys(plannerByDateMine)) {
+    for (const d of Object.keys(plannerByDate)) {
       if (d) dateSet.add(d);
     }
     return Array.from(dateSet).sort();
-  }, [tripStart, tripEnd, allEvents, plannerByDateMine]);
+  }, [tripStart, tripEnd, allEvents, plannerByDate]);
 
   const eventsByDate = useMemo(() => {
     const map = new Map();
@@ -308,11 +306,11 @@ export default function TripProvider({ children }: { children: ReactNode }) {
 
   const planItemsByDate = useMemo(() => {
     const map = new Map();
-    for (const [d, items] of Object.entries(plannerByDateMine)) {
+    for (const [d, items] of Object.entries(plannerByDate)) {
       map.set(d, Array.isArray(items) ? items.length : 0);
     }
     return map;
-  }, [plannerByDateMine]);
+  }, [plannerByDate]);
 
   const calendarAnchorISO = useMemo(
     () => calendarMonthISO || selectedDate || uniqueDates[0] || toISODate(new Date()),
@@ -337,9 +335,9 @@ export default function TripProvider({ children }: { children: ReactNode }) {
 
   const dayPlanItems = useMemo(() => {
     if (!selectedDate) return [];
-    const items = plannerByDateMine[selectedDate];
+    const items = plannerByDate[selectedDate];
     return Array.isArray(items) ? sortPlanItems(items) : [];
-  }, [plannerByDateMine, selectedDate]);
+  }, [plannerByDate, selectedDate]);
 
   const plannedRouteStops = useMemo(() => {
     const stops = [];
@@ -359,12 +357,12 @@ export default function TripProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     let mounted = true;
     plannerHydratedRef.current = false;
-    setPlannerByDateMine({});
+    setPlannerByDate({});
 
     async function loadPlannerFromServer() {
       if (!isAuthenticated) {
         if (mounted) {
-          setPlannerByDateMine({});
+          setPlannerByDate({});
           plannerHydratedRef.current = true;
         }
         return;
@@ -376,11 +374,11 @@ export default function TripProvider({ children }: { children: ReactNode }) {
 
         const resolvedUserId = String(payload?.userId || authUserId || '');
         if (resolvedUserId) setAuthUserId(resolvedUserId);
-        setPlannerByDateMine(sanitizePlannerByDate(payload?.plannerByDate || {}) as Record<string, any[]>);
+        setPlannerByDate(sanitizePlannerByDate(payload?.plannerByDate || {}) as Record<string, any[]>);
       } catch (error) {
         console.error('Planner load failed; continuing with in-memory planner state.', error);
         if (mounted) {
-          setPlannerByDateMine({});
+          setPlannerByDate({});
         }
       } finally {
         if (mounted) plannerHydratedRef.current = true;
@@ -394,13 +392,13 @@ export default function TripProvider({ children }: { children: ReactNode }) {
     };
   }, [authUserId, isAuthenticated]);
 
-  const savePlannerToServer = useCallback(async (nextPlannerByDateMine) => {
+  const savePlannerToServer = useCallback(async (nextPlannerByDate) => {
     try {
       const response = await fetch('/api/planner', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          plannerByDate: compactPlannerByDate(nextPlannerByDateMine)
+          plannerByDate: compactPlannerByDate(nextPlannerByDate)
         })
       });
 
@@ -414,15 +412,15 @@ export default function TripProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
-    const compactPlannerMine = compactPlannerByDate(plannerByDateMine);
+    const compactPlanner = compactPlannerByDate(plannerByDate);
     if (!plannerHydratedRef.current) return;
     if (!isAuthenticated) return;
 
     const timeoutId = window.setTimeout(() => {
-      void savePlannerToServer(compactPlannerMine);
+      void savePlannerToServer(compactPlanner);
     }, 450);
     return () => { window.clearTimeout(timeoutId); };
-  }, [isAuthenticated, plannerByDateMine, savePlannerToServer]);
+  }, [isAuthenticated, plannerByDate, savePlannerToServer]);
 
   // ---- Geocode cache ----
   const saveGeocodeCache = useCallback(() => {
@@ -676,7 +674,7 @@ export default function TripProvider({ children }: { children: ReactNode }) {
 
   const addEventToDayPlan = useCallback((event) => {
     if (!selectedDate) { setStatusMessage('Select a specific date before adding events to your day plan.', true); return; }
-    setPlannerByDateMine((prev) => {
+    setPlannerByDate((prev) => {
       const current = Array.isArray(prev[selectedDate]) ? prev[selectedDate] : [];
       const timeFromEvent = parseEventTimeRange(event.startDateTimeText);
       const startMinutes = timeFromEvent ? timeFromEvent.startMinutes : 9 * 60;
@@ -698,7 +696,7 @@ export default function TripProvider({ children }: { children: ReactNode }) {
       return;
     }
     if (!selectedDate) { setStatusMessage('Select a specific date before adding places to your day plan.', true); return; }
-    setPlannerByDateMine((prev) => {
+    setPlannerByDate((prev) => {
       const current = Array.isArray(prev[selectedDate]) ? prev[selectedDate] : [];
       const slot = getSuggestedPlanSlot(current, null, 75);
       const next = sortPlanItems([...current, {
@@ -714,7 +712,7 @@ export default function TripProvider({ children }: { children: ReactNode }) {
 
   const removePlanItem = useCallback((itemId) => {
     if (!selectedDate) return;
-    setPlannerByDateMine((prev) => {
+    setPlannerByDate((prev) => {
       const current = Array.isArray(prev[selectedDate]) ? prev[selectedDate] : [];
       return { ...prev, [selectedDate]: current.filter((i) => i.id !== itemId) };
     });
@@ -722,7 +720,7 @@ export default function TripProvider({ children }: { children: ReactNode }) {
 
   const clearDayPlan = useCallback(() => {
     if (!selectedDate) return;
-    setPlannerByDateMine((prev) => ({ ...prev, [selectedDate]: [] }));
+    setPlannerByDate((prev) => ({ ...prev, [selectedDate]: [] }));
   }, [selectedDate]);
 
   const startPlanDrag = useCallback((pointerEvent, item, mode) => {
@@ -744,7 +742,7 @@ export default function TripProvider({ children }: { children: ReactNode }) {
       const deltaY = moveEvent.clientY - startY;
       const deltaMinutes = snap(deltaY / MINUTE_HEIGHT);
       const duration = Math.max(MIN_PLAN_BLOCK, initialEnd - initialStart);
-      setPlannerByDateMine((prev) => {
+      setPlannerByDate((prev) => {
         const current = Array.isArray(prev[selectedDate]) ? prev[selectedDate] : [];
         const idx = current.findIndex((c) => c.id === item.id);
         if (idx < 0) return prev;
@@ -1477,7 +1475,7 @@ export default function TripProvider({ children }: { children: ReactNode }) {
     travelMode, setTravelMode, baseLocationText, setBaseLocationText,
     isSyncing, placeTagFilter, setPlaceTagFilter, hiddenCategories, toggleCategory,
     calendarMonthISO, setCalendarMonthISO,
-    plannerByDate, plannerByDateMine,
+    plannerByDate,
     activePlanId, setActivePlanId,
     routeSummary, isRouteUpdating,
     isSigningOut,

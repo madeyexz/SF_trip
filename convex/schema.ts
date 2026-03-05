@@ -7,7 +7,6 @@ export default defineSchema({
   users: defineTable({
     email: v.optional(v.string()),
     emailVerificationTime: v.optional(v.number()),
-    role: v.optional(v.union(v.literal('owner'), v.literal('member'))),
     tripStart: v.optional(v.string()),
     tripEnd: v.optional(v.string()),
     baseLocation: v.optional(v.string())
@@ -71,7 +70,7 @@ export default defineSchema({
     updatedAt: v.optional(v.string())
   }),
   sources: defineTable({
-    roomCode: v.string(),
+    userId: v.string(),
     sourceType: v.union(v.literal('event'), v.literal('spot')),
     url: v.string(),
     label: v.string(),
@@ -82,9 +81,9 @@ export default defineSchema({
     lastError: v.optional(v.string()),
     rssStateJson: v.optional(v.string())
   })
-    .index('by_room_type_status', ['roomCode', 'sourceType', 'status'])
-    .index('by_room_url', ['roomCode', 'url'])
-    .index('by_room_updated_at', ['roomCode', 'updatedAt']),
+    .index('by_user_type_status', ['userId', 'sourceType', 'status'])
+    .index('by_user_url', ['userId', 'url'])
+    .index('by_user_updated_at', ['userId', 'updatedAt']),
   geocodeCache: defineTable({
     addressKey: v.string(),
     addressText: v.string(),

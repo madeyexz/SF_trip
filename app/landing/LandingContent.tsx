@@ -545,8 +545,8 @@ export default function LandingContent() {
             </FadeItem>
             <FadeItem>
               <p className="mt-4 max-w-[640px] text-[13px] leading-relaxed text-foreground-secondary">
-                You&apos;ve seen everything. Now drag events into your day planner, share the plan
-                with your travel partner, and export the whole thing to your calendar.
+                You&apos;ve seen everything. Now drag events into your day planner, build one clean
+                itinerary, and export the whole thing to your calendar.
               </p>
             </FadeItem>
 
@@ -558,8 +558,8 @@ export default function LandingContent() {
               />
               <AnimatedFeatureCard
                 icon={Users}
-                title="Plan with Friends"
-                description="Traveling with someone? Create a shared planner room. You each see both schedules side by side, but only edit your own. No stepping on each other's plans."
+                title="Keep It Personal"
+                description="Build a single personal itinerary without room setup, ownership rules, or collaboration state leaking into every planner action."
               />
               <AnimatedFeatureCard
                 icon={CalendarSync}

@@ -7,7 +7,7 @@ const sourceTypeValidator = v.union(v.literal('event'), v.literal('spot'));
 const sourceStatusValidator = v.union(v.literal('active'), v.literal('paused'));
 const sourceRecordValidator = v.object({
   _id: v.id('sources'),
-  roomCode: v.string(),
+  userId: v.string(),
   sourceType: sourceTypeValidator,
   url: v.string(),
   label: v.string(),
@@ -24,7 +24,7 @@ const deleteSourceResultValidator = v.object({
 
 type SourceRecordLike = {
   _id: Id<'sources'>;
-  roomCode: string;
+  userId: string;
   sourceType: 'event' | 'spot';
   url: string;
   label: string;
@@ -64,14 +64,10 @@ function isRequiredDefaultSource(sourceType: 'event' | 'spot', url: string) {
   return REQUIRED_DEFAULT_SPOT_URLS.has(comparableUrl);
 }
 
-function toPersonalRoomCode(userId: string) {
-  return `self:${userId}`;
-}
-
 function buildSourceResponse(row: SourceRecordLike) {
   return {
     _id: row._id,
-    roomCode: row.roomCode,
+    userId: row.userId,
     sourceType: row.sourceType,
     url: row.url,
     label: row.label,
@@ -145,10 +141,9 @@ export const listSources = query({
   returns: v.array(sourceRecordValidator),
   handler: async (ctx) => {
     const userId = await requireAuthenticatedUserId(ctx);
-    const roomCode = toPersonalRoomCode(userId);
     const rows = await ctx.db
       .query('sources')
-      .withIndex('by_room_updated_at', (q) => q.eq('roomCode', roomCode))
+      .withIndex('by_user_updated_at', (q) => q.eq('userId', userId))
       .collect();
 
     return rows
@@ -164,11 +159,10 @@ export const listActiveSources = query({
   returns: v.array(sourceRecordValidator),
   handler: async (ctx, args) => {
     const userId = await requireAuthenticatedUserId(ctx);
-    const roomCode = toPersonalRoomCode(userId);
     const rows = await ctx.db
       .query('sources')
-      .withIndex('by_room_type_status', (q) =>
-        q.eq('roomCode', roomCode).eq('sourceType', args.sourceType).eq('status', 'active')
+      .withIndex('by_user_type_status', (q) =>
+        q.eq('userId', userId).eq('sourceType', args.sourceType).eq('status', 'active')
       )
       .collect();
 
@@ -185,14 +179,13 @@ export const createSource = mutation({
   returns: sourceRecordValidator,
   handler: async (ctx, args) => {
     const userId = await requireAuthenticatedUserId(ctx);
-    const roomCode = toPersonalRoomCode(userId);
     const now = new Date().toISOString();
     const nextUrl = args.url.trim();
     const nextLabel = (args.label || '').trim() || nextUrl;
     assertPublicSourceUrl(nextUrl);
     const existing = await ctx.db
       .query('sources')
-      .withIndex('by_room_url', (q) => q.eq('roomCode', roomCode).eq('url', nextUrl))
+      .withIndex('by_user_url', (q) => q.eq('userId', userId).eq('url', nextUrl))
       .first();
 
     if (existing && existing.sourceType === args.sourceType) {
@@ -214,7 +207,7 @@ export const createSource = mutation({
     }
 
     const sourceId = await ctx.db.insert('sources', {
-      roomCode,
+      userId,
       sourceType: args.sourceType,
       url: nextUrl,
       label: nextLabel,
@@ -225,7 +218,7 @@ export const createSource = mutation({
 
     return buildSourceResponse({
       _id: sourceId,
-      roomCode,
+      userId,
       sourceType: args.sourceType,
       url: nextUrl,
       label: nextLabel,
@@ -248,10 +241,9 @@ export const updateSource = mutation({
   returns: v.union(v.null(), sourceRecordValidator),
   handler: async (ctx, args) => {
     const userId = await requireAuthenticatedUserId(ctx);
-    const roomCode = toPersonalRoomCode(userId);
 
     const existing = await ctx.db.get(args.sourceId);
-    if (!existing || existing.roomCode !== roomCode) {
+    if (!existing || existing.userId !== userId) {
       return null;
     }
     const isRequiredDefault = isRequiredDefaultSource(existing.sourceType, existing.url);
@@ -303,7 +295,7 @@ export const updateSource = mutation({
     }
     return buildSourceResponse({
       _id: existing._id,
-      roomCode: existing.roomCode,
+      userId: existing.userId,
       sourceType: existing.sourceType,
       url: existing.url,
       label: updates.label ?? existing.label,
@@ -324,10 +316,9 @@ export const deleteSource = mutation({
   returns: deleteSourceResultValidator,
   handler: async (ctx, args) => {
     const userId = await requireAuthenticatedUserId(ctx);
-    const roomCode = toPersonalRoomCode(userId);
 
     const existing = await ctx.db.get(args.sourceId);
-    if (!existing || existing.roomCode !== roomCode) {
+    if (!existing || existing.userId !== userId) {
       return { deleted: false };
     }
     if (isRequiredDefaultSource(existing.sourceType, existing.url)) {

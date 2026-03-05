@@ -72,26 +72,3 @@ export async function requireAuthenticatedClient() {
     };
   }
 }
-
-export async function requireOwnerClient() {
-  const auth = await requireAuthenticatedClient();
-  if (auth.deniedResponse) {
-    return auth;
-  }
-
-  if (auth.profile?.role !== 'owner') {
-    return {
-      client: null,
-      deniedResponse: Response.json(
-        {
-          error: 'Owner role required.',
-          needsRole: 'owner'
-        },
-        { status: 403 }
-      ),
-      profile: auth.profile
-    };
-  }
-
-  return auth;
-}
