@@ -263,6 +263,7 @@ export default function TripProvider({ children }: { children: ReactNode }) {
   const [placeTagFilter, setPlaceTagFilter] = useState('all');
   const [hiddenCategories, setHiddenCategories] = useState<Set<string>>(new Set());
   const hiddenCategoriesRef = useRef<Set<string>>(new Set());
+  const hiddenCategoriesHydrated = useRef(false);
   const [calendarMonthISO, setCalendarMonthISO] = useState('');
   const [plannerByDateMine, setPlannerByDateMine] = useState<Record<string, any[]>>({});
   const [plannerByDatePartner, setPlannerByDatePartner] = useState<Record<string, any[]>>({});
@@ -345,7 +346,17 @@ export default function TripProvider({ children }: { children: ReactNode }) {
   }, [sources]);
 
   useEffect(() => {
+    try {
+      const stored = localStorage.getItem('hiddenCategories');
+      if (stored) setHiddenCategories(new Set(JSON.parse(stored)));
+    } catch {}
+    hiddenCategoriesHydrated.current = true;
+  }, []);
+  useEffect(() => {
     hiddenCategoriesRef.current = hiddenCategories;
+    if (hiddenCategoriesHydrated.current) {
+      try { localStorage.setItem('hiddenCategories', JSON.stringify([...hiddenCategories])); } catch {}
+    }
   }, [hiddenCategories]);
 
   const uniqueDates = useMemo(() => {
