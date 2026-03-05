@@ -529,6 +529,11 @@ export default function TripProvider({ children }: { children: ReactNode }) {
     setIsRouteUpdating(false);
   }, []);
 
+  const syncRoutePolylineVisibility = useCallback(() => {
+    if (!routePolylineRef.current) return;
+    routePolylineRef.current.setMap(hiddenCategoriesRef.current.has('home') ? null : mapRef.current);
+  }, []);
+
   const cleanupMapRuntime = useCallback(() => {
     renderGenerationRef.current += 1;
     clearMapMarkers();
@@ -868,6 +873,9 @@ export default function TripProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (baseMarkerRef.current) {
       baseMarkerRef.current.map = hiddenCategories.has('home') ? null : mapRef.current;
+    }
+    if (routePolylineRef.current) {
+      routePolylineRef.current.setMap(hiddenCategories.has('home') ? null : mapRef.current);
     }
     if (deviceLocationMarkerRef.current) {
       deviceLocationMarkerRef.current.map = mapRef.current;
@@ -1597,12 +1605,16 @@ export default function TripProvider({ children }: { children: ReactNode }) {
         if (cancelled) return;
 
         if (!routePolylineRef.current) {
-          routePolylineRef.current = new window.google.maps.Polyline({ path: route.path, strokeColor: '#00FF88', strokeOpacity: 0.86, strokeWeight: 5 });
-          routePolylineRef.current.setMap(mapRef.current);
+          routePolylineRef.current = new window.google.maps.Polyline({
+            path: route.path,
+            strokeColor: '#00FF88',
+            strokeOpacity: 0.86,
+            strokeWeight: 5
+          });
         } else {
           routePolylineRef.current.setPath(route.path);
-          routePolylineRef.current.setMap(mapRef.current);
         }
+        syncRoutePolylineVisibility();
         applyRoutePolylineStyle(false);
         setIsRouteUpdating(false);
         const suffix = plannedRouteStops.length > MAX_ROUTE_STOPS ? ` (showing first ${MAX_ROUTE_STOPS})` : '';
@@ -1616,7 +1628,7 @@ export default function TripProvider({ children }: { children: ReactNode }) {
     }
 
     return () => { cancelled = true; window.clearTimeout(timeoutId); };
-  }, [activePlanId, applyRoutePolylineStyle, baseLocationVersion, clearRoute, dayPlanItems.length, mapsReady, plannedRouteStops, selectedDate, travelMode]);
+  }, [activePlanId, applyRoutePolylineStyle, baseLocationVersion, clearRoute, dayPlanItems.length, mapsReady, plannedRouteStops, selectedDate, syncRoutePolylineVisibility, travelMode]);
 
   // ---- Handlers ----
   const handleSync = useCallback(async () => {
