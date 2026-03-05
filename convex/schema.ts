@@ -9,7 +9,8 @@ export default defineSchema({
     emailVerificationTime: v.optional(v.number()),
     tripStart: v.optional(v.string()),
     tripEnd: v.optional(v.string()),
-    baseLocation: v.optional(v.string())
+    baseLocation: v.optional(v.string()),
+    showSharedPlaceRecommendations: v.optional(v.boolean())
   }).index('email', ['email']),
   plannerEntries: defineTable({
     userId: v.string(),
@@ -70,10 +71,10 @@ export default defineSchema({
     updatedAt: v.optional(v.string())
   }),
   placeRecommendations: defineTable({
-    userId: v.string(),
     placeKey: v.string(),
     placeName: v.string(),
     friendName: v.string(),
+    friendUrl: v.optional(v.string()),
     tag: v.string(),
     location: v.string(),
     mapLink: v.string(),
@@ -86,9 +87,9 @@ export default defineSchema({
     createdAt: v.string(),
     updatedAt: v.string()
   })
-    .index('by_user_updated_at', ['userId', 'updatedAt'])
-    .index('by_user_place_friend', ['userId', 'placeKey', 'friendName'])
-    .index('by_user_friend', ['userId', 'friendName']),
+    .index('by_updated_at', ['updatedAt'])
+    .index('by_place_friend', ['placeKey', 'friendName'])
+    .index('by_friend', ['friendName']),
   sources: defineTable({
     userId: v.string(),
     sourceType: v.union(v.literal('event'), v.literal('spot')),

@@ -60,7 +60,9 @@ Profile shape returned by `/api/me`:
 ## Friend Recommendations
 
 - Friend-attributed place recommendations live in `placeRecommendations`.
-- These rows are personal-only and keyed by `userId`.
+- These rows are shared globally across the app.
+- Users can hide or show shared recommendations with `users.showSharedPlaceRecommendations`.
+- Shared editorial recommendations can include attribution metadata such as `friendUrl`.
 - Recommendation rows are merged onto canonical spots at read time.
 - If there is no canonical spot match, the recommendation is surfaced as a synthetic place row instead of being written into `spots`.
 
@@ -74,4 +76,4 @@ Profile shape returned by `/api/me`:
 
 - `events`, `spots`, and `syncMeta` are still global tables today.
 - `sources` and `plannerEntries` are already personal-only.
-- Friend recommendations should stay as annotation tables, not as a return to shared planner state.
+- Friend recommendations stay as annotation rows, not as a return to shared planner state.

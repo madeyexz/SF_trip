@@ -1,11 +1,11 @@
 import { internalMutation, query } from './_generated/server';
 import { v } from 'convex/values';
-import { requireAuthenticatedUserId } from './authz';
 
 const placeRecommendationInputValidator = v.object({
   placeKey: v.string(),
   placeName: v.string(),
   friendName: v.string(),
+  friendUrl: v.optional(v.string()),
   tag: v.string(),
   location: v.string(),
   mapLink: v.string(),
@@ -19,10 +19,10 @@ const placeRecommendationInputValidator = v.object({
 
 const placeRecommendationRecordValidator = v.object({
   _id: v.id('placeRecommendations'),
-  userId: v.string(),
   placeKey: v.string(),
   placeName: v.string(),
   friendName: v.string(),
+  friendUrl: v.optional(v.string()),
   tag: v.string(),
   location: v.string(),
   mapLink: v.string(),
@@ -49,10 +49,10 @@ function cleanText(value: unknown) {
 function buildRecommendationResponse(row: any) {
   return {
     _id: row._id,
-    userId: row.userId,
     placeKey: row.placeKey,
     placeName: row.placeName,
     friendName: row.friendName,
+    ...(typeof row.friendUrl === 'string' ? { friendUrl: row.friendUrl } : {}),
     tag: row.tag,
     location: row.location,
     mapLink: row.mapLink,
@@ -67,12 +67,12 @@ function buildRecommendationResponse(row: any) {
   };
 }
 
-function buildStoredRecommendation(userId: string, row: any, now: string) {
+function buildStoredRecommendation(row: any, now: string) {
   return {
-    userId,
     placeKey: cleanText(row.placeKey),
     placeName: cleanText(row.placeName),
     friendName: cleanText(row.friendName),
+    ...(cleanText(row.friendUrl) ? { friendUrl: cleanText(row.friendUrl) } : {}),
     tag: cleanText(row.tag),
     location: cleanText(row.location),
     mapLink: cleanText(row.mapLink),
@@ -88,10 +88,10 @@ function buildStoredRecommendation(userId: string, row: any, now: string) {
 
 function buildComparableStoredPayload(row: any) {
   return {
-    userId: row.userId,
     placeKey: row.placeKey,
     placeName: row.placeName,
     friendName: row.friendName,
+    friendUrl: typeof row.friendUrl === 'string' ? row.friendUrl : '',
     tag: row.tag,
     location: row.location,
     mapLink: row.mapLink,
@@ -104,7 +104,7 @@ function buildComparableStoredPayload(row: any) {
   };
 }
 
-async function upsertPlaceRecommendationsForUserInternal(ctx: any, userId: string, recommendationsInput: any[]) {
+async function upsertSharedPlaceRecommendationsInternal(ctx: any, recommendationsInput: any[]) {
   const recommendations = Array.isArray(recommendationsInput) ? recommendationsInput : [];
   const now = new Date().toISOString();
   const summary = {
@@ -114,16 +114,14 @@ async function upsertPlaceRecommendationsForUserInternal(ctx: any, userId: strin
   };
 
   for (const recommendation of recommendations) {
-    const stored = buildStoredRecommendation(userId, recommendation, now);
+    const stored = buildStoredRecommendation(recommendation, now);
     if (!stored.placeKey || !stored.placeName || !stored.friendName || !stored.location || !stored.mapLink) {
       continue;
     }
 
     const existing = await ctx.db
       .query('placeRecommendations')
-      .withIndex('by_user_place_friend', (q: any) =>
-        q.eq('userId', userId).eq('placeKey', stored.placeKey).eq('friendName', stored.friendName)
-      )
+      .withIndex('by_place_friend', (q: any) => q.eq('placeKey', stored.placeKey).eq('friendName', stored.friendName))
       .first();
 
     if (!existing) {
@@ -156,23 +154,17 @@ export const listPlaceRecommendations = query({
   args: {},
   returns: v.array(placeRecommendationRecordValidator),
   handler: async (ctx) => {
-    const userId = await requireAuthenticatedUserId(ctx);
-    const rows = await ctx.db
-      .query('placeRecommendations')
-      .withIndex('by_user_updated_at', (q) => q.eq('userId', userId))
-      .collect();
-
+    const rows = await ctx.db.query('placeRecommendations').withIndex('by_updated_at').collect();
     return rows
       .map((row) => buildRecommendationResponse(row))
       .sort((left, right) => `${left.placeName}|${left.friendName}`.localeCompare(`${right.placeName}|${right.friendName}`));
   }
 });
 
-export const upsertPlaceRecommendationsForUser = internalMutation({
+export const upsertSharedPlaceRecommendations = internalMutation({
   args: {
-    userId: v.string(),
     recommendations: v.array(placeRecommendationInputValidator)
   },
   returns: upsertPlaceRecommendationsResultValidator,
-  handler: async (ctx, args) => upsertPlaceRecommendationsForUserInternal(ctx, args.userId, args.recommendations)
+  handler: async (ctx, args) => upsertSharedPlaceRecommendationsInternal(ctx, args.recommendations)
 });

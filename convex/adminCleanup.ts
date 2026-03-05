@@ -10,6 +10,18 @@ function userIdFromLegacyRoomCode(roomCode: unknown) {
   return value.startsWith('self:') ? value.slice(5) : '';
 }
 
+function buildSharedRecommendationKey(row: any) {
+  return `${cleanText(row?.placeKey)}|${cleanText(row?.friendName).toLowerCase()}`;
+}
+
+function buildFriendUrl(friendName: unknown) {
+  const normalized = cleanText(friendName).toLowerCase();
+  if (normalized === 'winston') {
+    return 'https://x.com/hsu_winston';
+  }
+  return '';
+}
+
 export const previewSoftDeletePurge = internalQuery({
   args: {},
   returns: v.any(),
@@ -197,6 +209,77 @@ export const migrateLegacyPersonalStorage = mutation({
     if (!args.dryRun) {
       for (const row of pairRoomRows) {
         await ctx.db.delete(row._id);
+      }
+    }
+
+    return summary;
+  }
+});
+
+export const migrateSharedPlaceRecommendations = mutation({
+  args: {
+    dryRun: v.boolean()
+  },
+  returns: v.any(),
+  handler: async (ctx, args) => {
+    const rows = await ctx.db.query('placeRecommendations').collect();
+    const rowsByKey = new Map<string, any[]>();
+
+    for (const row of rows) {
+      const key = buildSharedRecommendationKey(row);
+      if (!key) {
+        continue;
+      }
+      if (!rowsByKey.has(key)) {
+        rowsByKey.set(key, []);
+      }
+      rowsByKey.get(key)?.push(row);
+    }
+
+    const summary = {
+      dryRun: args.dryRun,
+      total: rows.length,
+      dedupedGroups: 0,
+      patched: 0,
+      deleted: 0,
+      skipped: 0
+    };
+
+    for (const groupRows of rowsByKey.values()) {
+      const sortedRows = [...groupRows].sort((left, right) => String(right.updatedAt || '').localeCompare(String(left.updatedAt || '')));
+      const canonicalRow = sortedRows[0];
+      if (!canonicalRow) {
+        summary.skipped += 1;
+        continue;
+      }
+
+      const friendUrl = cleanText((canonicalRow as any).friendUrl) || buildFriendUrl(canonicalRow.friendName);
+      const needsPatch = cleanText((canonicalRow as any).userId)
+        || (friendUrl && cleanText((canonicalRow as any).friendUrl) !== friendUrl);
+      const duplicateRows = sortedRows.slice(1);
+
+      if (duplicateRows.length > 0) {
+        summary.dedupedGroups += 1;
+        summary.deleted += duplicateRows.length;
+      }
+
+      if (needsPatch) {
+        summary.patched += 1;
+      }
+
+      if (args.dryRun) {
+        continue;
+      }
+
+      if (needsPatch) {
+        await ctx.db.patch(canonicalRow._id, {
+          userId: undefined,
+          ...(friendUrl ? { friendUrl } : {})
+        } as any);
+      }
+
+      for (const duplicateRow of duplicateRows) {
+        await ctx.db.delete(duplicateRow._id);
       }
     }
 

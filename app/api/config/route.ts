@@ -17,7 +17,8 @@ export async function GET() {
       baseLocation,
       calendars: getCalendarUrls(),
       tripStart: tripConfig.tripStart || process.env.TRIP_START || '',
-      tripEnd: tripConfig.tripEnd || process.env.TRIP_END || ''
+      tripEnd: tripConfig.tripEnd || process.env.TRIP_END || '',
+      showSharedPlaceRecommendations: tripConfig.showSharedPlaceRecommendations ?? true
     });
   });
 }
@@ -28,11 +29,15 @@ export async function POST(request) {
       const body = await request.json();
       const tripStart = typeof body.tripStart === 'string' ? body.tripStart.trim() : '';
       const tripEnd = typeof body.tripEnd === 'string' ? body.tripEnd.trim() : '';
-      await saveTripConfig({ tripStart, tripEnd });
-      if (typeof body.baseLocation === 'string') {
-        await saveBaseLocation(body.baseLocation);
+      const baseLocation = typeof body.baseLocation === 'string' ? body.baseLocation : undefined;
+      const showSharedPlaceRecommendations = typeof body.showSharedPlaceRecommendations === 'boolean'
+        ? body.showSharedPlaceRecommendations
+        : undefined;
+      await saveTripConfig({ tripStart, tripEnd, baseLocation, showSharedPlaceRecommendations });
+      if (baseLocation !== undefined) {
+        await saveBaseLocation(baseLocation);
       }
-      return Response.json({ ok: true, tripStart, tripEnd });
+      return Response.json({ ok: true, tripStart, tripEnd, showSharedPlaceRecommendations: showSharedPlaceRecommendations ?? true });
     } catch (err) {
       return Response.json({ error: err.message }, { status: 400 });
     }

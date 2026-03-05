@@ -137,7 +137,8 @@ export async function saveBaseLocation(text) {
     await client.mutation('tripConfig:saveTripConfig', {
       tripStart: existing?.tripStart || '',
       tripEnd: existing?.tripEnd || '',
-      baseLocation: trimmed
+      baseLocation: trimmed,
+      showSharedPlaceRecommendations: existing?.showSharedPlaceRecommendations ?? true
     });
   }
   await writeTextFileBestEffort(DOC_LOCATION_FILE, trimmed, { label: 'base location' });
@@ -149,7 +150,12 @@ export async function loadTripConfig() {
     if (client) {
       const result = await client.query('tripConfig:getTripConfig', {});
       if (result) {
-        return { tripStart: result.tripStart ?? '', tripEnd: result.tripEnd ?? '', baseLocation: result.baseLocation ?? '' };
+        return {
+          tripStart: result.tripStart ?? '',
+          tripEnd: result.tripEnd ?? '',
+          baseLocation: result.baseLocation ?? '',
+          showSharedPlaceRecommendations: result.showSharedPlaceRecommendations ?? true
+        };
       }
     }
   } catch {
@@ -158,21 +164,33 @@ export async function loadTripConfig() {
   try {
     const raw = await readFile(TRIP_CONFIG_FILE, 'utf-8');
     const parsed = JSON.parse(raw);
-    return { tripStart: parsed.tripStart || '', tripEnd: parsed.tripEnd || '' };
+    return {
+      tripStart: parsed.tripStart || '',
+      tripEnd: parsed.tripEnd || '',
+      baseLocation: parsed.baseLocation || '',
+      showSharedPlaceRecommendations: parsed.showSharedPlaceRecommendations ?? true
+    };
   } catch {
-    return { tripStart: '', tripEnd: '' };
+    return { tripStart: '', tripEnd: '', baseLocation: '', showSharedPlaceRecommendations: true };
   }
 }
 
-export async function saveTripConfig({ tripStart, tripEnd }) {
+export async function saveTripConfig({ tripStart, tripEnd, baseLocation, showSharedPlaceRecommendations }) {
   const client = createConvexClient();
   if (client) {
     await client.mutation('tripConfig:saveTripConfig', {
       tripStart: tripStart || '',
-      tripEnd: tripEnd || ''
+      tripEnd: tripEnd || '',
+      ...(baseLocation !== undefined ? { baseLocation } : {}),
+      ...(showSharedPlaceRecommendations !== undefined ? { showSharedPlaceRecommendations } : {})
     });
   }
-  await writeTextFileBestEffort(TRIP_CONFIG_FILE, JSON.stringify({ tripStart, tripEnd }, null, 2), {
+  await writeTextFileBestEffort(TRIP_CONFIG_FILE, JSON.stringify({
+    tripStart,
+    tripEnd,
+    ...(baseLocation !== undefined ? { baseLocation } : {}),
+    ...(showSharedPlaceRecommendations !== undefined ? { showSharedPlaceRecommendations } : {})
+  }, null, 2), {
     ensureDataDir: true,
     label: 'trip config'
   });
@@ -392,13 +410,14 @@ export async function loadEventsPayload() {
   const sources = appendMissingRequiredDefaultSources(await loadSourcesFromConvex());
   const sourceCalendars = getActiveSourceUrls(sources, 'event');
   const calendars = appendRequiredDefaultSourceUrls(sourceCalendars, 'event');
+  const tripConfig = await loadTripConfig();
   const spotsPayload = await loadSpotsFromConvex();
   const placeRecommendations = await loadPlaceRecommendationsFromConvex();
   const placesFromConvex = Array.isArray(spotsPayload?.spots) ? spotsPayload.spots : [];
   const places = mergePlaceRecommendationsIntoPlaces(mergeStaticRegionPlaces(
     placesFromConvex.length > 0 ? placesFromConvex : fallbackPlaces,
     fallbackPlaces
-  ), placeRecommendations);
+  ), placeRecommendations, { enabled: tripConfig.showSharedPlaceRecommendations });
   const convexPayload = await loadEventsFromConvex(calendars);
 
   if (convexPayload) {
@@ -420,7 +439,8 @@ export async function loadEventsPayload() {
       : [];
     const cachedPlaces = mergePlaceRecommendationsIntoPlaces(
       cachedPlacesBase.length > 0 ? cachedPlacesBase : places,
-      placeRecommendations
+      placeRecommendations,
+      { enabled: tripConfig.showSharedPlaceRecommendations }
     );
     return {
       ...payload,
@@ -530,6 +550,7 @@ export async function saveCachedRoutePayload(cacheKey, routePayloadInput) {
 export async function syncEvents() {
   const nowIso = new Date().toISOString();
   const sourceSnapshot = await getSourceSnapshotForSync();
+  const tripConfig = await loadTripConfig();
   const rssFallbackStateBySourceUrl = await loadRssSeenBySourceUrlFromEventsCache();
   const eventSyncResult = await syncEventsFromSources({
     eventSources: sourceSnapshot.eventSources,
@@ -544,7 +565,9 @@ export async function syncEvents() {
     staticPlaces
   );
   const placeRecommendations = await loadPlaceRecommendationsFromConvex();
-  const mergedPlaces = mergePlaceRecommendationsIntoPlaces(fallbackPlaces, placeRecommendations);
+  const mergedPlaces = mergePlaceRecommendationsIntoPlaces(fallbackPlaces, placeRecommendations, {
+    enabled: tripConfig.showSharedPlaceRecommendations
+  });
   const allErrors = [...eventSyncResult.errors, ...spotSyncResult.errors];
 
   const payload = {
@@ -864,6 +887,7 @@ function buildPlaceRecommendationSummary(recommendationRows) {
     const note = cleanText(row?.note);
     recommendations.push({
       friendName,
+      friendUrl: cleanText(row?.friendUrl),
       note,
       details: cleanText(row?.details),
       sourceUrl: cleanText(row?.sourceUrl)
@@ -909,8 +933,19 @@ function buildSyntheticPlaceFromRecommendation(recommendationRows) {
   });
 }
 
-export function mergePlaceRecommendationsIntoPlaces(placesInput, recommendationRowsInput) {
+export function mergePlaceRecommendationsIntoPlaces(placesInput, recommendationRowsInput, options = {}) {
   const places = Array.isArray(placesInput) ? placesInput.map((place) => ({ ...place })) : [];
+  if (options.enabled === false) {
+    return places
+      .filter((place) => place?.sourceType !== 'friend_recommendation')
+      .map((place) => {
+        const nextPlace = { ...place };
+        delete nextPlace.isRecommended;
+        delete nextPlace.recommendedBy;
+        delete nextPlace.recommendations;
+        return nextPlace;
+      });
+  }
   const recommendationRows = Array.isArray(recommendationRowsInput) ? recommendationRowsInput : [];
   const recommendationsByKey = new Map();
   const existingKeys = new Map();

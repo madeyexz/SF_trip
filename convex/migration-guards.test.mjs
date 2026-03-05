@@ -42,6 +42,19 @@ describe('schema migration guards', () => {
     assert.equal(schemaSource.includes(".index('by_user_url', ['userId', 'url'])"), true);
     assert.equal(schemaSource.includes(".index('by_user_updated_at', ['userId', 'updatedAt'])"), true);
   });
+
+  it('stores Winston recommendations globally and keeps the user visibility toggle on users', async () => {
+    const schemaSource = await readConvexFile('./schema.ts');
+    const placeRecommendationsBlock = schemaSource.match(/placeRecommendations: defineTable\(\{[\s\S]*?\)\s*\.index\('by_friend', \['friendName'\]\),/);
+    assert.notEqual(placeRecommendationsBlock, null);
+    const placeRecommendationsSource = placeRecommendationsBlock?.[0] || '';
+    assert.equal(schemaSource.includes('showSharedPlaceRecommendations: v.optional(v.boolean())'), true);
+    assert.equal(placeRecommendationsSource.includes('placeRecommendations: defineTable({'), true);
+    assert.equal(placeRecommendationsSource.includes('userId: v.string()'), false);
+    assert.equal(placeRecommendationsSource.includes(".index('by_user_updated_at', ['userId', 'updatedAt'])"), false);
+    assert.equal(placeRecommendationsSource.includes(".index('by_place_friend', ['placeKey', 'friendName'])"), true);
+    assert.equal(placeRecommendationsSource.includes("friendUrl: v.optional(v.string())"), true);
+  });
 });
 
 describe('trip config api guards', () => {
@@ -49,5 +62,11 @@ describe('trip config api guards', () => {
     const source = await readConvexFile('./tripConfig.ts');
     assert.equal(source.includes('updatedAt: v.string()'), false);
     assert.equal(source.includes('tripUpdatedAt'), false);
+  });
+
+  it('keeps shared recommendations visibility in trip config', async () => {
+    const source = await readConvexFile('./tripConfig.ts');
+    assert.equal(source.includes('showSharedPlaceRecommendations: v.boolean()'), true);
+    assert.equal(source.includes('showSharedPlaceRecommendations: v.optional(v.boolean())'), true);
   });
 });
