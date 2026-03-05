@@ -1,6 +1,8 @@
 import { escapeHtml } from './helpers.ts';
 
 export const PLACE_SEARCH_TAG_OPTIONS = ['eat', 'bar', 'cafes', 'go out', 'shops', 'sightseeing'] as const;
+export const PLACE_SEARCH_SCOPE_OPTIONS = ['map', 'near_me', 'home'] as const;
+export const PLACE_SEARCH_SORT_OPTIONS = ['best_match', 'distance', 'walk_time'] as const;
 
 type LatLngLike = {
   lat: number | (() => number);
@@ -294,6 +296,7 @@ export function normalizePlacesTextSearchResults(resultsInput: unknown) {
       return {
         id: placeId || `search-result-${index + 1}-${slugify(queryText) || 'place'}`,
         placeId,
+        searchRank: index,
         name,
         location,
         lat: point.lat,
@@ -304,6 +307,74 @@ export function normalizePlacesTextSearchResults(resultsInput: unknown) {
       };
     })
     .filter(Boolean);
+}
+
+export function buildSearchResultTypeChips(typesInput: unknown, limit = 3) {
+  const normalizedTypes = Array.isArray(typesInput)
+    ? typesInput.map((value) => cleanText(value)).filter(Boolean)
+    : [];
+
+  return normalizedTypes
+    .slice(0, limit)
+    .map((value) => value.replace(/_/g, ' '))
+    .map((value) => value.charAt(0).toUpperCase() + value.slice(1));
+}
+
+export function estimateWalkDurationMinutes(distanceMeters: unknown) {
+  const distance = Number(distanceMeters);
+  if (!Number.isFinite(distance) || distance <= 0) return 0;
+  return Math.max(1, Math.round((distance * 1.25) / 80));
+}
+
+function toRadians(value: number) {
+  return (value * Math.PI) / 180;
+}
+
+export function calculateDistanceMeters(originInput: unknown, destinationInput: unknown) {
+  const origin = toLatLngLiteral(originInput as LatLngLike);
+  const destination = toLatLngLiteral(destinationInput as LatLngLike);
+  if (!origin || !destination) return Number.NaN;
+
+  const earthRadiusMeters = 6371000;
+  const latDelta = toRadians(destination.lat - origin.lat);
+  const lngDelta = toRadians(destination.lng - origin.lng);
+  const lat1 = toRadians(origin.lat);
+  const lat2 = toRadians(destination.lat);
+
+  const a = Math.sin(latDelta / 2) ** 2
+    + Math.cos(lat1) * Math.cos(lat2) * Math.sin(lngDelta / 2) ** 2;
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return earthRadiusMeters * c;
+}
+
+export function sortPlaceSearchResults(resultsInput: unknown, sortInput: unknown) {
+  const sortMode = cleanText(sortInput).toLowerCase();
+  const results = Array.isArray(resultsInput) ? [...resultsInput] : [];
+  const rankValue = (result: any) => Number.isFinite(Number(result?.searchRank)) ? Number(result.searchRank) : Number.MAX_SAFE_INTEGER;
+  const distanceValue = (result: any) => Number.isFinite(Number(result?.distanceMeters)) ? Number(result.distanceMeters) : Number.MAX_SAFE_INTEGER;
+  const walkValue = (result: any) => Number.isFinite(Number(result?.walkDurationMinutes)) ? Number(result.walkDurationMinutes) : Number.MAX_SAFE_INTEGER;
+
+  if (sortMode === 'distance') {
+    return results.sort((left: any, right: any) => distanceValue(left) - distanceValue(right) || rankValue(left) - rankValue(right));
+  }
+  if (sortMode === 'walk_time') {
+    return results.sort((left: any, right: any) => walkValue(left) - walkValue(right) || distanceValue(left) - distanceValue(right) || rankValue(left) - rankValue(right));
+  }
+  return results.sort((left: any, right: any) => rankValue(left) - rankValue(right));
+}
+
+export function getMapBoundsSearchRadius(boundsInput: unknown) {
+  const bounds = boundsInput && typeof boundsInput === 'object' ? boundsInput as Record<string, unknown> : {};
+  const north = Number(bounds.north);
+  const south = Number(bounds.south);
+  const east = Number(bounds.east);
+  const west = Number(bounds.west);
+  if (![north, south, east, west].every(Number.isFinite)) return 12000;
+  const verticalMeters = calculateDistanceMeters({ lat: north, lng: west }, { lat: south, lng: west });
+  const horizontalMeters = calculateDistanceMeters({ lat: north, lng: east }, { lat: north, lng: west });
+  const derivedRadius = Math.max(verticalMeters, horizontalMeters) / 2;
+  if (!Number.isFinite(derivedRadius) || derivedRadius <= 0) return 12000;
+  return Math.max(2000, Math.min(18000, Math.round(derivedRadius)));
 }
 
 export function buildCustomSpotPayloadFromSearchResult(resultInput: any, tagInput: unknown) {

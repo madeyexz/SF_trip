@@ -1,15 +1,18 @@
 'use client';
 
 import { useEffect } from 'react';
-import { Calendar, House, Search, Siren, X } from 'lucide-react';
+import { Calendar, Check, Crosshair, ExternalLink, House, Layers3, Search, Siren, Target, X } from 'lucide-react';
 import { useTrip, TAG_COLORS, getTagIconComponent } from '@/components/providers/TripProvider';
 import { formatTag } from '@/lib/helpers';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue
 } from '@/components/ui/select';
 import StatusBar from '@/components/StatusBar';
+import { PLACE_SEARCH_TAG_OPTIONS } from '@/lib/map-helpers';
+import { getSafeExternalHref } from '@/lib/security';
 
 const EVENT_COLOR = '#FF8800';
 const HOME_COLOR = '#00FF88';
@@ -73,21 +76,46 @@ export default function MapPanel() {
     crimeLookbackHourOptions,
     mapSearchQuery,
     setMapSearchQuery,
+    mapSearchScope,
+    setMapSearchScope,
+    mapSearchSort,
+    setMapSearchSort,
+    mapSearchAreaDirty,
     isSearchingMapLocation,
     searchLocationError,
+    searchResultsOriginLabel,
     placeSearchResults,
     searchResultTagDrafts,
+    searchResultSelectionIds,
+    expandedSearchResultEditorId,
+    activeSearchResultId,
     savingSearchResultId,
     deletingCustomSpotId,
+    searchShortcutQueries,
     hasSearchLocation,
     handleSearchMapLocation,
+    handleSearchVisibleArea,
     handleClearSearchLocation,
     handleSetSearchResultTag,
     handleFocusSearchResult,
+    handlePreviewSearchResult,
+    handleToggleSearchResultSelection,
+    handleSaveSelectedSearchResults,
+    handleOpenSearchResultTagEditor,
+    handleApplySearchShortcut,
     handleSaveSearchResultAsSpot,
     handleDeleteCustomSpot,
     setMapRuntimeActive,
   } = useTrip();
+  const savedResults = placeSearchResults.filter((result) => Boolean(result.savedTag));
+  const unsavedResults = placeSearchResults.filter((result) => !result.savedTag);
+  const searchResultEntries = placeSearchResults.map((result, index) => ({ result, index }));
+  const savedEntries = searchResultEntries.filter(({ result }) => Boolean(result.savedTag));
+  const unsavedEntries = searchResultEntries.filter(({ result }) => !result.savedTag);
+  const shortcutButtonLabels = ['Coffee', 'Bars', 'Brunch', 'Parks', 'Museums'];
+  const selectedUnsavedCount = searchResultSelectionIds.filter((resultId) => (
+    unsavedResults.some((result) => result.id === resultId)
+  )).length;
   const isCrimeVisible = !hiddenCategories.has('crime');
   const crimeStatusText = crimeLayerMeta.loading
     ? 'Updating live crime feed...'
@@ -182,69 +210,324 @@ export default function MapPanel() {
               </Button>
             ) : null}
           </div>
+          <div className="mt-2 space-y-2 border-t border-border pt-2">
+            <div className="flex items-center justify-between gap-2">
+              <p className="m-0 text-[0.6rem] font-semibold uppercase tracking-[0.12em] text-foreground-secondary">
+                Search Scope
+              </p>
+              <p className="m-0 text-[0.58rem] uppercase tracking-[0.1em] text-accent">
+                {searchResultsOriginLabel}
+              </p>
+            </div>
+            <ToggleGroup
+              type="single"
+              value={mapSearchScope}
+              onValueChange={(value) => {
+                if (value) setMapSearchScope(value);
+              }}
+              className="grid grid-cols-3 gap-1.5"
+            >
+              <ToggleGroupItem value="map" className="px-2 py-1 text-[0.62rem]">Around Map</ToggleGroupItem>
+              <ToggleGroupItem value="near_me" className="px-2 py-1 text-[0.62rem]">Near Me</ToggleGroupItem>
+              <ToggleGroupItem value="home" className="px-2 py-1 text-[0.62rem]">Near Home</ToggleGroupItem>
+            </ToggleGroup>
+            <div className="flex items-center justify-between gap-2">
+              <p className="m-0 text-[0.6rem] font-semibold uppercase tracking-[0.12em] text-foreground-secondary">
+                Sort Results
+              </p>
+              {mapSearchAreaDirty && mapSearchScope === 'map' ? (
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="secondary"
+                  className="min-h-[28px] px-2 text-[0.62rem]"
+                  onClick={handleSearchVisibleArea}
+                >
+                  <Layers3 size={12} />
+                  Search This Area
+                </Button>
+              ) : null}
+            </div>
+            <ToggleGroup
+              type="single"
+              value={mapSearchSort}
+              onValueChange={(value) => {
+                if (value) setMapSearchSort(value);
+              }}
+              className="grid grid-cols-3 gap-1.5"
+            >
+              <ToggleGroupItem value="best_match" className="px-2 py-1 text-[0.62rem]">Best Match</ToggleGroupItem>
+              <ToggleGroupItem value="distance" className="px-2 py-1 text-[0.62rem]">Distance</ToggleGroupItem>
+              <ToggleGroupItem value="walk_time" className="px-2 py-1 text-[0.62rem]">Walk Time</ToggleGroupItem>
+            </ToggleGroup>
+            <div>
+              <p className="m-0 text-[0.6rem] font-semibold uppercase tracking-[0.12em] text-foreground-secondary">
+                Quick Searches
+              </p>
+              <div className="mt-1.5 flex flex-wrap gap-1.5">
+                {shortcutButtonLabels.map((label) => {
+                  const shortcut = searchShortcutQueries.find((candidate) => candidate.label === label);
+                  if (!shortcut) return null;
+                  return (
+                    <Button
+                      key={label}
+                      type="button"
+                      size="sm"
+                      variant="secondary"
+                      className="min-h-[28px] px-2 text-[0.62rem]"
+                      onClick={() => handleApplySearchShortcut(shortcut.query)}
+                    >
+                      {label}
+                    </Button>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
           <p className={`mt-2 mb-0 text-[0.64rem] leading-tight ${searchLocationError ? 'text-[#FF4444]' : 'text-foreground-secondary'}`}>
             {searchLocationError || 'Searches return multiple pinned places. Save any result into a trip category.'}
           </p>
           {placeSearchResults.length > 0 ? (
             <div className="mt-2 max-h-[280px] overflow-y-auto border-t border-border pt-2">
               <div className="mb-2 flex items-center justify-between gap-2">
-                <p className="m-0 text-[0.62rem] font-semibold uppercase tracking-[0.12em] text-foreground-secondary">
-                  {placeSearchResults.length} results pinned
-                </p>
-                <p className="m-0 text-[0.6rem] text-muted">SAVE INTO EXISTING SPOT CATEGORIES</p>
+                <div>
+                  <p className="m-0 text-[0.62rem] font-semibold uppercase tracking-[0.12em] text-foreground-secondary">
+                    {placeSearchResults.length} results pinned
+                  </p>
+                  <p className="m-0 mt-1 text-[0.58rem] uppercase tracking-[0.1em] text-muted">
+                    {searchResultsOriginLabel} · {selectedUnsavedCount} selected
+                  </p>
+                </div>
+                <Button
+                  type="button"
+                  size="sm"
+                  className="min-h-[30px] px-2.5"
+                  disabled={selectedUnsavedCount === 0 || Boolean(savingSearchResultId)}
+                  onClick={() => { void handleSaveSelectedSearchResults(); }}
+                >
+                  <Check size={12} />
+                  Save Selected
+                </Button>
               </div>
+              {savedResults.length > 0 ? (
+                <div className="mb-2">
+                  <div className="mb-2 flex items-center justify-between gap-2">
+                    <p className="m-0 text-[0.62rem] font-semibold uppercase tracking-[0.12em] text-accent">
+                      Saved Results
+                    </p>
+                    <p className="m-0 text-[0.58rem] uppercase tracking-[0.1em] text-muted">
+                      {savedResults.length} saved
+                    </p>
+                  </div>
+                  <div className="space-y-2">
+                    {savedEntries.map(({ result, index }) => {
+                      const selectedTag = searchResultTagDrafts[result.id] || result.savedTag || result.suggestedTag || 'eat';
+                      const isEditorOpen = expandedSearchResultEditorId === result.id;
+                      const isDeletingResult = deletingCustomSpotId === result.savedSpotId;
+                      const safeMapLink = getSafeExternalHref(result.mapLink);
+                      return (
+                        <div
+                          key={result.id}
+                          id={`search-result-${result.id}`}
+                          onMouseEnter={() => handlePreviewSearchResult(result.id)}
+                          className={`border px-2.5 py-2 ${activeSearchResultId === result.id ? 'border-accent bg-accent-light' : 'border-border bg-bg-elevated'}`}
+                        >
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="min-w-0">
+                              <p className="m-0 text-[0.64rem] font-semibold uppercase tracking-[0.12em] text-accent">
+                                Result {index + 1}
+                              </p>
+                              <p className="mt-1 mb-0 text-[0.78rem] font-semibold text-foreground leading-snug">{result.name}</p>
+                              <p className="mt-1 mb-0 text-[0.68rem] leading-snug text-foreground-secondary">{result.location}</p>
+                              {(result.distanceLabel || result.walkDurationLabel) ? (
+                                <p className="mt-1 mb-0 text-[0.6rem] uppercase tracking-[0.1em] text-muted">
+                                  {[result.distanceLabel, result.walkDurationLabel].filter(Boolean).join(' · ')}
+                                </p>
+                              ) : null}
+                              {Array.isArray(result.typeChips) && result.typeChips.length > 0 ? (
+                                <div className="mt-1.5 flex flex-wrap gap-1">
+                                  {result.typeChips.map((chip) => (
+                                    <span key={`${result.id}-${chip}`} className="border border-border px-1.5 py-0.5 text-[0.54rem] uppercase tracking-[0.08em] text-foreground-secondary">
+                                      {chip}
+                                    </span>
+                                  ))}
+                                </div>
+                              ) : null}
+                            </div>
+                            <span className="shrink-0 border border-accent-border bg-accent-light px-1.5 py-0.5 text-[0.58rem] font-semibold uppercase tracking-[0.12em] text-accent">
+                              Saved · {formatTag(result.savedTag)}
+                            </span>
+                          </div>
+                          <div className="mt-2 flex flex-wrap gap-2">
+                            <Button type="button" size="sm" variant="secondary" className="min-h-[30px] px-2.5" onClick={() => handleFocusSearchResult(result.id)}>
+                              <Crosshair size={12} />
+                              Focus
+                            </Button>
+                            {safeMapLink ? (
+                              <Button type="button" size="sm" variant="secondary" className="min-h-[30px] px-2.5" asChild>
+                                <a href={safeMapLink} target="_blank" rel="noreferrer">
+                                  <ExternalLink size={12} />
+                                  Open Map
+                                </a>
+                              </Button>
+                            ) : null}
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="secondary"
+                              className="min-h-[30px] px-2.5"
+                              onClick={() => handleOpenSearchResultTagEditor(result.id)}
+                            >
+                              <Target size={12} />
+                              Change Tag
+                            </Button>
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="danger"
+                              className="min-h-[30px] px-2.5"
+                              disabled={isDeletingResult}
+                              onClick={() => { void handleDeleteCustomSpot(result.savedSpotId); }}
+                            >
+                              {isDeletingResult ? 'Deleting...' : 'Remove Spot'}
+                            </Button>
+                          </div>
+                          {isEditorOpen ? (
+                            <div className="mt-2 grid grid-cols-[minmax(0,1fr)_auto] gap-2 max-sm:grid-cols-1">
+                              <Select value={selectedTag} onValueChange={(value) => handleSetSearchResultTag(result.id, value)}>
+                                <SelectTrigger className="min-h-[32px] bg-card px-2.5 py-1 text-[0.72rem] uppercase">
+                                  <SelectValue placeholder="Category" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {PLACE_SEARCH_TAG_OPTIONS.map((tag) => (
+                                    <SelectItem key={tag} value={tag}>{formatTag(tag)}</SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                              <Button
+                                type="button"
+                                size="sm"
+                                className="min-h-[32px] px-2.5"
+                                disabled={savingSearchResultId === result.id}
+                                onClick={() => { void handleSaveSearchResultAsSpot(result.id); }}
+                              >
+                                {savingSearchResultId === result.id ? 'Saving...' : 'Update Tag'}
+                              </Button>
+                            </div>
+                          ) : null}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              ) : null}
               <div className="space-y-2">
-                {placeSearchResults.map((result, index) => {
+                <div className="flex items-center justify-between gap-2">
+                  <p className="m-0 text-[0.62rem] font-semibold uppercase tracking-[0.12em] text-foreground-secondary">
+                    Unsaved Results
+                  </p>
+                  <p className="m-0 text-[0.58rem] uppercase tracking-[0.1em] text-muted">
+                    {unsavedResults.length} unsaved
+                  </p>
+                </div>
+                {unsavedEntries.map(({ result, index }) => {
                   const selectedTag = searchResultTagDrafts[result.id] || result.suggestedTag || 'eat';
+                  const safeMapLink = getSafeExternalHref(result.mapLink);
                   const isSavingResult = savingSearchResultId === result.id;
-                  const isDeletingResult = deletingCustomSpotId === result.savedSpotId;
+                  const isEditorOpen = expandedSearchResultEditorId === result.id;
+                  const isSelected = searchResultSelectionIds.includes(result.id);
                   return (
-                    <div key={result.id} className="border border-border bg-bg-elevated px-2.5 py-2">
+                    <div
+                      key={result.id}
+                      id={`search-result-${result.id}`}
+                      onMouseEnter={() => handlePreviewSearchResult(result.id)}
+                      className={`border px-2.5 py-2 ${activeSearchResultId === result.id ? 'border-accent bg-accent-light' : 'border-border bg-bg-elevated'}`}
+                    >
                       <div className="flex items-start justify-between gap-2">
                         <div className="min-w-0">
-                          <p className="m-0 text-[0.64rem] font-semibold uppercase tracking-[0.12em] text-accent">
-                            Result {index + 1}
-                          </p>
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            <p className="m-0 text-[0.64rem] font-semibold uppercase tracking-[0.12em] text-accent">
+                              Result {index + 1}
+                            </p>
+                            {isSelected ? (
+                              <span className="border border-accent-border bg-accent-light px-1.5 py-0.5 text-[0.54rem] font-semibold uppercase tracking-[0.12em] text-accent">
+                                Selected
+                              </span>
+                            ) : null}
+                          </div>
                           <p className="mt-1 mb-0 text-[0.78rem] font-semibold text-foreground leading-snug">{result.name}</p>
                           <p className="mt-1 mb-0 text-[0.68rem] leading-snug text-foreground-secondary">{result.location}</p>
+                          {(result.distanceLabel || result.walkDurationLabel) ? (
+                            <p className="mt-1 mb-0 text-[0.6rem] uppercase tracking-[0.1em] text-muted">
+                              {[result.distanceLabel, result.walkDurationLabel].filter(Boolean).join(' · ')}
+                            </p>
+                          ) : null}
+                          {Array.isArray(result.typeChips) && result.typeChips.length > 0 ? (
+                            <div className="mt-1.5 flex flex-wrap gap-1">
+                              {result.typeChips.map((chip) => (
+                                <span key={`${result.id}-${chip}`} className="border border-border px-1.5 py-0.5 text-[0.54rem] uppercase tracking-[0.08em] text-foreground-secondary">
+                                  {chip}
+                                </span>
+                              ))}
+                            </div>
+                          ) : null}
                         </div>
-                        {result.savedTag ? (
-                          <span className="shrink-0 border border-accent-border bg-accent-light px-1.5 py-0.5 text-[0.58rem] font-semibold uppercase tracking-[0.12em] text-accent">
-                            Saved · {formatTag(result.savedTag)}
-                          </span>
-                        ) : null}
                       </div>
-                      <div className="mt-2 grid grid-cols-[minmax(0,1fr)_auto_auto] gap-2 max-sm:grid-cols-1">
-                        <Select value={selectedTag} onValueChange={(value) => handleSetSearchResultTag(result.id, value)}>
-                          <SelectTrigger className="min-h-[32px] bg-card px-2.5 py-1 text-[0.72rem] uppercase">
-                            <SelectValue placeholder="Category" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {['eat', 'bar', 'cafes', 'go out', 'shops', 'sightseeing'].map((tag) => (
-                              <SelectItem key={tag} value={tag}>{formatTag(tag)}</SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                        <Button type="button" size="sm" variant="secondary" className="min-h-[32px] px-2.5" onClick={() => handleFocusSearchResult(result.id)}>
+                      <div className="mt-2 flex flex-wrap gap-2">
+                        <Button type="button" size="sm" variant="secondary" className="min-h-[30px] px-2.5" onClick={() => handleFocusSearchResult(result.id)}>
+                          <Crosshair size={12} />
                           Focus
                         </Button>
-                        {result.savedTag ? (
+                        {safeMapLink ? (
+                          <Button type="button" size="sm" variant="secondary" className="min-h-[30px] px-2.5" asChild>
+                            <a href={safeMapLink} target="_blank" rel="noreferrer">
+                              <ExternalLink size={12} />
+                              Open Map
+                            </a>
+                          </Button>
+                        ) : null}
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant={isSelected ? 'default' : 'secondary'}
+                          className="min-h-[30px] px-2.5"
+                          onClick={() => handleToggleSearchResultSelection(result.id)}
+                        >
+                          {isSelected ? 'Selected' : 'Select'}
+                        </Button>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="secondary"
+                          className="min-h-[30px] px-2.5"
+                          onClick={() => handleOpenSearchResultTagEditor(result.id)}
+                        >
+                          Save Spot
+                        </Button>
+                      </div>
+                      {isEditorOpen ? (
+                        <div className="mt-2 grid grid-cols-[minmax(0,1fr)_auto] gap-2 max-sm:grid-cols-1">
+                          <Select value={selectedTag} onValueChange={(value) => handleSetSearchResultTag(result.id, value)}>
+                            <SelectTrigger className="min-h-[32px] bg-card px-2.5 py-1 text-[0.72rem] uppercase">
+                              <SelectValue placeholder="Category" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {PLACE_SEARCH_TAG_OPTIONS.map((tag) => (
+                                <SelectItem key={tag} value={tag}>{formatTag(tag)}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
                           <Button
                             type="button"
                             size="sm"
-                            variant="danger"
                             className="min-h-[32px] px-2.5"
-                            disabled={isDeletingResult}
-                            onClick={() => { void handleDeleteCustomSpot(result.savedSpotId); }}
+                            disabled={isSavingResult}
+                            onClick={() => { void handleSaveSearchResultAsSpot(result.id); }}
                           >
-                            {isDeletingResult ? 'Deleting...' : 'Remove Spot'}
-                          </Button>
-                        ) : (
-                          <Button type="button" size="sm" className="min-h-[32px] px-2.5" disabled={isSavingResult} onClick={() => { void handleSaveSearchResultAsSpot(result.id); }}>
                             {isSavingResult ? 'Saving...' : 'Save Spot'}
                           </Button>
-                        )}
-                      </div>
+                        </div>
+                      ) : null}
                     </div>
                   );
                 })}

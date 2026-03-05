@@ -38,7 +38,9 @@ import {
   createRouteRequestCacheKey, requestPlannedRoute,
   loadGoogleMapsScript, buildInfoWindowAddButton, buildPlacePhotoGalleryHtml,
   createPlacePhotoCacheKey, fetchPlacePhotoGallery, getNextPlacePhotoIndex,
-  normalizePlacesTextSearchResults, buildCustomSpotPayloadFromSearchResult
+  normalizePlacesTextSearchResults, buildCustomSpotPayloadFromSearchResult,
+  buildSearchResultTypeChips, estimateWalkDurationMinutes, sortPlaceSearchResults, getMapBoundsSearchRadius,
+  calculateDistanceMeters
 } from '@/lib/map-helpers';
 import {
   applyDeviceLocation,
@@ -143,6 +145,14 @@ const EMPTY_CRIME_LAYER_META: CrimeLayerMeta = {
   error: ''
 };
 
+const searchShortcutQueries = [
+  { label: 'Coffee', query: 'coffee nearby' },
+  { label: 'Bars', query: 'cocktail bar nearby' },
+  { label: 'Brunch', query: 'brunch nearby' },
+  { label: 'Parks', query: 'parks nearby' },
+  { label: 'Museums', query: 'museums nearby' }
+];
+
 const TAG_ICON_COMPONENTS = {
   eat: UtensilsCrossed,
   bar: Martini,
@@ -207,7 +217,11 @@ export default function TripProvider({ children }: { children: ReactNode }) {
   const crimeHeatmapRef = useRef<any>(null);
   const crimeRefreshTimerRef = useRef<number | null>(null);
   const crimeIdleListenerRef = useRef<any>(null);
+  const searchAreaIdleListenerRef = useRef<any>(null);
   const crimeLookbackHydratedRef = useRef(false);
+  const mapSearchPrefsHydratedRef = useRef(false);
+  const skipNextSearchAreaIdleRef = useRef(false);
+  const searchVisibleAreaRequestedRef = useRef(false);
   const lastCrimeFetchAtRef = useRef(0);
   const lastCrimeQueryRef = useRef('');
   const positionCacheRef = useRef<Map<string, any>>(new Map());
@@ -240,10 +254,17 @@ export default function TripProvider({ children }: { children: ReactNode }) {
   const [travelMode, setTravelMode] = useState('WALKING');
   const [baseLocationText, setBaseLocationText] = useState('');
   const [mapSearchQuery, setMapSearchQuery] = useState('');
+  const [mapSearchScope, setMapSearchScope] = useState('map');
+  const [mapSearchSort, setMapSearchSort] = useState('best_match');
+  const [mapSearchAreaDirty, setMapSearchAreaDirty] = useState(false);
   const [isSearchingMapLocation, setIsSearchingMapLocation] = useState(false);
   const [searchLocationError, setSearchLocationError] = useState('');
+  const [searchResultsOriginLabel, setSearchResultsOriginLabel] = useState('Map area');
   const [placeSearchResults, setPlaceSearchResults] = useState<any[]>([]);
   const [searchResultTagDrafts, setSearchResultTagDrafts] = useState<Record<string, string>>({});
+  const [searchResultSelectionIds, setSearchResultSelectionIds] = useState<string[]>([]);
+  const [expandedSearchResultEditorId, setExpandedSearchResultEditorId] = useState('');
+  const [activeSearchResultId, setActiveSearchResultId] = useState('');
   const [savingSearchResultId, setSavingSearchResultId] = useState('');
   const [deletingCustomSpotId, setDeletingCustomSpotId] = useState('');
   const [isSyncing, setIsSyncing] = useState(false);
@@ -329,6 +350,29 @@ export default function TripProvider({ children }: { children: ReactNode }) {
       localStorage.setItem('crimeLookbackHours', String(crimeLookbackHours));
     } catch {}
   }, [crimeLookbackHours]);
+
+  useEffect(() => {
+    try {
+      const stored = JSON.parse(localStorage.getItem('mapSearchPreferences') || 'null');
+      if (stored && typeof stored === 'object') {
+        if (typeof stored.query === 'string') setMapSearchQuery(stored.query);
+        if (typeof stored.scope === 'string') setMapSearchScope(stored.scope);
+        if (typeof stored.sort === 'string') setMapSearchSort(stored.sort);
+      }
+    } catch {}
+    mapSearchPrefsHydratedRef.current = true;
+  }, []);
+
+  useEffect(() => {
+    if (!mapSearchPrefsHydratedRef.current) return;
+    try {
+      localStorage.setItem('mapSearchPreferences', JSON.stringify({
+        query: mapSearchQuery,
+        scope: mapSearchScope,
+        sort: mapSearchSort
+      }));
+    } catch {}
+  }, [mapSearchQuery, mapSearchScope, mapSearchSort]);
 
   const uniqueDates = useMemo(() => {
     if (tripStart && tripEnd) {
@@ -775,6 +819,19 @@ export default function TripProvider({ children }: { children: ReactNode }) {
     });
   }, []);
 
+  const getCurrentMapBoundsLiteral = useCallback(() => {
+    const bounds = mapRef.current?.getBounds?.();
+    const ne = bounds?.getNorthEast?.();
+    const sw = bounds?.getSouthWest?.();
+    if (!ne || !sw) return null;
+    const north = Number(ne.lat?.());
+    const east = Number(ne.lng?.());
+    const south = Number(sw.lat?.());
+    const west = Number(sw.lng?.());
+    if (![north, east, south, west].every(Number.isFinite)) return null;
+    return { north, east, south, west };
+  }, []);
+
   const fitMapToVisiblePoints = useCallback((evts, places) => {
     if (!mapRef.current || !window.google?.maps) return;
     const bounds = new window.google.maps.LatLngBounds();
@@ -830,8 +887,10 @@ export default function TripProvider({ children }: { children: ReactNode }) {
     const types = Array.isArray(result?.types) && result.types.length > 0
       ? result.types.slice(0, 4).join(', ')
       : 'Search result';
+    const distanceText = result?.distanceLabel ? `<p style="margin:4px 0;color:#8a8a8a"><strong style="color:#FFFFFF">Distance:</strong> ${escapeHtml(result.distanceLabel)}</p>` : '';
+    const walkText = result?.walkDurationLabel ? `<p style="margin:4px 0;color:#8a8a8a"><strong style="color:#FFFFFF">Walk:</strong> ${escapeHtml(result.walkDurationLabel)}</p>` : '';
 
-    return `<div class="custom-iw" style="max-width:320px;background:#0A0A0A;color:#FFFFFF;padding:12px;font-family:'JetBrains Mono',monospace;font-size:13px"><p style="margin:0 0 6px;color:#00FF88;font-size:11px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase">Result ${escapeHtml(String(index + 1))}</p><h3 style="margin:0 0 6px;font-size:16px;color:#FFFFFF">${escapeHtml(result?.name || 'Place')}</h3><p style="margin:4px 0;color:#8a8a8a"><strong style="color:#FFFFFF">Location:</strong> ${escapeHtml(result?.location || 'Unknown')}</p><p style="margin:4px 0;color:#8a8a8a"><strong style="color:#FFFFFF">Suggested tag:</strong> ${escapeHtml(formatTag(result?.suggestedTag || 'eat'))}</p><p style="margin:4px 0;color:#8a8a8a"><strong style="color:#FFFFFF">Types:</strong> ${escapeHtml(types)}</p>${safeMapLink ? `<a href="${escapeHtml(safeMapLink)}" target="_blank" rel="noreferrer" style="color:#00FF88;text-decoration:none;font-weight:600;font-size:12px;text-transform:uppercase;letter-spacing:0.05em">Open map</a>` : ''}</div>`;
+    return `<div class="custom-iw" style="max-width:320px;background:#0A0A0A;color:#FFFFFF;padding:12px;font-family:'JetBrains Mono',monospace;font-size:13px"><p style="margin:0 0 6px;color:#00FF88;font-size:11px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase">Result ${escapeHtml(String(index + 1))}</p><h3 style="margin:0 0 6px;font-size:16px;color:#FFFFFF">${escapeHtml(result?.name || 'Place')}</h3><p style="margin:4px 0;color:#8a8a8a"><strong style="color:#FFFFFF">Location:</strong> ${escapeHtml(result?.location || 'Unknown')}</p>${distanceText}${walkText}<p style="margin:4px 0;color:#8a8a8a"><strong style="color:#FFFFFF">Suggested tag:</strong> ${escapeHtml(formatTag(result?.suggestedTag || 'eat'))}</p><p style="margin:4px 0;color:#8a8a8a"><strong style="color:#FFFFFF">Types:</strong> ${escapeHtml(types)}</p>${safeMapLink ? `<a href="${escapeHtml(safeMapLink)}" target="_blank" rel="noreferrer" style="color:#00FF88;text-decoration:none;font-weight:600;font-size:12px;text-transform:uppercase;letter-spacing:0.05em">Open map</a>` : ''}</div>`;
   }, []);
 
   const renderSearchResultMarkers = useCallback((results) => {
@@ -847,17 +906,19 @@ export default function TripProvider({ children }: { children: ReactNode }) {
         map: mapRef.current,
         position: { lat: result.lat, lng: result.lng },
         title: result.name,
-        content: createLucidePinIconWithLabel(mapPinIconNode, '#FFFFFF', String(index + 1)),
+        content: createLucidePinIconWithLabel(mapPinIconNode, activeSearchResultId === result.id ? '#00FF88' : '#FFFFFF', String(index + 1)),
         gmpClickable: true
       });
       marker.addEventListener('gmp-click', () => {
+        setActiveSearchResultId(result.id);
+        document.getElementById(`search-result-${result.id}`)?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
         if (!infoWindowRef.current) return;
         infoWindowRef.current.setContent(buildSearchResultInfoWindowHtml(result, index));
         infoWindowRef.current.open({ map: mapRef.current, anchor: marker });
       });
       searchResultMarkersRef.current.push(marker);
     }
-  }, [buildSearchResultInfoWindowHtml, clearSearchResultMarkers]);
+  }, [activeSearchResultId, buildSearchResultInfoWindowHtml, clearSearchResultMarkers]);
 
   const setDeviceLocationMarker = useCallback((latLng, title) => {
     if (!mapRef.current || !window.google?.maps?.marker) return;
@@ -870,6 +931,69 @@ export default function TripProvider({ children }: { children: ReactNode }) {
       content: createLucidePinIcon(mapPinIconNode, '#00FF88')
     });
   }, []);
+
+  const getResolvedSearchOrigin = useCallback(async (scopeInput, { visibleArea = false } = {}) => {
+    const fallbackPoint = { lat: 37.7749, lng: -122.4194 };
+    const scope = String(scopeInput || 'map');
+
+    if (scope === 'near_me') {
+      const cachedDevicePoint = toLatLngLiteral(deviceLocationLatLngRef.current);
+      if (cachedDevicePoint) {
+        return { point: cachedDevicePoint, label: 'Near me', radius: 4500 };
+      }
+      if (!navigator.geolocation) {
+        throw new Error('Location permission is unavailable in this browser.');
+      }
+
+      const coords = await new Promise<{ latitude: number; longitude: number }>((resolve, reject) => {
+        navigator.geolocation.getCurrentPosition(
+          (position) => resolve({
+            latitude: position.coords.latitude,
+            longitude: position.coords.longitude
+          }),
+          reject,
+          DEVICE_LOCATION_OPTIONS
+        );
+      });
+      const point = { lat: coords.latitude, lng: coords.longitude };
+      deviceLocationLatLngRef.current = point;
+      if (mapsReady && window.google?.maps?.marker) {
+        setDeviceLocationMarker(point, 'Your current location');
+      }
+      return { point, label: 'Near me', radius: 4500 };
+    }
+
+    if (scope === 'home') {
+      const cachedHomePoint = toLatLngLiteral(baseLatLngRef.current);
+      if (cachedHomePoint) {
+        return { point: cachedHomePoint, label: 'Near home', radius: 7000 };
+      }
+      if (!baseLocationText) {
+        throw new Error('Set your home location before using Near home.');
+      }
+      const geocodedHome = await geocode(baseLocationText);
+      const point = toLatLngLiteral(geocodedHome);
+      if (!point) {
+        throw new Error('Home location could not be resolved on the map.');
+      }
+      return { point, label: 'Near home', radius: 7000 };
+    }
+
+    const bounds = getCurrentMapBoundsLiteral();
+    const centerPoint = toLatLngLiteral(mapRef.current?.getCenter?.()) || toLatLngLiteral(baseLatLngRef.current) || fallbackPoint;
+    if (visibleArea && bounds) {
+      return {
+        point: centerPoint,
+        label: 'Visible area',
+        radius: getMapBoundsSearchRadius(bounds)
+      };
+    }
+    return {
+      point: centerPoint,
+      label: 'Map area',
+      radius: bounds ? getMapBoundsSearchRadius(bounds) : 12000
+    };
+  }, [baseLocationText, geocode, getCurrentMapBoundsLiteral, mapsReady, setDeviceLocationMarker]);
 
   useEffect(() => {
     if (baseMarkerRef.current) {
@@ -1492,6 +1616,35 @@ export default function TripProvider({ children }: { children: ReactNode }) {
   }, [mapsReady, placeSearchResults, renderSearchResultMarkers]);
 
   useEffect(() => {
+    if (!mapsReady || !mapRef.current) return;
+    if (searchAreaIdleListenerRef.current?.remove) {
+      searchAreaIdleListenerRef.current.remove();
+      searchAreaIdleListenerRef.current = null;
+    }
+    searchAreaIdleListenerRef.current = mapRef.current.addListener('idle', () => {
+      if (skipNextSearchAreaIdleRef.current) {
+        skipNextSearchAreaIdleRef.current = false;
+        return;
+      }
+      if (mapSearchScope === 'map' && mapSearchQuery.trim()) {
+        setMapSearchAreaDirty(true);
+      }
+    });
+
+    return () => {
+      if (searchAreaIdleListenerRef.current?.remove) {
+        searchAreaIdleListenerRef.current.remove();
+        searchAreaIdleListenerRef.current = null;
+      }
+    };
+  }, [mapSearchQuery, mapSearchScope, mapsReady]);
+
+  useEffect(() => {
+    if (placeSearchResults.length === 0) return;
+    setPlaceSearchResults((prev) => sortPlaceSearchResults(prev, mapSearchSort));
+  }, [mapSearchSort, placeSearchResults.length]);
+
+  useEffect(() => {
     if (!isAuthenticated) {
       setSources([]);
       return;
@@ -1690,9 +1843,26 @@ export default function TripProvider({ children }: { children: ReactNode }) {
     }));
   }, []);
 
+  const handleOpenSearchResultTagEditor = useCallback((resultId) => {
+    setExpandedSearchResultEditorId((prev) => (prev === resultId ? '' : resultId));
+  }, []);
+
+  const handlePreviewSearchResult = useCallback((resultId) => {
+    setActiveSearchResultId(resultId);
+  }, []);
+
+  const handleToggleSearchResultSelection = useCallback((resultId) => {
+    setSearchResultSelectionIds((prev) => (
+      prev.includes(resultId)
+        ? prev.filter((candidate) => candidate !== resultId)
+        : [...prev, resultId]
+    ));
+  }, []);
+
   const handleFocusSearchResult = useCallback((resultId) => {
     const result = placeSearchResults.find((candidate) => candidate.id === resultId);
     if (!result) return;
+    setActiveSearchResultId(resultId);
     focusMapOnOrigin({ lat: result.lat, lng: result.lng }, 15);
     setStatusMessage(`Focused "${result.name}".`);
   }, [focusMapOnOrigin, placeSearchResults, setStatusMessage]);
@@ -1729,6 +1899,8 @@ export default function TripProvider({ children }: { children: ReactNode }) {
             }
           : candidate
       )));
+      setSearchResultSelectionIds((prev) => prev.filter((candidate) => candidate !== resultId));
+      setExpandedSearchResultEditorId('');
       setStatusMessage(`Saved "${savedSpot.name}" to ${formatTag(savedSpot.tag)}.`);
     } catch (error) {
       setStatusMessage(error instanceof Error ? error.message : 'Failed to save search result.', true);
@@ -1736,6 +1908,18 @@ export default function TripProvider({ children }: { children: ReactNode }) {
       setSavingSearchResultId('');
     }
   }, [placeSearchResults, searchResultTagDrafts, setStatusMessage]);
+
+  const handleSaveSelectedSearchResults = useCallback(async () => {
+    const nextSelectedIds = searchResultSelectionIds.filter((resultId) => {
+      const result = placeSearchResults.find((candidate) => candidate.id === resultId);
+      return result && !result.savedTag;
+    });
+    for (const resultId of nextSelectedIds) {
+      // Save sequentially so UI state stays predictable for per-result status.
+      await handleSaveSearchResultAsSpot(resultId);
+    }
+    setSearchResultSelectionIds([]);
+  }, [handleSaveSearchResultAsSpot, placeSearchResults, searchResultSelectionIds]);
 
   const handleDeleteCustomSpot = useCallback(async (spotId) => {
     spotId = String(spotId || '').trim();
@@ -1764,6 +1948,7 @@ export default function TripProvider({ children }: { children: ReactNode }) {
             }
           : candidate
       )));
+      setSearchResultSelectionIds((prev) => prev.filter((candidate) => candidate !== spotId));
       setStatusMessage(`Deleted custom spot "${deletedSpotName || 'Saved spot'}".`);
     } catch (error) {
       setStatusMessage(error instanceof Error ? error.message : 'Failed to delete custom spot.', true);
@@ -1793,6 +1978,8 @@ export default function TripProvider({ children }: { children: ReactNode }) {
 
     setIsSearchingMapLocation(true);
     setSearchLocationError('');
+    setMapSearchAreaDirty(false);
+    skipNextSearchAreaIdleRef.current = true;
     setStatusMessage(`Searching for "${trimmedQuery}"...`);
     try {
       const { Place } = await window.google.maps.importLibrary('places') as any;
@@ -1800,30 +1987,52 @@ export default function TripProvider({ children }: { children: ReactNode }) {
         throw new Error('Google Places search is not available for this map key.');
       }
 
-      const centerPoint = toLatLngLiteral(mapRef.current?.getCenter?.()) || toLatLngLiteral(baseLatLngRef.current) || { lat: 37.7749, lng: -122.4194 };
-      const searchRadius = /\bnearby\b|\bnear me\b/.test(trimmedQuery.toLowerCase()) ? 4500 : 12000;
+      const visibleArea = searchVisibleAreaRequestedRef.current;
+      searchVisibleAreaRequestedRef.current = false;
+      const origin = await getResolvedSearchOrigin(mapSearchScope, { visibleArea });
+      const isNearMeScope = mapSearchScope === 'near_me';
+      const keywordRadius = /\bnearby\b|\bnear me\b/.test(trimmedQuery.toLowerCase()) || isNearMeScope ? 4500 : origin.radius;
       const { places } = await Place.searchByText({
         textQuery: trimmedQuery,
         fields: ['id', 'displayName', 'formattedAddress', 'location', 'types'],
-        locationBias: new window.google.maps.Circle({ center: centerPoint, radius: searchRadius }),
+        locationBias: new window.google.maps.Circle({ center: origin.point, radius: keywordRadius }),
         maxResultCount: 8
       });
-      const normalizedResults = normalizePlacesTextSearchResults(places);
+      let normalizedResults = normalizePlacesTextSearchResults(places).map((result) => {
+        const distanceMeters = calculateDistanceMeters(origin.point, { lat: result.lat, lng: result.lng });
+        const walkDurationMinutes = estimateWalkDurationMinutes(distanceMeters);
+        return {
+          ...result,
+          distanceMeters,
+          distanceLabel: Number.isFinite(distanceMeters) ? formatDistance(distanceMeters) : '',
+          walkDurationMinutes,
+          walkDurationLabel: walkDurationMinutes > 0 ? `~${walkDurationMinutes} min walk` : '',
+          typeChips: buildSearchResultTypeChips(result.types)
+        };
+      });
+      normalizedResults = sortPlaceSearchResults(normalizedResults, mapSearchSort);
 
       if (normalizedResults.length === 0) {
         const message = `No places found for "${trimmedQuery}".`;
         clearSearchResultMarkers();
         setPlaceSearchResults([]);
         setSearchResultTagDrafts({});
+        setSearchResultSelectionIds([]);
+        setExpandedSearchResultEditorId('');
+        setActiveSearchResultId('');
         setSearchLocationError(message);
         setStatusMessage(message, true);
         return;
       }
 
+      setSearchResultsOriginLabel(origin.label);
       setPlaceSearchResults(normalizedResults);
       setSearchResultTagDrafts((prev) => Object.fromEntries(
         normalizedResults.map((result) => [result.id, prev[result.id] || result.suggestedTag || 'eat'])
       ));
+      setSearchResultSelectionIds([]);
+      setExpandedSearchResultEditorId('');
+      setActiveSearchResultId(normalizedResults[0]?.id || '');
       setSearchLocationError('');
       focusSearchResultsOnMap(normalizedResults);
       setStatusMessage(`Found ${normalizedResults.length} places for "${trimmedQuery}".`);
@@ -1832,16 +2041,34 @@ export default function TripProvider({ children }: { children: ReactNode }) {
       setSearchLocationError(message);
       setStatusMessage(message, true);
     } finally {
+      searchVisibleAreaRequestedRef.current = false;
       setIsSearchingMapLocation(false);
     }
-  }, [clearSearchResultMarkers, focusSearchResultsOnMap, isSearchingMapLocation, mapsReady, setStatusMessage]);
+  }, [clearSearchResultMarkers, focusSearchResultsOnMap, getResolvedSearchOrigin, isSearchingMapLocation, mapSearchScope, mapSearchSort, mapsReady, setStatusMessage]);
+
+  const handleSearchVisibleArea = useCallback(() => {
+    if (!mapSearchQuery.trim()) return;
+    searchVisibleAreaRequestedRef.current = true;
+    setMapSearchAreaDirty(false);
+    void handleSearchMapLocation(mapSearchQuery);
+  }, [handleSearchMapLocation, mapSearchQuery]);
+
+  const handleApplySearchShortcut = useCallback((query) => {
+    setMapSearchQuery(query);
+    setMapSearchAreaDirty(false);
+    void handleSearchMapLocation(query);
+  }, [handleSearchMapLocation]);
 
   const handleClearSearchLocation = useCallback(() => {
     clearSearchResultMarkers();
     setMapSearchQuery('');
     setPlaceSearchResults([]);
     setSearchResultTagDrafts({});
+    setSearchResultSelectionIds([]);
+    setExpandedSearchResultEditorId('');
+    setActiveSearchResultId('');
     setSavingSearchResultId('');
+    setMapSearchAreaDirty(false);
     setSearchLocationError('');
     setStatusMessage('Cleared search results.');
   }, [clearSearchResultMarkers, setStatusMessage]);
@@ -2036,8 +2263,10 @@ export default function TripProvider({ children }: { children: ReactNode }) {
     allEvents, allPlaces, visibleEvents, visiblePlaces,
     selectedDate, setSelectedDate, showAllEvents, setShowAllEvents,
     travelMode, setTravelMode, baseLocationText, setBaseLocationText,
-    mapSearchQuery, setMapSearchQuery, isSearchingMapLocation, searchLocationError,
-    placeSearchResults, searchResultTagDrafts, savingSearchResultId, deletingCustomSpotId,
+    mapSearchQuery, setMapSearchQuery, mapSearchScope, setMapSearchScope, mapSearchSort, setMapSearchSort,
+    mapSearchAreaDirty, isSearchingMapLocation, searchLocationError, searchResultsOriginLabel,
+    placeSearchResults, searchResultTagDrafts, searchResultSelectionIds, expandedSearchResultEditorId,
+    activeSearchResultId, savingSearchResultId, deletingCustomSpotId, searchShortcutQueries,
     hasSearchLocation: placeSearchResults.length > 0,
     isSyncing, placeTagFilter, setPlaceTagFilter, hiddenCategories, toggleCategory,
     calendarMonthISO, setCalendarMonthISO,
@@ -2060,8 +2289,10 @@ export default function TripProvider({ children }: { children: ReactNode }) {
     setMapRuntimeActive,
     handleSignOut,
     handleSync, handleDeviceLocation,
-    handleSearchMapLocation, handleClearSearchLocation, handleSetSearchResultTag,
-    handleFocusSearchResult, handleSaveSearchResultAsSpot, handleDeleteCustomSpot,
+    handleSearchMapLocation, handleSearchVisibleArea, handleClearSearchLocation, handleSetSearchResultTag,
+    handleFocusSearchResult, handlePreviewSearchResult, handleToggleSearchResultSelection,
+    handleSaveSelectedSearchResults, handleOpenSearchResultTagEditor, handleApplySearchShortcut,
+    handleSaveSearchResultAsSpot, handleDeleteCustomSpot,
     handleCreateSource, handleToggleSourceStatus, handleDeleteSource, handleSyncSource,
     handleSaveTripDates, handleSaveBaseLocation, handleSaveSharedPlaceRecommendations,
     handleExportPlannerIcs, handleAddDayPlanToGoogleCalendar,
