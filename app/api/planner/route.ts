@@ -1,5 +1,5 @@
 import { requireAuthenticatedClient } from '@/lib/request-auth';
-import { getPlannerRoomCodeFromUrl, parsePlannerPostPayload } from '@/lib/planner-api';
+import { parsePlannerPostPayload } from '@/lib/planner-api';
 
 export const runtime = 'nodejs';
 
@@ -9,11 +9,9 @@ export async function GET(request: Request) {
     return auth.deniedResponse;
   }
 
-  const roomCode = getPlannerRoomCodeFromUrl(request.url);
+  void request;
   try {
-    const payload = await auth.client.query('planner:getPlannerState', {
-      roomCode: roomCode || undefined
-    });
+    const payload = await auth.client.query('planner:getPlannerState', {});
     return Response.json(payload);
   } catch (error) {
     return Response.json(
@@ -30,8 +28,6 @@ export async function POST(request: Request) {
   if (auth.deniedResponse || !auth.client) {
     return auth.deniedResponse;
   }
-
-  const queryRoomCode = getPlannerRoomCodeFromUrl(request.url);
   let body: unknown = null;
 
   try {
@@ -45,7 +41,7 @@ export async function POST(request: Request) {
     );
   }
 
-  const plannerPayload = parsePlannerPostPayload(body, queryRoomCode);
+  const plannerPayload = parsePlannerPostPayload(body);
   if (!plannerPayload.ok) {
     return Response.json(
       {
@@ -57,7 +53,6 @@ export async function POST(request: Request) {
 
   try {
     const payload = await auth.client.mutation('planner:replacePlannerState', {
-      roomCode: plannerPayload.roomCode || undefined,
       plannerByDate: plannerPayload.plannerByDate
     });
     return Response.json(payload);

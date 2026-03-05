@@ -13,8 +13,7 @@ export default defineSchema({
     baseLocation: v.optional(v.string())
   }).index('email', ['email']),
   plannerEntries: defineTable({
-    roomCode: v.string(),
-    ownerUserId: v.string(),
+    userId: v.string(),
     dateISO: v.string(),
     itemId: v.string(),
     kind: v.union(v.literal('event'), v.literal('place')),
@@ -27,21 +26,8 @@ export default defineSchema({
     endMinutes: v.number(),
     updatedAt: v.string()
   })
-    .index('by_room_code', ['roomCode'])
-    .index('by_room_owner', ['roomCode', 'ownerUserId']),
-  pairRooms: defineTable({
-    roomCode: v.string(),
-    createdByUserId: v.string(),
-    createdAt: v.string(),
-    updatedAt: v.string(),
-    members: v.optional(v.array(v.object({
-      userId: v.string(),
-      joinedAt: v.string()
-    }))),
-    expiredAt: v.optional(v.string())
-  })
-    .index('by_room_code', ['roomCode'])
-    .index('by_created_by', ['createdByUserId']),
+    .index('by_user', ['userId'])
+    .index('by_user_date', ['userId', 'dateISO']),
   routeCache: defineTable({
     key: v.string(),
     encodedPolyline: v.string(),

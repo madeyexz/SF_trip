@@ -1,11 +1,3 @@
-export function normalizePlannerRoomCode(value: unknown) {
-  const nextValue = String(value || '').trim().toLowerCase().replace(/[^a-z0-9_-]/g, '');
-  if (nextValue.length < 2 || nextValue.length > 64) {
-    return '';
-  }
-  return nextValue;
-}
-
 const MINUTES_IN_DAY = 24 * 60;
 const MIN_PLAN_BLOCK_MINUTES = 30;
 
@@ -83,28 +75,20 @@ function sanitizePlannerByDateInput(value: unknown) {
   return result;
 }
 
-export function getPlannerRoomCodeFromUrl(url: string) {
-  const parsed = new URL(url);
-  return normalizePlannerRoomCode(parsed.searchParams.get('roomId') || parsed.searchParams.get('roomCode'));
-}
-
-export function parsePlannerPostPayload(body: unknown, queryRoomCode: string) {
+export function parsePlannerPostPayload(body: unknown) {
   const bodyObject = body && typeof body === 'object' ? body as Record<string, unknown> : null;
   const plannerByDate = bodyObject?.plannerByDate;
   if (!bodyObject || !plannerByDate || typeof plannerByDate !== 'object' || Array.isArray(plannerByDate)) {
     return {
       ok: false,
-      roomCode: '',
       plannerByDate: null,
       error: 'plannerByDate object is required.'
     };
   }
 
-  const roomCode = normalizePlannerRoomCode(bodyObject.roomId || bodyObject.roomCode || queryRoomCode);
   const sanitizedPlannerByDate = sanitizePlannerByDateInput(plannerByDate);
   return {
     ok: true,
-    roomCode,
     plannerByDate: sanitizedPlannerByDate,
     error: ''
   };

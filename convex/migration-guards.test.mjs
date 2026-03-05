@@ -14,14 +14,6 @@ describe('schema migration guards', () => {
     assert.equal(schemaSource.includes('tripConfig: defineTable'), false);
   });
 
-  it('keeps room-scoped sources table in schema', async () => {
-    const schemaSource = await readConvexFile('./schema.ts');
-    assert.equal(schemaSource.includes('sources: defineTable({'), true);
-    assert.equal(schemaSource.includes('roomCode: v.string()'), true);
-    assert.equal(schemaSource.includes(".index('by_room_type_status', ['roomCode', 'sourceType', 'status'])"), true);
-    assert.equal(schemaSource.includes(".index('by_room_url', ['roomCode', 'url'])"), true);
-  });
-
   it('keeps deprecated users fields removed from schema', async () => {
     const schemaSource = await readConvexFile('./schema.ts');
     assert.equal(schemaSource.includes('profileCreatedAt'), false);
@@ -35,9 +27,10 @@ describe('schema migration guards', () => {
     assert.equal(schemaSource.includes(".index('phone', ['phone'])"), false);
   });
 
-  it('keeps pair room membership embedded on pairRooms', async () => {
+  it('removes pair room storage from schema', async () => {
     const schemaSource = await readConvexFile('./schema.ts');
-    assert.equal(schemaSource.includes('members: v.optional(v.array(v.object({'), true);
+    assert.equal(schemaSource.includes('pairRooms: defineTable({'), false);
+    assert.equal(schemaSource.includes('members: v.optional(v.array(v.object({'), false);
   });
 });
 
