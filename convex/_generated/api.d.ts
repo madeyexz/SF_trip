@@ -12,6 +12,7 @@ import type * as adminCleanup from "../adminCleanup.js";
 import type * as appUsers from "../appUsers.js";
 import type * as auth from "../auth.js";
 import type * as authz from "../authz.js";
+import type * as customSpots from "../customSpots.js";
 import type * as events from "../events.js";
 import type * as geocodeCache from "../geocodeCache.js";
 import type * as geocodeCacheHelpers from "../geocodeCacheHelpers.js";
@@ -34,6 +35,7 @@ declare const fullApi: ApiFromModules<{
   appUsers: typeof appUsers;
   auth: typeof auth;
   authz: typeof authz;
+  customSpots: typeof customSpots;
   events: typeof events;
   geocodeCache: typeof geocodeCache;
   geocodeCacheHelpers: typeof geocodeCacheHelpers;
