@@ -14,9 +14,10 @@ import { __iconNode as partyPopperIconNode } from 'lucide-react/dist/esm/icons/p
 import { __iconNode as shieldCheckIconNode } from 'lucide-react/dist/esm/icons/shield-check.js';
 import { __iconNode as shoppingBagIconNode } from 'lucide-react/dist/esm/icons/shopping-bag.js';
 import { __iconNode as triangleAlertIconNode } from 'lucide-react/dist/esm/icons/triangle-alert.js';
+import { __iconNode as landmarkIconNode } from 'lucide-react/dist/esm/icons/landmark.js';
 import { __iconNode as utensilsCrossedIconNode } from 'lucide-react/dist/esm/icons/utensils-crossed.js';
 import {
-  Coffee, Martini, PartyPopper, ShieldCheck, ShoppingBag, TriangleAlert, UtensilsCrossed
+  Coffee, Landmark, Martini, PartyPopper, ShieldCheck, ShoppingBag, TriangleAlert, UtensilsCrossed
 } from 'lucide-react';
 
 import {
@@ -44,6 +45,7 @@ const TAG_COLORS = {
   cafes: '#60A5FA',
   'go out': '#F472B6',
   shops: '#2DD4BF',
+  sightseeing: '#8B5CF6',
   avoid: '#FF4444',
   safe: '#00FF88'
 };
@@ -132,6 +134,7 @@ const TAG_ICON_COMPONENTS = {
   cafes: Coffee,
   'go out': PartyPopper,
   shops: ShoppingBag,
+  sightseeing: Landmark,
   avoid: TriangleAlert,
   safe: ShieldCheck
 };
@@ -142,6 +145,7 @@ const TAG_ICON_NODES = {
   cafes: coffeeIconNode,
   'go out': partyPopperIconNode,
   shops: shoppingBagIconNode,
+  sightseeing: landmarkIconNode,
   avoid: triangleAlertIconNode,
   safe: shieldCheckIconNode
 };
