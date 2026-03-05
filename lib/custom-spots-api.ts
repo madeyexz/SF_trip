@@ -76,7 +76,7 @@ export function createDeleteCustomSpotHandler(
 
   return async function DELETE(
     _request: Request,
-    context: { params: Promise<{ spotId?: string }> | { spotId?: string } }
+    context: { params: Promise<{ spotId?: string }> }
   ) {
     return runWithAuthenticatedClient(async () => {
       const params = await context?.params;
