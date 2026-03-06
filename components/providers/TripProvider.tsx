@@ -214,6 +214,7 @@ export default function TripProvider({ children }: { children: ReactNode }) {
   const crimeHeatmapRef = useRef<any>(null);
   const crimeRefreshTimerRef = useRef<number | null>(null);
   const crimeIdleListenerRef = useRef<any>(null);
+  const mapClickListenerRef = useRef<any>(null);
   const searchAreaIdleListenerRef = useRef<any>(null);
   const crimeLookbackHydratedRef = useRef(false);
   const crimeVisibilityRefreshHydratedRef = useRef(false);
@@ -494,15 +495,20 @@ export default function TripProvider({ children }: { children: ReactNode }) {
     regionPolygonsRef.current = [];
   }, []);
 
+  const closeActiveInfoWindow = useCallback(() => {
+    if (infoWindowRef.current?.close) {
+      infoWindowRef.current.close();
+    }
+    activePlaceInfoWindowKeyRef.current = '';
+  }, []);
+
   const clearSearchResultMarkers = useCallback(() => {
     for (const marker of searchResultMarkersRef.current) {
       marker.map = null;
     }
     searchResultMarkersRef.current = [];
-    if (infoWindowRef.current?.close) {
-      infoWindowRef.current.close();
-    }
-  }, []);
+    closeActiveInfoWindow();
+  }, [closeActiveInfoWindow]);
 
   const clearRoute = useCallback(() => {
     if (routePolylineRef.current) { routePolylineRef.current.setMap(null); routePolylineRef.current = null; }
@@ -518,6 +524,10 @@ export default function TripProvider({ children }: { children: ReactNode }) {
     renderGenerationRef.current += 1;
     clearMapMarkers();
     clearRoute();
+    if (mapClickListenerRef.current?.remove) {
+      mapClickListenerRef.current.remove();
+      mapClickListenerRef.current = null;
+    }
     if (crimeIdleListenerRef.current?.remove) {
       crimeIdleListenerRef.current.remove();
       crimeIdleListenerRef.current = null;
@@ -530,9 +540,7 @@ export default function TripProvider({ children }: { children: ReactNode }) {
       crimeHeatmapRef.current.setMap(null);
       crimeHeatmapRef.current = null;
     }
-    if (infoWindowRef.current?.close) {
-      infoWindowRef.current.close();
-    }
+    closeActiveInfoWindow();
     infoWindowRef.current = null;
     if (baseMarkerRef.current) {
       baseMarkerRef.current.map = null;
@@ -549,7 +557,7 @@ export default function TripProvider({ children }: { children: ReactNode }) {
     mapRef.current = null;
     activePlaceInfoWindowKeyRef.current = '';
     setMapsReady(false);
-  }, [clearMapMarkers, clearRoute, clearSearchResultMarkers]);
+  }, [clearMapMarkers, clearRoute, clearSearchResultMarkers, closeActiveInfoWindow]);
 
   const applyCrimeHeatmapData = useCallback((incidentsInput, generatedAtValue = '', hoursValue = DEFAULT_CRIME_LOOKBACK_HOURS) => {
     if (!mapsReady || !mapRef.current || !window.google?.maps?.visualization) return;
@@ -1363,7 +1371,8 @@ export default function TripProvider({ children }: { children: ReactNode }) {
               fetchPlacePhotoGallery(pwp.name, { lat: position.lat, lng: position.lng }).then((gallery) => {
                 placePhotoCacheRef.current.set(photoCacheKey, gallery);
                 if (infoWindowRef.current && activePlaceInfoWindowKeyRef.current === photoCacheKey) {
-                  infoWindowRef.current.close();
+                  closeActiveInfoWindow();
+                  activePlaceInfoWindowKeyRef.current = photoCacheKey;
                   renderPlaceInfoWindow(gallery);
                   wireInfoWindowActions(gallery);
                 }
@@ -1389,7 +1398,7 @@ export default function TripProvider({ children }: { children: ReactNode }) {
       }
     },
     [mapsReady, buildEventInfoWindowHtml, buildPlaceInfoWindowHtml, calculateTravelTimes,
-     clearMapMarkers, fitMapToVisiblePoints, resolvePosition,
+     clearMapMarkers, closeActiveInfoWindow, fitMapToVisiblePoints, resolvePosition,
      addEventToDayPlan, addPlaceToDayPlan, selectedDate, setStatusMessage]
   );
 
@@ -1434,6 +1443,7 @@ export default function TripProvider({ children }: { children: ReactNode }) {
           }
         });
         infoWindowRef.current = new window.google.maps.InfoWindow();
+        mapClickListenerRef.current = mapRef.current.addListener('click', closeActiveInfoWindow);
         setMapsReady(true);
       } catch (error) {
         if (!cancelled) {
@@ -1450,6 +1460,7 @@ export default function TripProvider({ children }: { children: ReactNode }) {
     isInitializing,
     mapRuntimeActive,
     mapsBrowserKey,
+    closeActiveInfoWindow,
     mapsMapId,
     mapsReady,
     setStatusMessage
