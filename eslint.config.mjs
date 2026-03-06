@@ -1,4 +1,5 @@
 import js from '@eslint/js';
+import nextPlugin from '@next/eslint-plugin-next';
 import tsParser from '@typescript-eslint/parser';
 import tsPlugin from '@typescript-eslint/eslint-plugin';
 import reactPlugin from 'eslint-plugin-react';
@@ -7,6 +8,14 @@ import prettierConfig from 'eslint-config-prettier';
 import globals from 'globals';
 
 export default [
+  {
+    plugins: {
+      '@next/next': nextPlugin
+    },
+    settings: {
+      next: { rootDir: ['.'] }
+    }
+  },
   {
     ...js.configs.recommended,
     files: ['**/*.{js,jsx,mjs,cjs}'],
@@ -21,6 +30,7 @@ export default [
   {
     files: ['**/*.{js,jsx}'],
     plugins: {
+      '@next/next': nextPlugin,
       react: reactPlugin,
       'react-hooks': reactHooksPlugin
     },
@@ -36,9 +46,11 @@ export default [
       }
     },
     settings: {
+      next: { rootDir: ['.'] },
       react: { version: 'detect' }
     },
     rules: {
+      ...nextPlugin.flatConfig.coreWebVitals.rules,
       ...reactPlugin.configs.recommended.rules,
       ...reactHooksPlugin.configs.recommended.rules,
       'react/react-in-jsx-scope': 'off',
@@ -50,6 +62,7 @@ export default [
   {
     files: ['**/*.{ts,tsx}'],
     plugins: {
+      '@next/next': nextPlugin,
       '@typescript-eslint': tsPlugin,
       react: reactPlugin,
       'react-hooks': reactHooksPlugin
@@ -67,9 +80,11 @@ export default [
       }
     },
     settings: {
+      next: { rootDir: ['.'] },
       react: { version: 'detect' }
     },
     rules: {
+      ...nextPlugin.flatConfig.coreWebVitals.rules,
       ...reactPlugin.configs.recommended.rules,
       ...reactHooksPlugin.configs.recommended.rules,
       'react/react-in-jsx-scope': 'off',
