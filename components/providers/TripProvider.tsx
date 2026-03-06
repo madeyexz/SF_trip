@@ -236,6 +236,8 @@ export default function TripProvider({ children }: { children: ReactNode }) {
   const placePhotoGalleryIndexRef = useRef<Map<string, number>>(new Map());
   const activePlaceInfoWindowKeyRef = useRef('');
   const activeSearchResultInfoWindowRef = useRef<{ resultId: string; index: number; anchor: any } | null>(null);
+  const activeSearchResultIdRef = useRef('');
+  const placeSearchResultsRef = useRef<any[]>([]);
   const plannerHydratedRef = useRef(false);
   const renderGenerationRef = useRef(0);
 
@@ -347,6 +349,14 @@ export default function TripProvider({ children }: { children: ReactNode }) {
       try { localStorage.setItem('hiddenCategories', JSON.stringify([...hiddenCategories])); } catch {}
     }
   }, [hiddenCategories]);
+
+  useEffect(() => {
+    activeSearchResultIdRef.current = activeSearchResultId;
+  }, [activeSearchResultId]);
+
+  useEffect(() => {
+    placeSearchResultsRef.current = placeSearchResults;
+  }, [placeSearchResults]);
 
   useEffect(() => {
     try {
@@ -855,6 +865,19 @@ export default function TripProvider({ children }: { children: ReactNode }) {
     infoWindowRef.current.open({ map: mapRef.current, anchor });
   }, [buildSearchResultInfoWindowHtml]);
 
+  const updateSearchResultMarkerStyles = useCallback(() => {
+    for (const marker of searchResultMarkersRef.current) {
+      const resultId = String(marker?.searchResultId || '');
+      const label = String(marker?.searchResultLabel || '');
+      if (!resultId || !label) continue;
+      marker.content = createLucidePinIconWithLabel(
+        mapPinIconNode,
+        activeSearchResultIdRef.current === resultId ? '#00FF88' : '#FFFFFF',
+        label
+      );
+    }
+  }, []);
+
   const handleLoadSearchResultPhotos = useCallback(async (resultId) => {
     const result = placeSearchResults.find((candidate) => candidate.id === resultId);
     if (!result) return;
@@ -914,23 +937,30 @@ export default function TripProvider({ children }: { children: ReactNode }) {
       if (!Number.isFinite(result?.lat) || !Number.isFinite(result?.lng)) {
         continue;
       }
+      const markerLabel = String(index + 1);
       const marker = new window.google.maps.marker.AdvancedMarkerElement({
         map: mapRef.current,
         position: { lat: result.lat, lng: result.lng },
         title: result.name,
-        content: createLucidePinIconWithLabel(mapPinIconNode, activeSearchResultId === result.id ? '#00FF88' : '#FFFFFF', String(index + 1)),
+        content: createLucidePinIconWithLabel(
+          mapPinIconNode,
+          activeSearchResultIdRef.current === result.id ? '#00FF88' : '#FFFFFF',
+          markerLabel
+        ),
         gmpClickable: true
       });
+      marker.searchResultId = result.id;
+      marker.searchResultLabel = markerLabel;
       marker.addEventListener('gmp-click', () => {
         setActiveSearchResultId(result.id);
         void handleLoadSearchResultPhotos(result.id);
         document.getElementById(`search-result-${result.id}`)?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
-        const activeResult = placeSearchResults.find((candidate) => candidate.id === result.id) || result;
+        const activeResult = placeSearchResultsRef.current.find((candidate) => candidate.id === result.id) || result;
         openSearchResultInfoWindow(activeResult, index, marker);
       });
       searchResultMarkersRef.current.push(marker);
     }
-  }, [activeSearchResultId, clearSearchResultMarkers, handleLoadSearchResultPhotos, openSearchResultInfoWindow, placeSearchResults]);
+  }, [clearSearchResultMarkers, handleLoadSearchResultPhotos, openSearchResultInfoWindow]);
 
   const setDeviceLocationMarker = useCallback((latLng, title) => {
     if (!mapRef.current || !window.google?.maps?.marker) return;
@@ -1563,10 +1593,21 @@ export default function TripProvider({ children }: { children: ReactNode }) {
     };
   }, [baseLocationText, geocode, mapsReady, setBaseMarker]);
 
+  const searchResultMarkerSnapshot = useMemo(() => {
+    return placeSearchResults
+      .map((result, index) => `${index}:${result.id}:${result.lat}:${result.lng}:${result.name}`)
+      .join('|');
+  }, [placeSearchResults]);
+
   useEffect(() => {
-    if (!mapsReady || !mapRef.current || placeSearchResults.length === 0) return;
-    renderSearchResultMarkers(placeSearchResults);
-  }, [mapsReady, placeSearchResults, renderSearchResultMarkers]);
+    if (!mapsReady || !mapRef.current || placeSearchResultsRef.current.length === 0) return;
+    renderSearchResultMarkers(placeSearchResultsRef.current);
+  }, [mapsReady, renderSearchResultMarkers, searchResultMarkerSnapshot]);
+
+  useEffect(() => {
+    if (!mapsReady || searchResultMarkersRef.current.length === 0) return;
+    updateSearchResultMarkerStyles();
+  }, [activeSearchResultId, mapsReady, updateSearchResultMarkerStyles]);
 
   useEffect(() => {
     if (!mapsReady || !mapRef.current) return;
