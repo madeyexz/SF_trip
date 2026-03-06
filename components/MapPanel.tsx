@@ -1,7 +1,7 @@
 'use client';
 
-import { useEffect } from 'react';
-import { Calendar, Check, Crosshair, ExternalLink, House, Layers3, Search, Siren, Target, X } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { Calendar, Crosshair, ExternalLink, House, Layers3, Search, Siren, Target, X } from 'lucide-react';
 import { useTrip, TAG_COLORS, getTagIconComponent } from '@/components/providers/TripProvider';
 import { formatTag } from '@/lib/helpers';
 import { Button } from '@/components/ui/button';
@@ -86,7 +86,6 @@ export default function MapPanel() {
     searchResultsOriginLabel,
     placeSearchResults,
     searchResultTagDrafts,
-    searchResultSelectionIds,
     expandedSearchResultEditorId,
     activeSearchResultId,
     savingSearchResultId,
@@ -99,8 +98,6 @@ export default function MapPanel() {
     handleSetSearchResultTag,
     handleFocusSearchResult,
     handlePreviewSearchResult,
-    handleToggleSearchResultSelection,
-    handleSaveSelectedSearchResults,
     handleOpenSearchResultTagEditor,
     handleApplySearchShortcut,
     handleSaveSearchResultAsSpot,
@@ -113,9 +110,7 @@ export default function MapPanel() {
   const savedEntries = searchResultEntries.filter(({ result }) => Boolean(result.savedTag));
   const unsavedEntries = searchResultEntries.filter(({ result }) => !result.savedTag);
   const shortcutButtonLabels = ['Coffee', 'Bars', 'Brunch', 'Parks', 'Museums'];
-  const selectedUnsavedCount = searchResultSelectionIds.filter((resultId) => (
-    unsavedResults.some((result) => result.id === resultId)
-  )).length;
+  const [showAdvancedSearch, setShowAdvancedSearch] = useState(false);
   const isCrimeVisible = !hiddenCategories.has('crime');
   const crimeStatusText = crimeLayerMeta.loading
     ? 'Updating live crime feed...'
@@ -210,80 +205,96 @@ export default function MapPanel() {
               </Button>
             ) : null}
           </div>
-          <div className="mt-2 space-y-2 border-t border-border pt-2">
-            <div className="flex items-center justify-between gap-2">
-              <p className="m-0 text-[0.6rem] font-semibold uppercase tracking-[0.12em] text-foreground-secondary">
-                Search Scope
-              </p>
-              <p className="m-0 text-[0.58rem] uppercase tracking-[0.1em] text-accent">
-                {searchResultsOriginLabel}
-              </p>
-            </div>
-            <ToggleGroup
-              type="single"
-              value={mapSearchScope}
-              onValueChange={(value) => {
-                if (value) setMapSearchScope(value);
-              }}
-              className="grid grid-cols-3 gap-1.5"
+          <div className="mt-2 flex items-center justify-between gap-2 border-t border-border pt-2">
+            <p className="m-0 text-[0.6rem] uppercase tracking-[0.12em] text-foreground-secondary">
+              {searchResultsOriginLabel}
+            </p>
+            <Button
+              type="button"
+              size="sm"
+              variant="secondary"
+              className="min-h-[28px] px-2 text-[0.62rem]"
+              onClick={() => setShowAdvancedSearch((prev) => !prev)}
             >
-              <ToggleGroupItem value="map" className="px-2 py-1 text-[0.62rem]">Around Map</ToggleGroupItem>
-              <ToggleGroupItem value="near_me" className="px-2 py-1 text-[0.62rem]">Near Me</ToggleGroupItem>
-              <ToggleGroupItem value="home" className="px-2 py-1 text-[0.62rem]">Near Home</ToggleGroupItem>
-            </ToggleGroup>
-            <div className="flex items-center justify-between gap-2">
-              <p className="m-0 text-[0.6rem] font-semibold uppercase tracking-[0.12em] text-foreground-secondary">
-                Sort Results
-              </p>
-              {mapSearchAreaDirty && mapSearchScope === 'map' ? (
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="secondary"
-                  className="min-h-[28px] px-2 text-[0.62rem]"
-                  onClick={handleSearchVisibleArea}
-                >
-                  <Layers3 size={12} />
-                  Search This Area
-                </Button>
-              ) : null}
-            </div>
-            <ToggleGroup
-              type="single"
-              value={mapSearchSort}
-              onValueChange={(value) => {
-                if (value) setMapSearchSort(value);
-              }}
-              className="grid grid-cols-3 gap-1.5"
-            >
-              <ToggleGroupItem value="best_match" className="px-2 py-1 text-[0.62rem]">Best Match</ToggleGroupItem>
-              <ToggleGroupItem value="distance" className="px-2 py-1 text-[0.62rem]">Distance</ToggleGroupItem>
-              <ToggleGroupItem value="walk_time" className="px-2 py-1 text-[0.62rem]">Walk Time</ToggleGroupItem>
-            </ToggleGroup>
-            <div>
-              <p className="m-0 text-[0.6rem] font-semibold uppercase tracking-[0.12em] text-foreground-secondary">
-                Quick Searches
-              </p>
-              <div className="mt-1.5 flex flex-wrap gap-1.5">
-                {shortcutButtonLabels.map((label) => {
-                  const shortcut = searchShortcutQueries.find((candidate) => candidate.label === label);
-                  if (!shortcut) return null;
-                  return (
-                    <Button
-                      key={label}
-                      type="button"
-                      size="sm"
-                      variant="secondary"
-                      className="min-h-[28px] px-2 text-[0.62rem]"
-                      onClick={() => handleApplySearchShortcut(shortcut.query)}
-                    >
-                      {label}
-                    </Button>
-                  );
-                })}
+              {showAdvancedSearch ? 'Hide Advanced Search' : 'Advanced Search'}
+            </Button>
+          </div>
+          {showAdvancedSearch ? (
+            <div className="mt-2 space-y-2 border-t border-border pt-2">
+              <div className="flex items-center justify-between gap-2">
+                <p className="m-0 text-[0.6rem] font-semibold uppercase tracking-[0.12em] text-foreground-secondary">
+                  Search Scope
+                </p>
+                <p className="m-0 text-[0.58rem] uppercase tracking-[0.1em] text-accent">
+                  {searchResultsOriginLabel}
+                </p>
+              </div>
+              <ToggleGroup
+                type="single"
+                value={mapSearchScope}
+                onValueChange={(value) => {
+                  if (value) setMapSearchScope(value);
+                }}
+                className="grid grid-cols-3 gap-1.5"
+              >
+                <ToggleGroupItem value="map" className="px-2 py-1 text-[0.62rem]">Around Map</ToggleGroupItem>
+                <ToggleGroupItem value="near_me" className="px-2 py-1 text-[0.62rem]">Near Me</ToggleGroupItem>
+                <ToggleGroupItem value="home" className="px-2 py-1 text-[0.62rem]">Near Home</ToggleGroupItem>
+              </ToggleGroup>
+              <div className="flex items-center justify-between gap-2">
+                <p className="m-0 text-[0.6rem] font-semibold uppercase tracking-[0.12em] text-foreground-secondary">
+                  Sort Results
+                </p>
+                {mapSearchAreaDirty && mapSearchScope === 'map' ? (
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="secondary"
+                    className="min-h-[28px] px-2 text-[0.62rem]"
+                    onClick={handleSearchVisibleArea}
+                  >
+                    <Layers3 size={12} />
+                    Search This Area
+                  </Button>
+                ) : null}
+              </div>
+              <ToggleGroup
+                type="single"
+                value={mapSearchSort}
+                onValueChange={(value) => {
+                  if (value) setMapSearchSort(value);
+                }}
+                className="grid grid-cols-3 gap-1.5"
+              >
+                <ToggleGroupItem value="best_match" className="px-2 py-1 text-[0.62rem]">Best Match</ToggleGroupItem>
+                <ToggleGroupItem value="distance" className="px-2 py-1 text-[0.62rem]">Distance</ToggleGroupItem>
+                <ToggleGroupItem value="walk_time" className="px-2 py-1 text-[0.62rem]">Walk Time</ToggleGroupItem>
+              </ToggleGroup>
+              <div>
+                <p className="m-0 text-[0.6rem] font-semibold uppercase tracking-[0.12em] text-foreground-secondary">
+                  Quick Searches
+                </p>
+                <div className="mt-1.5 flex flex-wrap gap-1.5">
+                  {shortcutButtonLabels.map((label) => {
+                    const shortcut = searchShortcutQueries.find((candidate) => candidate.label === label);
+                    if (!shortcut) return null;
+                    return (
+                      <Button
+                        key={label}
+                        type="button"
+                        size="sm"
+                        variant="secondary"
+                        className="min-h-[28px] px-2 text-[0.62rem]"
+                        onClick={() => handleApplySearchShortcut(shortcut.query)}
+                      >
+                        {label}
+                      </Button>
+                    );
+                  })}
+                </div>
               </div>
             </div>
-          </div>
+          ) : null}
           <p className={`mt-2 mb-0 text-[0.64rem] leading-tight ${searchLocationError ? 'text-[#FF4444]' : 'text-foreground-secondary'}`}>
             {searchLocationError || 'Searches return multiple pinned places. Save any result into a trip category.'}
           </p>
@@ -295,19 +306,9 @@ export default function MapPanel() {
                     {placeSearchResults.length} results pinned
                   </p>
                   <p className="m-0 mt-1 text-[0.58rem] uppercase tracking-[0.1em] text-muted">
-                    {searchResultsOriginLabel} · {selectedUnsavedCount} selected
+                    {searchResultsOriginLabel}
                   </p>
                 </div>
-                <Button
-                  type="button"
-                  size="sm"
-                  className="min-h-[30px] px-2.5"
-                  disabled={selectedUnsavedCount === 0 || Boolean(savingSearchResultId)}
-                  onClick={() => { void handleSaveSelectedSearchResults(); }}
-                >
-                  <Check size={12} />
-                  Save Selected
-                </Button>
               </div>
               {savedResults.length > 0 ? (
                 <div className="mb-2">
@@ -435,7 +436,6 @@ export default function MapPanel() {
                   const safeMapLink = getSafeExternalHref(result.mapLink);
                   const isSavingResult = savingSearchResultId === result.id;
                   const isEditorOpen = expandedSearchResultEditorId === result.id;
-                  const isSelected = searchResultSelectionIds.includes(result.id);
                   return (
                     <div
                       key={result.id}
@@ -445,16 +445,9 @@ export default function MapPanel() {
                     >
                       <div className="flex items-start justify-between gap-2">
                         <div className="min-w-0">
-                          <div className="flex flex-wrap items-center gap-1.5">
-                            <p className="m-0 text-[0.64rem] font-semibold uppercase tracking-[0.12em] text-accent">
-                              Result {index + 1}
-                            </p>
-                            {isSelected ? (
-                              <span className="border border-accent-border bg-accent-light px-1.5 py-0.5 text-[0.54rem] font-semibold uppercase tracking-[0.12em] text-accent">
-                                Selected
-                              </span>
-                            ) : null}
-                          </div>
+                          <p className="m-0 text-[0.64rem] font-semibold uppercase tracking-[0.12em] text-accent">
+                            Result {index + 1}
+                          </p>
                           <p className="mt-1 mb-0 text-[0.78rem] font-semibold text-foreground leading-snug">{result.name}</p>
                           <p className="mt-1 mb-0 text-[0.68rem] leading-snug text-foreground-secondary">{result.location}</p>
                           {(result.distanceLabel || result.walkDurationLabel) ? (
@@ -486,15 +479,6 @@ export default function MapPanel() {
                             </a>
                           </Button>
                         ) : null}
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant={isSelected ? 'default' : 'secondary'}
-                          className="min-h-[30px] px-2.5"
-                          onClick={() => handleToggleSearchResultSelection(result.id)}
-                        >
-                          {isSelected ? 'Selected' : 'Select'}
-                        </Button>
                         <Button
                           type="button"
                           size="sm"
