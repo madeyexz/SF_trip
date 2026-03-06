@@ -12,6 +12,12 @@ export default defineSchema({
     baseLocation: v.optional(v.string()),
     showSharedPlaceRecommendations: v.optional(v.boolean())
   }).index('email', ['email']),
+  magicLinkSendAttempts: defineTable({
+    email: v.string(),
+    createdAt: v.number()
+  })
+    .index('by_email_created_at', ['email', 'createdAt'])
+    .index('by_created_at', ['createdAt']),
   plannerEntries: defineTable({
     userId: v.string(),
     dateISO: v.string(),

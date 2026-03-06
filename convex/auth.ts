@@ -1,5 +1,7 @@
 import { Email } from '@convex-dev/auth/providers/Email';
 import { convexAuth } from '@convex-dev/auth/server';
+import { internal } from './_generated/api';
+import { normalizeEmailAddress, validateMagicLinkEmail } from '../lib/auth-email';
 
 const authEmailFrom = String(process.env.AUTH_EMAIL_FROM || '').trim();
 const authResendTemplateId = String(process.env.AUTH_RESEND_TEMPLATE_ID || '').trim();
@@ -72,16 +74,49 @@ function brandedEmailHtml(url: string) {
 </html>`;
 }
 
+type EmailVerificationRequest = {
+  identifier: string;
+  url: string;
+  expires: Date;
+  provider: {
+    apiKey?: string;
+  };
+  token: string;
+  theme: unknown;
+  request: Request;
+};
+
 const resendProvider = Email({
   id: 'resend',
   apiKey: process.env.AUTH_RESEND_KEY,
   maxAge: 60 * 60, // 1 hour
   authorize: undefined, // magic link: click link → signed in, no email re-entry
-  async sendVerificationRequest({ identifier: email, url, provider }) {
+  async sendVerificationRequest(params: EmailVerificationRequest) {
+    const { identifier: email, url, provider } = params;
+    const ctx = arguments[1] as
+      | {
+          runMutation: (mutation: unknown, args: { email: string }) => Promise<unknown>;
+        }
+      | undefined;
+
+    const emailCheck = validateMagicLinkEmail(email);
+    if (!emailCheck.ok) {
+      throw new Error(emailCheck.error);
+    }
+
+    const normalizedEmail = normalizeEmailAddress(emailCheck.email);
+    if (!ctx?.runMutation) {
+      throw new Error('Magic link auth context unavailable.');
+    }
+
+    await ctx.runMutation(internal.authRateLimits.assertAndRecordMagicLinkAttempt, {
+      email: normalizedEmail
+    });
+
     const host = new URL(url).host;
     const basePayload = {
       from: authEmailFrom || 'SF Trip Planner <onboarding@resend.dev>',
-      to: email,
+      to: normalizedEmail,
       subject: 'Sign in to SF Trip Planner',
     };
     const payload = authResendTemplateId

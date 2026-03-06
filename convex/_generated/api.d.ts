@@ -11,6 +11,7 @@
 import type * as adminCleanup from "../adminCleanup.js";
 import type * as appUsers from "../appUsers.js";
 import type * as auth from "../auth.js";
+import type * as authRateLimits from "../authRateLimits.js";
 import type * as authz from "../authz.js";
 import type * as customSpots from "../customSpots.js";
 import type * as events from "../events.js";
@@ -34,6 +35,7 @@ declare const fullApi: ApiFromModules<{
   adminCleanup: typeof adminCleanup;
   appUsers: typeof appUsers;
   auth: typeof auth;
+  authRateLimits: typeof authRateLimits;
   authz: typeof authz;
   customSpots: typeof customSpots;
   events: typeof events;

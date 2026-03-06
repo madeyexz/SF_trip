@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useAuthActions } from '@convex-dev/auth/react';
 import { useConvexAuth } from 'convex/react';
 import { MapPin, Mail, ArrowRight, Loader2, CheckCircle2 } from 'lucide-react';
+import { validateMagicLinkEmail } from '@/lib/auth-email';
 
 export default function SignInPage() {
   const router = useRouter();
@@ -24,17 +25,19 @@ export default function SignInPage() {
 
   const onSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
-    const normalizedEmail = String(email || '').trim().toLowerCase();
-    if (!normalizedEmail) {
-      setNotice('Please enter your email address.');
+    const emailCheck = validateMagicLinkEmail(email);
+    if (!emailCheck.ok) {
+      setNotice(emailCheck.error);
       setNoticeError(true);
       return;
     }
+    const normalizedEmail = emailCheck.email;
 
     setIsSubmitting(true);
     setNotice('');
     setNoticeError(false);
     setSent(false);
+    setEmail(normalizedEmail);
     try {
       const result = await signIn('resend', {
         email: normalizedEmail,
@@ -267,6 +270,7 @@ export default function SignInPage() {
               <form className="flex flex-col" style={{ gap: 10 }} onSubmit={onSubmit}>
                 {/* Email label */}
                 <label
+                  htmlFor="magic-link-email"
                   style={{
                     fontSize: 11,
                     fontWeight: 700,
@@ -284,12 +288,12 @@ export default function SignInPage() {
                     style={{ left: 10, color: '#6a6a6a' }}
                   />
                   <input
+                    id="magic-link-email"
                     type="email"
                     value={email}
                     onChange={(event) => setEmail(event.target.value)}
-                    placeholder="you@example.com"
+                    placeholder="name@company.com"
                     autoComplete="email"
-                    autoFocus
                     className="w-full outline-none"
                     style={{
                       background: '#141414',

@@ -43,6 +43,13 @@ describe('schema migration guards', () => {
     assert.equal(schemaSource.includes(".index('by_user_updated_at', ['userId', 'updatedAt'])"), true);
   });
 
+  it('stores magic link send attempts for server-side rate limiting', async () => {
+    const schemaSource = await readConvexFile('./schema.ts');
+    assert.equal(schemaSource.includes('magicLinkSendAttempts: defineTable({'), true);
+    assert.equal(schemaSource.includes(".index('by_email_created_at', ['email', 'createdAt'])"), true);
+    assert.equal(schemaSource.includes(".index('by_created_at', ['createdAt'])"), true);
+  });
+
   it('stores Winston recommendations globally and keeps the user visibility toggle on users', async () => {
     const schemaSource = await readConvexFile('./schema.ts');
     const placeRecommendationsBlock = schemaSource.match(/placeRecommendations: defineTable\(\{[\s\S]*?\)\s*\.index\('by_friend', \['friendName'\]\),/);
