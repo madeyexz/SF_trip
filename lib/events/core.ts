@@ -57,10 +57,12 @@ const CONVEX_SPOT_FIELDS = [
 
 let geocodeCacheMapPromise = null;
 let routeCacheMapPromise = null;
+let lastCoordinateEnrichmentSummarySignature = '';
 
 export function resetEventsCachesForTesting() {
   geocodeCacheMapPromise = null;
   routeCacheMapPromise = null;
+  lastCoordinateEnrichmentSummarySignature = '';
 }
 
 function isReadOnlyFilesystemError(error) {
@@ -453,7 +455,7 @@ export async function loadEventsPayload() {
   );
   const places = mergeCustomSpotsIntoPlaces(recommendedPlaces, customSpots);
 
-  if (hydrationStats.updatedRows > 0) {
+  if (shouldLogCoordinateEnrichmentSummary(hydrationStats)) {
     console.info('Coordinate enrichment summary:', hydrationStats);
   }
 
@@ -1910,6 +1912,34 @@ function createCoordinateStats() {
     unresolved: 0,
     updatedRows: 0
   };
+}
+
+function buildCoordinateEnrichmentSummarySignature(stats) {
+  return JSON.stringify({
+    totalRows: Number(stats?.totalRows) || 0,
+    alreadyResolved: Number(stats?.alreadyResolved) || 0,
+    mapLinkResolved: Number(stats?.mapLinkResolved) || 0,
+    localCacheHits: Number(stats?.localCacheHits) || 0,
+    convexCacheHits: Number(stats?.convexCacheHits) || 0,
+    googleLookups: Number(stats?.googleLookups) || 0,
+    googleResolved: Number(stats?.googleResolved) || 0,
+    unresolved: Number(stats?.unresolved) || 0,
+    updatedRows: Number(stats?.updatedRows) || 0
+  });
+}
+
+export function shouldLogCoordinateEnrichmentSummary(stats) {
+  if ((Number(stats?.updatedRows) || 0) <= 0) {
+    return false;
+  }
+
+  const signature = buildCoordinateEnrichmentSummarySignature(stats);
+  if (!signature || signature === lastCoordinateEnrichmentSummarySignature) {
+    return false;
+  }
+
+  lastCoordinateEnrichmentSummarySignature = signature;
+  return true;
 }
 
 function mergeCoordinateStats(...statsInput) {

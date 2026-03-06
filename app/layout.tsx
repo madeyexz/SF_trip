@@ -51,6 +51,7 @@ export const metadata = {
 
 export default function RootLayout({ children }) {
   const buyMeACoffeeId = (process.env.NEXT_PUBLIC_BUYMEACOFFEE_ID || '').trim();
+  const shouldRenderAnalytics = process.env.NODE_ENV === 'production';
 
   return (
     <html lang="en" className={`${inter.variable} ${jetbrainsMono.variable} ${spaceGrotesk.variable}`}>
@@ -58,7 +59,7 @@ export default function RootLayout({ children }) {
         <ConvexAuthNextjsServerProvider>
           <ConvexClientProvider>{children}</ConvexClientProvider>
         </ConvexAuthNextjsServerProvider>
-        <Analytics />
+        {shouldRenderAnalytics ? <Analytics /> : null}
         {buyMeACoffeeId ? (
           <Script
             id="buymeacoffee-widget"

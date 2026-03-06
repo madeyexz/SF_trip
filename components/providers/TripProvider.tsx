@@ -43,6 +43,7 @@ import {
   buildSearchResultTypeChips, estimateWalkDurationMinutes, sortPlaceSearchResults, getMapBoundsSearchRadius,
   calculateDistanceMeters
 } from '@/lib/map-helpers';
+import { requestTravelTimeMatrix } from '@/lib/travel-times';
 import {
   applyDeviceLocation,
   DEVICE_LOCATION_OPTIONS
@@ -201,7 +202,6 @@ export default function TripProvider({ children }: { children: ReactNode }) {
   const sidebarRef = useRef<any>(null);
   const mapElementRef = useRef<any>(null);
   const mapRef = useRef<any>(null);
-  const distanceMatrixRef = useRef<any>(null);
   const routePolylineRef = useRef<any>(null);
   const infoWindowRef = useRef<any>(null);
   const baseMarkerRef = useRef<any>(null);
@@ -216,6 +216,10 @@ export default function TripProvider({ children }: { children: ReactNode }) {
   const crimeIdleListenerRef = useRef<any>(null);
   const searchAreaIdleListenerRef = useRef<any>(null);
   const crimeLookbackHydratedRef = useRef(false);
+  const crimeVisibilityRefreshHydratedRef = useRef(false);
+  const crimeControlsRefreshHydratedRef = useRef(false);
+  const crimeLookbackRefreshHydratedRef = useRef(false);
+  const lastCrimeIncidentsRef = useRef<any[]>([]);
   const skipNextSearchAreaIdleRef = useRef(false);
   const searchVisibleAreaRequestedRef = useRef(false);
   const lastCrimeFetchAtRef = useRef(0);
@@ -450,6 +454,7 @@ export default function TripProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const { loadSourcesFromServer } = useTripBootstrap({
+    authLoading,
     isAuthenticated,
     setAuthUserId,
     setProfile,
@@ -540,7 +545,7 @@ export default function TripProvider({ children }: { children: ReactNode }) {
     }
     baseLatLngRef.current = null;
     deviceLocationLatLngRef.current = null;
-    distanceMatrixRef.current = null;
+    lastCrimeIncidentsRef.current = [];
     mapRef.current = null;
     activePlaceInfoWindowKeyRef.current = '';
     setMapsReady(false);
@@ -551,6 +556,7 @@ export default function TripProvider({ children }: { children: ReactNode }) {
     const profile = getCrimeHeatmapProfile(crimeHeatmapStrength);
     const radius = Math.max(12, Math.round(getCrimeHeatmapRadiusForZoom(mapRef.current?.getZoom?.()) * profile.radiusScale));
     const incidents = Array.isArray(incidentsInput) ? incidentsInput : [];
+    lastCrimeIncidentsRef.current = incidents;
     const weightedPoints = incidents
       .map((incident) => {
         const lat = Number(incident?.lat);
@@ -738,16 +744,6 @@ export default function TripProvider({ children }: { children: ReactNode }) {
     },
     [geocode, parseLatLngFromMapUrl, saveGeocodeCache]
   );
-
-  const distanceMatrixRequest = useCallback(async (request: any): Promise<any> => {
-    if (!distanceMatrixRef.current) return null;
-    return new Promise<any>((resolve, reject) => {
-      distanceMatrixRef.current.getDistanceMatrix(request, (response, sv) => {
-        if (sv !== 'OK') { reject(new Error(`Distance matrix error: ${sv}`)); return; }
-        resolve(response);
-      });
-    });
-  }, []);
 
   const getCurrentMapBoundsLiteral = useCallback(() => {
     const bounds = mapRef.current?.getBounds?.();
@@ -938,15 +934,28 @@ export default function TripProvider({ children }: { children: ReactNode }) {
     if (crimeHeatmapRef.current) {
       crimeHeatmapRef.current.setMap(hiddenCategories.has('crime') ? null : mapRef.current);
     }
-    if (!hiddenCategories.has('crime')) {
-      void refreshCrimeHeatmap({ force: true });
+    if (!crimeVisibilityRefreshHydratedRef.current) {
+      crimeVisibilityRefreshHydratedRef.current = true;
     }
   }, [hiddenCategories, refreshCrimeHeatmap]);
 
   useEffect(() => {
-    if (hiddenCategories.has('crime')) return;
+    if (!crimeControlsRefreshHydratedRef.current) {
+      crimeControlsRefreshHydratedRef.current = true;
+      return;
+    }
+    if (!mapsReady || hiddenCategories.has('crime')) return;
+    applyCrimeHeatmapData(lastCrimeIncidentsRef.current, crimeLayerMeta.generatedAt, crimeLookbackHours);
+  }, [applyCrimeHeatmapData, crimeHeatmapStrength, crimeLayerMeta.generatedAt, crimeLookbackHours, hiddenCategories, mapsReady]);
+
+  useEffect(() => {
+    if (!mapsReady || hiddenCategories.has('crime')) return;
+    if (!crimeLookbackRefreshHydratedRef.current) {
+      crimeLookbackRefreshHydratedRef.current = true;
+      return;
+    }
     void refreshCrimeHeatmap({ force: true });
-  }, [crimeHeatmapStrength, crimeLookbackHours, hiddenCategories, refreshCrimeHeatmap]);
+  }, [crimeLookbackHours, hiddenCategories, mapsReady, refreshCrimeHeatmap]);
 
   const addEventToDayPlan = useCallback((event) => {
     if (!selectedDate) { setStatusMessage('Select a specific date before adding events to your day plan.', true); return; }
@@ -1040,12 +1049,12 @@ export default function TripProvider({ children }: { children: ReactNode }) {
   }, [selectedDate]);
 
   const calculateTravelTimes = useCallback(async (evtsWithPositions: any[], activeTravelMode: string) => {
-    if (!baseLatLngRef.current || !distanceMatrixRef.current) return evtsWithPositions;
+    if (!baseLatLngRef.current) return evtsWithPositions;
     const withLocation = evtsWithPositions.filter((e) => e._position);
     if (!withLocation.length) return evtsWithPositions;
-    const travelModeValue = window.google.maps.TravelMode[activeTravelMode];
     const baseKey = toCoordinateKey(baseLatLngRef.current);
-    if (!travelModeValue || !baseKey) return evtsWithPositions;
+    const origin = toLatLngLiteral(baseLatLngRef.current);
+    if (!origin || !baseKey) return evtsWithPositions;
 
     const enriched = new Map<string, any>(evtsWithPositions.map((e) => [e.eventUrl, { ...e }]));
     const missing: any[] = [];
@@ -1061,31 +1070,27 @@ export default function TripProvider({ children }: { children: ReactNode }) {
     const chunkSize = 25;
     for (let i = 0; i < missing.length; i += chunkSize) {
       const chunk = missing.slice(i, i + chunkSize);
-      const response = await distanceMatrixRequest({
-        origins: [baseLatLngRef.current],
-        destinations: chunk.map((e) => e._position),
-        travelMode: travelModeValue
+      const durationsById = await requestTravelTimeMatrix({
+        origin,
+        destinations: chunk.map((event) => ({
+          id: event.eventUrl,
+          position: toLatLngLiteral(event._position)
+        })),
+        travelMode: activeTravelMode
       });
-      const elements = response?.rows?.[0]?.elements || [];
       for (let di = 0; di < chunk.length; di += 1) {
         const ce = chunk[di];
-        const el = elements[di];
         const t = enriched.get(ce.eventUrl);
         if (!t) continue;
         const dk = toCoordinateKey(ce._position);
-        if (el?.status === 'OK') {
-          const dt = el.duration?.text || '';
-          t.travelDurationText = dt;
-          if (dk) travelTimeCacheRef.current.set(createTravelTimeCacheKey({ travelMode: activeTravelMode, baseKey, destinationKey: dk }), dt);
-        } else {
-          t.travelDurationText = 'Unavailable';
-          if (dk) travelTimeCacheRef.current.set(createTravelTimeCacheKey({ travelMode: activeTravelMode, baseKey, destinationKey: dk }), 'Unavailable');
-        }
+        const dt = typeof durationsById?.[ce.eventUrl] === 'string' ? durationsById[ce.eventUrl] : 'Unavailable';
+        t.travelDurationText = dt;
+        if (dk) travelTimeCacheRef.current.set(createTravelTimeCacheKey({ travelMode: activeTravelMode, baseKey, destinationKey: dk }), dt);
       }
     }
     if (travelTimeCacheRef.current.size > 4000) travelTimeCacheRef.current.clear();
     return evtsWithPositions.map((e) => enriched.get(e.eventUrl) || e);
-  }, [distanceMatrixRequest]);
+  }, []);
 
   const buildEventInfoWindowHtml = useCallback((event, plannerAction) => {
     const location = event.address || event.locationText || 'Location not listed';
@@ -1428,7 +1433,6 @@ export default function TripProvider({ children }: { children: ReactNode }) {
             strictBounds: false
           }
         });
-        distanceMatrixRef.current = new window.google.maps.DistanceMatrixService();
         infoWindowRef.current = new window.google.maps.InfoWindow();
         setMapsReady(true);
       } catch (error) {

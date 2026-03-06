@@ -20,6 +20,7 @@ export {
   loadEventsPayload,
   loadCachedRoutePayload,
   saveCachedRoutePayload,
+  shouldLogCoordinateEnrichmentSummary,
   buildComparablePlaceKey,
   mergePlaceRecommendationsIntoPlaces
 } from './events/payload.ts';

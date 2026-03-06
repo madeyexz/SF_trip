@@ -3,6 +3,8 @@
 import { useCallback, useEffect } from 'react';
 import { fetchJson } from '@/lib/helpers';
 
+let bootstrapPayloadPromiseByAuth = new Map<string, Promise<any>>();
+
 export function normalizeBootstrapPayload({
   config,
   eventsPayload,
@@ -31,7 +33,33 @@ export function normalizeBootstrapPayload({
   };
 }
 
+async function loadBootstrapPayload(isAuthenticated: boolean) {
+  const bootstrapKey = isAuthenticated ? 'auth' : 'anon';
+  if (!bootstrapPayloadPromiseByAuth.has(bootstrapKey)) {
+    bootstrapPayloadPromiseByAuth.set(
+      bootstrapKey,
+      Promise.all([
+        fetchJson('/api/config'),
+        fetchJson('/api/events'),
+        fetchJson('/api/sources').catch(() => ({ sources: [] })),
+        fetchJson('/api/me').catch(() => null)
+        ]).then(([config, eventsPayload, sourcesPayload, mePayload]) => normalizeBootstrapPayload({
+        config,
+        eventsPayload,
+        sourcesPayload,
+        mePayload
+      })).catch((error) => {
+        bootstrapPayloadPromiseByAuth.delete(bootstrapKey);
+        throw error;
+      })
+    );
+  }
+
+  return bootstrapPayloadPromiseByAuth.get(bootstrapKey)!;
+}
+
 export function useTripBootstrap({
+  authLoading,
   isAuthenticated,
   setAuthUserId,
   setProfile,
@@ -48,6 +76,7 @@ export function useTripBootstrap({
   setIsSyncing,
   setStatusMessage
 }: {
+  authLoading: boolean;
   isAuthenticated: boolean;
   setAuthUserId: (value: string) => void;
   setProfile: (value: any) => void;
@@ -75,6 +104,10 @@ export function useTripBootstrap({
   }, [setSources]);
 
   useEffect(() => {
+    if (authLoading) {
+      return;
+    }
+
     let mounted = true;
 
     async function runBackgroundSync() {
@@ -108,20 +141,8 @@ export function useTripBootstrap({
     async function bootstrapData() {
       setIsInitializing(true);
       try {
-        const [config, eventsPayload, sourcesPayload, mePayload] = await Promise.all([
-          fetchJson('/api/config'),
-          fetchJson('/api/events'),
-          fetchJson('/api/sources').catch(() => ({ sources: [] })),
-          fetchJson('/api/me').catch(() => null)
-        ]);
+        const normalized = await loadBootstrapPayload(isAuthenticated);
         if (!mounted) return;
-
-        const normalized = normalizeBootstrapPayload({
-          config,
-          eventsPayload,
-          sourcesPayload,
-          mePayload
-        });
         setProfile(normalized.profile);
         setAuthUserId(normalized.authUserId);
         setMapsBrowserKey(normalized.mapsBrowserKey);
@@ -150,6 +171,7 @@ export function useTripBootstrap({
       mounted = false;
     };
   }, [
+    authLoading,
     isAuthenticated,
     loadSourcesFromServer,
     setAllEvents,
@@ -167,40 +189,6 @@ export function useTripBootstrap({
     setTripEnd,
     setTripStart
   ]);
-
-  useEffect(() => {
-    if (!isAuthenticated) {
-      setSources([]);
-      return;
-    }
-
-    let cancelled = false;
-
-    async function loadPersonalData() {
-      try {
-        const [eventsPayload, sourcesPayload] = await Promise.all([
-          fetchJson('/api/events'),
-          fetchJson('/api/sources').catch(() => ({ sources: [] }))
-        ]);
-        if (cancelled) {
-          return;
-        }
-
-        setAllEvents(Array.isArray(eventsPayload?.events) ? eventsPayload.events : []);
-        setAllPlaces(Array.isArray(eventsPayload?.places) ? eventsPayload.places : []);
-        setSources(Array.isArray(sourcesPayload?.sources) ? sourcesPayload.sources : []);
-      } catch (error) {
-        if (!cancelled) {
-          console.error('Failed to load personal events/sources.', error);
-        }
-      }
-    }
-
-    void loadPersonalData();
-    return () => {
-      cancelled = true;
-    };
-  }, [isAuthenticated, setAllEvents, setAllPlaces, setSources]);
 
   return {
     loadSourcesFromServer
