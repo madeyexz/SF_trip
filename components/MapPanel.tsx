@@ -39,7 +39,7 @@ function FilterChip({ active, color, icon: Icon, label, onClick }) {
     <button
       type="button"
       onClick={onClick}
-      className="inline-flex items-center gap-1.5 text-[0.76rem] font-medium rounded-none px-2.5 py-1 transition-all duration-150 cursor-pointer border"
+      className="inline-flex shrink-0 items-center gap-1.5 border px-2.5 py-1 text-[0.76rem] font-medium transition-all duration-150 cursor-pointer"
       style={
         active
           ? {
@@ -306,7 +306,7 @@ export default function MapPanel() {
 
   return (
     <section className="flex flex-col min-h-0 h-full" ref={mapPanelRef}>
-      <div className="flex flex-wrap items-center gap-1.5 bg-[#080808] border-b border-border px-4 py-1.5">
+      <div className="flex items-center gap-1.5 overflow-x-auto border-b border-border bg-[#080808] px-3 py-1.5 sm:flex-wrap sm:px-4">
         <FilterChip
           active={!hiddenCategories.has('event')}
           color={EVENT_COLOR}
@@ -342,7 +342,7 @@ export default function MapPanel() {
       <div className="relative flex-1 min-h-0 map-container-responsive">
         <div id="map" ref={mapElementRef} />
         <form
-          className="absolute top-3 left-3 z-20 flex max-h-[calc(100%-24px)] w-[min(360px,calc(100%-24px))] flex-col overflow-hidden border border-border bg-[rgba(10,10,10,0.94)] px-3 py-2.5"
+          className="absolute top-3 left-3 z-20 flex max-h-[calc(100%-24px)] w-[min(360px,calc(100%-24px))] flex-col overflow-hidden border border-border bg-[rgba(10,10,10,0.94)] px-3 py-2.5 map-search-panel-responsive"
           onSubmit={(event) => {
             event.preventDefault();
             void handleSearchMapLocation(mapSearchQuery);
@@ -352,7 +352,7 @@ export default function MapPanel() {
             <Search size={13} className="text-accent" />
             <span>{'// Search Location'}</span>
           </div>
-          <div className="mt-2 flex items-center gap-2">
+          <div className="mt-2 flex items-center gap-2 max-sm:flex-wrap">
             <Input
               type="text"
               value={mapSearchQuery}
@@ -360,7 +360,7 @@ export default function MapPanel() {
               placeholder='TRY "CAFE NEARBY" OR "SUSHI MISSION"'
               aria-label="Search location"
               autoComplete="off"
-              className="min-h-[34px] bg-bg-elevated text-[0.78rem]"
+              className="min-h-[34px] bg-bg-elevated text-[0.78rem] max-sm:basis-full"
             />
             <Button
               type="submit"
@@ -414,7 +414,7 @@ export default function MapPanel() {
                 onValueChange={(value) => {
                   if (value) setMapSearchScope(value);
                 }}
-                className="grid grid-cols-3 gap-1.5"
+                className="grid grid-cols-3 gap-1.5 max-sm:grid-cols-1"
               >
                 <ToggleGroupItem value="map" className="px-2 py-1 text-[0.62rem]">Around Map</ToggleGroupItem>
                 <ToggleGroupItem value="near_me" className="px-2 py-1 text-[0.62rem]">Near Me</ToggleGroupItem>
@@ -443,7 +443,7 @@ export default function MapPanel() {
                 onValueChange={(value) => {
                   if (value) setMapSearchSort(value);
                 }}
-                className="grid grid-cols-3 gap-1.5"
+                className="grid grid-cols-3 gap-1.5 max-sm:grid-cols-1"
               >
                 <ToggleGroupItem value="best_match" className="px-2 py-1 text-[0.62rem]">Best Match</ToggleGroupItem>
                 <ToggleGroupItem value="distance" className="px-2 py-1 text-[0.62rem]">Distance</ToggleGroupItem>
@@ -569,7 +569,7 @@ export default function MapPanel() {
           ) : null}
         </form>
         {isCrimeVisible ? (
-          <div className="absolute top-3 right-3 z-20 w-[196px] rounded-none border border-[rgba(255,68,68,0.3)] bg-[rgba(10,10,10,0.92)] backdrop-blur-sm px-2.5 py-2 shadow-[0_8px_24px_rgba(255,68,68,0.15)]">
+          <div className="absolute top-3 right-3 z-20 w-[196px] rounded-none border border-[rgba(255,68,68,0.3)] bg-[rgba(10,10,10,0.92)] backdrop-blur-sm px-2.5 py-2 shadow-[0_8px_24px_rgba(255,68,68,0.15)] crime-panel-responsive">
             <div className="flex items-center justify-between gap-2">
               <div className="inline-flex items-center gap-1.5 text-[0.7rem] font-semibold text-[#FF4444]">
                 <span className="relative flex h-2.5 w-2.5">

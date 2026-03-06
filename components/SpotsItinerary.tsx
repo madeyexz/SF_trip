@@ -13,7 +13,7 @@ function SpotsItinerarySkeleton() {
   const titleWidths = ['w-3/5', 'w-2/3', 'w-1/2', 'w-3/4'];
   const descWidths = ['w-[85%]', 'w-[70%]', 'w-[78%]', 'w-[65%]'];
   return (
-    <div className="flex flex-col p-3 overflow-y-auto min-h-0 scrollbar-thin">
+    <div className="flex min-h-0 flex-col overflow-y-auto p-3 scrollbar-thin max-sm:max-h-[38vh]">
       {/* Header skeleton */}
       <div className="flex items-start justify-between gap-2 mb-2.5">
         <div>
@@ -56,7 +56,7 @@ export default function SpotsItinerary() {
   }
 
   return (
-    <div className="flex flex-col p-3 overflow-y-auto min-h-0 scrollbar-thin">
+    <div className="flex min-h-0 flex-col overflow-y-auto p-3 scrollbar-thin max-sm:max-h-[38vh]">
       <div className="flex items-start justify-between gap-2 mb-2.5 flex-wrap">
         <div>
           <h2 className="m-0 text-base font-bold tracking-tight">Curated Spots {selectedDate ? `· ${formatDateDayMonth(selectedDate)}` : ''}</h2>
@@ -73,7 +73,7 @@ export default function SpotsItinerary() {
             </ToggleGroup>
           </div>
         </div>
-        <span className="inline-flex items-center px-2 py-0.5 rounded-none bg-bg-subtle text-muted text-[0.7rem] font-semibold whitespace-nowrap">{visiblePlaces.length} places</span>
+        <span className="inline-flex items-center px-2 py-0.5 rounded-none bg-bg-subtle text-muted text-[0.7rem] font-semibold whitespace-nowrap max-sm:w-fit">{visiblePlaces.length} places</span>
       </div>
       <div className="flex flex-col gap-2">
         {visiblePlaces.length === 0 ? (

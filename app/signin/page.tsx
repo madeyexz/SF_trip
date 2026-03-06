@@ -68,7 +68,7 @@ export default function SignInPage() {
 
   return (
     <main
-      className="min-h-dvh flex items-center justify-center p-6 relative overflow-hidden"
+      className="relative flex min-h-dvh items-center justify-center overflow-hidden p-4 sm:p-6"
       style={{ background: '#0C0C0C', fontFamily: "var(--font-jetbrains, 'JetBrains Mono', monospace)" }}
     >
       {/* Subtle grid background */}
@@ -91,11 +91,11 @@ export default function SignInPage() {
       />
 
       <div
-        className="relative w-full mx-auto flex flex-col items-center"
-        style={{ maxWidth: 440, animation: 'fadeSlideUp 0.5s ease-out' }}
+        className="relative mx-auto flex w-full max-w-[440px] flex-col items-center"
+        style={{ animation: 'fadeSlideUp 0.5s ease-out' }}
       >
         {/* Brand */}
-        <div className="flex items-center gap-3 mb-10">
+        <div className="mb-8 flex items-center gap-3 sm:mb-10">
           <div
             className="flex items-center justify-center"
             style={{
@@ -109,10 +109,9 @@ export default function SignInPage() {
           </div>
           <div>
             <h1
-              className="m-0 leading-none"
+              className="m-0 text-[18px] leading-none sm:text-[20px]"
               style={{
                 fontFamily: "var(--font-space-grotesk, 'Space Grotesk', sans-serif)",
-                fontSize: 20,
                 fontWeight: 700,
                 color: '#FFFFFF',
                 letterSpacing: '-0.5px',
@@ -136,14 +135,7 @@ export default function SignInPage() {
         </div>
 
         {/* Card */}
-        <div
-          className="w-full"
-          style={{
-            background: '#0A0A0A',
-            border: '1px solid #2f2f2f',
-            padding: '24px 28px',
-          }}
-        >
+        <div className="w-full border border-border bg-card px-4 py-5 sm:px-7 sm:py-6">
           {sent ? (
             /* ── Success state ── */
             <div className="flex flex-col items-center text-center" style={{ padding: '8px 0' }}>
@@ -172,10 +164,9 @@ export default function SignInPage() {
                 [LINK_SENT]
               </p>
               <h2
-                className="m-0"
+                className="m-0 text-[17px] sm:text-[18px]"
                 style={{
                   fontFamily: "var(--font-space-grotesk, 'Space Grotesk', sans-serif)",
-                  fontSize: 18,
                   fontWeight: 600,
                   color: '#FFFFFF',
                 }}
@@ -183,13 +174,11 @@ export default function SignInPage() {
                 Check your inbox
               </h2>
               <p
-                className="m-0 mt-3"
+                className="m-0 mt-3 max-w-[300px] text-[12px] sm:text-[13px]"
                 style={{
-                  fontSize: 13,
                   fontWeight: 400,
                   color: '#8a8a8a',
                   lineHeight: 1.6,
-                  maxWidth: 300,
                 }}
               >
                 We sent a magic link to{' '}
@@ -244,25 +233,16 @@ export default function SignInPage() {
                   {'// AUTHENTICATION'}
                 </p>
                 <h2
-                  className="m-0"
+                  className="m-0 text-[17px] sm:text-[18px]"
                   style={{
                     fontFamily: "var(--font-space-grotesk, 'Space Grotesk', sans-serif)",
-                    fontSize: 18,
                     fontWeight: 600,
                     color: '#FFFFFF',
                   }}
                 >
                   Sign in
                 </h2>
-                <p
-                  className="m-0 mt-1.5"
-                  style={{
-                    fontSize: 13,
-                    fontWeight: 400,
-                    color: '#8a8a8a',
-                    lineHeight: 1.5,
-                  }}
-                >
+                <p className="m-0 mt-1.5 text-[12px] leading-[1.5] text-[#8a8a8a] sm:text-[13px]">
                   Enter your email for a magic sign-in link.
                 </p>
               </div>
@@ -366,10 +346,9 @@ export default function SignInPage() {
 
         {/* System info footer */}
         <div
-          className="w-full mt-4 flex items-center justify-between"
+          className="mt-4 flex w-full flex-col items-start justify-between gap-1.5 border-t border-border pt-2.5 sm:flex-row sm:items-center"
           style={{
-            padding: '10px 0',
-            borderTop: '1px solid #2f2f2f',
+            paddingBottom: 0,
           }}
         >
           <p
