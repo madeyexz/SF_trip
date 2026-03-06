@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Calendar, Crosshair, ExternalLink, House, Layers3, Search, Siren, Target, X } from 'lucide-react';
 import { useTrip, TAG_COLORS, getTagIconComponent } from '@/components/providers/TripProvider';
 import { formatTag } from '@/lib/helpers';
@@ -62,6 +62,183 @@ function FilterChip({ active, color, icon: Icon, label, onClick }) {
   );
 }
 
+function SearchResultCard({
+  result,
+  index,
+  isSaved,
+  active,
+  observerRootRef,
+  selectedTag,
+  isEditorOpen,
+  isSavingResult,
+  isDeletingResult,
+  handleSetSearchResultTag,
+  handleFocusSearchResult,
+  handlePreviewSearchResult,
+  handleOpenSearchResultTagEditor,
+  handleSaveSearchResultAsSpot,
+  handleDeleteCustomSpot,
+  handleLoadSearchResultPhotos,
+}) {
+  const cardRef = useRef(null);
+  const safeMapLink = getSafeExternalHref(result.mapLink);
+  const primaryPhoto = Array.isArray(result.photoGallery) ? result.photoGallery[0] : null;
+
+  useEffect(() => {
+    if (!cardRef.current || result.photoLoadState !== 'idle') return;
+
+    const observer = new IntersectionObserver((entries) => {
+      if (!entries.some((entry) => entry.isIntersecting)) return;
+      void handleLoadSearchResultPhotos(result.id);
+      observer.disconnect();
+    }, {
+      root: observerRootRef.current || null,
+      rootMargin: '120px 0px',
+      threshold: 0.15,
+    });
+
+    observer.observe(cardRef.current);
+    return () => {
+      observer.disconnect();
+    };
+  }, [handleLoadSearchResultPhotos, observerRootRef, result.id, result.photoLoadState]);
+
+  useEffect(() => {
+    if (!active || result.photoLoadState !== 'idle') return;
+    void handleLoadSearchResultPhotos(result.id);
+  }, [active, handleLoadSearchResultPhotos, result.id, result.photoLoadState]);
+
+  const handleActivateCard = () => {
+    handlePreviewSearchResult(result.id);
+    if (result.photoLoadState === 'idle') {
+      void handleLoadSearchResultPhotos(result.id);
+    }
+  };
+
+  return (
+    <div
+      ref={cardRef}
+      id={`search-result-${result.id}`}
+      onMouseEnter={handleActivateCard}
+      onFocusCapture={handleActivateCard}
+      className={`border px-2.5 py-2 ${active ? 'border-accent bg-accent-light' : 'border-border bg-bg-elevated'}`}
+    >
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0">
+          <p className="m-0 text-[0.64rem] font-semibold uppercase tracking-[0.12em] text-accent">
+            Result {index + 1}
+          </p>
+        </div>
+        {isSaved ? (
+          <span className="shrink-0 border border-accent-border bg-accent-light px-1.5 py-0.5 text-[0.58rem] font-semibold uppercase tracking-[0.12em] text-accent">
+            Saved · {formatTag(result.savedTag)}
+          </span>
+        ) : null}
+      </div>
+      {primaryPhoto?.uri ? (
+        <div className="mt-2 border border-border bg-[#050505]">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={primaryPhoto.uri}
+            alt={`${result.name} photo`}
+            loading="lazy"
+            className="block h-[132px] w-full object-cover"
+          />
+        </div>
+      ) : null}
+      <div className="min-w-0">
+        <p className="mt-2 mb-0 text-[0.78rem] font-semibold text-foreground leading-snug">{result.name}</p>
+        <p className="mt-1 mb-0 text-[0.68rem] leading-snug text-foreground-secondary">{result.location}</p>
+        {(result.distanceLabel || result.walkDurationLabel) ? (
+          <p className="mt-1 mb-0 text-[0.6rem] uppercase tracking-[0.1em] text-muted">
+            {[result.distanceLabel, result.walkDurationLabel].filter(Boolean).join(' · ')}
+          </p>
+        ) : null}
+        {Array.isArray(result.typeChips) && result.typeChips.length > 0 ? (
+          <div className="mt-1.5 flex flex-wrap gap-1">
+            {result.typeChips.map((chip) => (
+              <span key={`${result.id}-${chip}`} className="border border-border px-1.5 py-0.5 text-[0.54rem] uppercase tracking-[0.08em] text-foreground-secondary">
+                {chip}
+              </span>
+            ))}
+          </div>
+        ) : null}
+      </div>
+      <div className="mt-2 flex flex-wrap gap-2">
+        <Button type="button" size="sm" variant="secondary" className="min-h-[30px] px-2.5" onClick={() => handleFocusSearchResult(result.id)}>
+          <Crosshair size={12} />
+          Focus
+        </Button>
+        {safeMapLink ? (
+          <Button type="button" size="sm" variant="secondary" className="min-h-[30px] px-2.5" asChild>
+            <a href={safeMapLink} target="_blank" rel="noreferrer">
+              <ExternalLink size={12} />
+              Open Map
+            </a>
+          </Button>
+        ) : null}
+        {isSaved ? (
+          <>
+            <Button
+              type="button"
+              size="sm"
+              variant="secondary"
+              className="min-h-[30px] px-2.5"
+              onClick={() => handleOpenSearchResultTagEditor(result.id)}
+            >
+              <Target size={12} />
+              Change Tag
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant="danger"
+              className="min-h-[30px] px-2.5"
+              disabled={isDeletingResult}
+              onClick={() => { void handleDeleteCustomSpot(result.savedSpotId); }}
+            >
+              {isDeletingResult ? 'Deleting...' : 'Remove Spot'}
+            </Button>
+          </>
+        ) : (
+          <Button
+            type="button"
+            size="sm"
+            variant="secondary"
+            className="min-h-[30px] px-2.5"
+            onClick={() => handleOpenSearchResultTagEditor(result.id)}
+          >
+            Save Spot
+          </Button>
+        )}
+      </div>
+      {isEditorOpen ? (
+        <div className="mt-2 grid grid-cols-[minmax(0,1fr)_auto] gap-2 max-sm:grid-cols-1">
+          <Select value={selectedTag} onValueChange={(value) => handleSetSearchResultTag(result.id, value)}>
+            <SelectTrigger className="min-h-[32px] bg-card px-2.5 py-1 text-[0.72rem] uppercase">
+              <SelectValue placeholder="Category" />
+            </SelectTrigger>
+            <SelectContent>
+              {PLACE_SEARCH_TAG_OPTIONS.map((tag) => (
+                <SelectItem key={tag} value={tag}>{formatTag(tag)}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Button
+            type="button"
+            size="sm"
+            className="min-h-[32px] px-2.5"
+            disabled={isSavingResult}
+            onClick={() => { void handleSaveSearchResultAsSpot(result.id); }}
+          >
+            {isSavingResult ? 'Saving...' : isSaved ? 'Update Tag' : 'Save Spot'}
+          </Button>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 export default function MapPanel() {
   const {
     mapPanelRef,
@@ -98,6 +275,7 @@ export default function MapPanel() {
     handleSetSearchResultTag,
     handleFocusSearchResult,
     handlePreviewSearchResult,
+    handleLoadSearchResultPhotos,
     handleOpenSearchResultTagEditor,
     handleApplySearchShortcut,
     handleSaveSearchResultAsSpot,
@@ -111,6 +289,7 @@ export default function MapPanel() {
   const unsavedEntries = searchResultEntries.filter(({ result }) => !result.savedTag);
   const shortcutButtonLabels = ['Coffee', 'Bars', 'Brunch', 'Parks', 'Museums'];
   const [showAdvancedSearch, setShowAdvancedSearch] = useState(false);
+  const searchResultsContainerRef = useRef(null);
   const isCrimeVisible = !hiddenCategories.has('crime');
   const crimeStatusText = crimeLayerMeta.loading
     ? 'Updating live crime feed...'
@@ -299,7 +478,7 @@ export default function MapPanel() {
             {searchLocationError || 'Searches return multiple pinned places. Save any result into a trip category.'}
           </p>
           {placeSearchResults.length > 0 ? (
-            <div className="mt-2 max-h-[280px] overflow-y-auto border-t border-border pt-2">
+            <div ref={searchResultsContainerRef} className="mt-2 max-h-[min(52vh,520px)] overflow-y-auto border-t border-border pt-2">
               <div className="mb-2 flex items-center justify-between gap-2">
                 <div>
                   <p className="m-0 text-[0.62rem] font-semibold uppercase tracking-[0.12em] text-foreground-secondary">
@@ -325,98 +504,26 @@ export default function MapPanel() {
                       const selectedTag = searchResultTagDrafts[result.id] || result.savedTag || result.suggestedTag || 'eat';
                       const isEditorOpen = expandedSearchResultEditorId === result.id;
                       const isDeletingResult = deletingCustomSpotId === result.savedSpotId;
-                      const safeMapLink = getSafeExternalHref(result.mapLink);
                       return (
-                        <div
+                        <SearchResultCard
                           key={result.id}
-                          id={`search-result-${result.id}`}
-                          onMouseEnter={() => handlePreviewSearchResult(result.id)}
-                          className={`border px-2.5 py-2 ${activeSearchResultId === result.id ? 'border-accent bg-accent-light' : 'border-border bg-bg-elevated'}`}
-                        >
-                          <div className="flex items-start justify-between gap-2">
-                            <div className="min-w-0">
-                              <p className="m-0 text-[0.64rem] font-semibold uppercase tracking-[0.12em] text-accent">
-                                Result {index + 1}
-                              </p>
-                              <p className="mt-1 mb-0 text-[0.78rem] font-semibold text-foreground leading-snug">{result.name}</p>
-                              <p className="mt-1 mb-0 text-[0.68rem] leading-snug text-foreground-secondary">{result.location}</p>
-                              {(result.distanceLabel || result.walkDurationLabel) ? (
-                                <p className="mt-1 mb-0 text-[0.6rem] uppercase tracking-[0.1em] text-muted">
-                                  {[result.distanceLabel, result.walkDurationLabel].filter(Boolean).join(' · ')}
-                                </p>
-                              ) : null}
-                              {Array.isArray(result.typeChips) && result.typeChips.length > 0 ? (
-                                <div className="mt-1.5 flex flex-wrap gap-1">
-                                  {result.typeChips.map((chip) => (
-                                    <span key={`${result.id}-${chip}`} className="border border-border px-1.5 py-0.5 text-[0.54rem] uppercase tracking-[0.08em] text-foreground-secondary">
-                                      {chip}
-                                    </span>
-                                  ))}
-                                </div>
-                              ) : null}
-                            </div>
-                            <span className="shrink-0 border border-accent-border bg-accent-light px-1.5 py-0.5 text-[0.58rem] font-semibold uppercase tracking-[0.12em] text-accent">
-                              Saved · {formatTag(result.savedTag)}
-                            </span>
-                          </div>
-                          <div className="mt-2 flex flex-wrap gap-2">
-                            <Button type="button" size="sm" variant="secondary" className="min-h-[30px] px-2.5" onClick={() => handleFocusSearchResult(result.id)}>
-                              <Crosshair size={12} />
-                              Focus
-                            </Button>
-                            {safeMapLink ? (
-                              <Button type="button" size="sm" variant="secondary" className="min-h-[30px] px-2.5" asChild>
-                                <a href={safeMapLink} target="_blank" rel="noreferrer">
-                                  <ExternalLink size={12} />
-                                  Open Map
-                                </a>
-                              </Button>
-                            ) : null}
-                            <Button
-                              type="button"
-                              size="sm"
-                              variant="secondary"
-                              className="min-h-[30px] px-2.5"
-                              onClick={() => handleOpenSearchResultTagEditor(result.id)}
-                            >
-                              <Target size={12} />
-                              Change Tag
-                            </Button>
-                            <Button
-                              type="button"
-                              size="sm"
-                              variant="danger"
-                              className="min-h-[30px] px-2.5"
-                              disabled={isDeletingResult}
-                              onClick={() => { void handleDeleteCustomSpot(result.savedSpotId); }}
-                            >
-                              {isDeletingResult ? 'Deleting...' : 'Remove Spot'}
-                            </Button>
-                          </div>
-                          {isEditorOpen ? (
-                            <div className="mt-2 grid grid-cols-[minmax(0,1fr)_auto] gap-2 max-sm:grid-cols-1">
-                              <Select value={selectedTag} onValueChange={(value) => handleSetSearchResultTag(result.id, value)}>
-                                <SelectTrigger className="min-h-[32px] bg-card px-2.5 py-1 text-[0.72rem] uppercase">
-                                  <SelectValue placeholder="Category" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  {PLACE_SEARCH_TAG_OPTIONS.map((tag) => (
-                                    <SelectItem key={tag} value={tag}>{formatTag(tag)}</SelectItem>
-                                  ))}
-                                </SelectContent>
-                              </Select>
-                              <Button
-                                type="button"
-                                size="sm"
-                                className="min-h-[32px] px-2.5"
-                                disabled={savingSearchResultId === result.id}
-                                onClick={() => { void handleSaveSearchResultAsSpot(result.id); }}
-                              >
-                                {savingSearchResultId === result.id ? 'Saving...' : 'Update Tag'}
-                              </Button>
-                            </div>
-                          ) : null}
-                        </div>
+                          result={result}
+                          index={index}
+                          isSaved
+                          active={activeSearchResultId === result.id}
+                          observerRootRef={searchResultsContainerRef}
+                          selectedTag={selectedTag}
+                          isEditorOpen={isEditorOpen}
+                          isSavingResult={savingSearchResultId === result.id}
+                          isDeletingResult={isDeletingResult}
+                          handleSetSearchResultTag={handleSetSearchResultTag}
+                          handleFocusSearchResult={handleFocusSearchResult}
+                          handlePreviewSearchResult={handlePreviewSearchResult}
+                          handleOpenSearchResultTagEditor={handleOpenSearchResultTagEditor}
+                          handleSaveSearchResultAsSpot={handleSaveSearchResultAsSpot}
+                          handleDeleteCustomSpot={handleDeleteCustomSpot}
+                          handleLoadSearchResultPhotos={handleLoadSearchResultPhotos}
+                        />
                       );
                     })}
                   </div>
@@ -433,86 +540,28 @@ export default function MapPanel() {
                 </div>
                 {unsavedEntries.map(({ result, index }) => {
                   const selectedTag = searchResultTagDrafts[result.id] || result.suggestedTag || 'eat';
-                  const safeMapLink = getSafeExternalHref(result.mapLink);
                   const isSavingResult = savingSearchResultId === result.id;
                   const isEditorOpen = expandedSearchResultEditorId === result.id;
                   return (
-                    <div
+                    <SearchResultCard
                       key={result.id}
-                      id={`search-result-${result.id}`}
-                      onMouseEnter={() => handlePreviewSearchResult(result.id)}
-                      className={`border px-2.5 py-2 ${activeSearchResultId === result.id ? 'border-accent bg-accent-light' : 'border-border bg-bg-elevated'}`}
-                    >
-                      <div className="flex items-start justify-between gap-2">
-                        <div className="min-w-0">
-                          <p className="m-0 text-[0.64rem] font-semibold uppercase tracking-[0.12em] text-accent">
-                            Result {index + 1}
-                          </p>
-                          <p className="mt-1 mb-0 text-[0.78rem] font-semibold text-foreground leading-snug">{result.name}</p>
-                          <p className="mt-1 mb-0 text-[0.68rem] leading-snug text-foreground-secondary">{result.location}</p>
-                          {(result.distanceLabel || result.walkDurationLabel) ? (
-                            <p className="mt-1 mb-0 text-[0.6rem] uppercase tracking-[0.1em] text-muted">
-                              {[result.distanceLabel, result.walkDurationLabel].filter(Boolean).join(' · ')}
-                            </p>
-                          ) : null}
-                          {Array.isArray(result.typeChips) && result.typeChips.length > 0 ? (
-                            <div className="mt-1.5 flex flex-wrap gap-1">
-                              {result.typeChips.map((chip) => (
-                                <span key={`${result.id}-${chip}`} className="border border-border px-1.5 py-0.5 text-[0.54rem] uppercase tracking-[0.08em] text-foreground-secondary">
-                                  {chip}
-                                </span>
-                              ))}
-                            </div>
-                          ) : null}
-                        </div>
-                      </div>
-                      <div className="mt-2 flex flex-wrap gap-2">
-                        <Button type="button" size="sm" variant="secondary" className="min-h-[30px] px-2.5" onClick={() => handleFocusSearchResult(result.id)}>
-                          <Crosshair size={12} />
-                          Focus
-                        </Button>
-                        {safeMapLink ? (
-                          <Button type="button" size="sm" variant="secondary" className="min-h-[30px] px-2.5" asChild>
-                            <a href={safeMapLink} target="_blank" rel="noreferrer">
-                              <ExternalLink size={12} />
-                              Open Map
-                            </a>
-                          </Button>
-                        ) : null}
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant="secondary"
-                          className="min-h-[30px] px-2.5"
-                          onClick={() => handleOpenSearchResultTagEditor(result.id)}
-                        >
-                          Save Spot
-                        </Button>
-                      </div>
-                      {isEditorOpen ? (
-                        <div className="mt-2 grid grid-cols-[minmax(0,1fr)_auto] gap-2 max-sm:grid-cols-1">
-                          <Select value={selectedTag} onValueChange={(value) => handleSetSearchResultTag(result.id, value)}>
-                            <SelectTrigger className="min-h-[32px] bg-card px-2.5 py-1 text-[0.72rem] uppercase">
-                              <SelectValue placeholder="Category" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {PLACE_SEARCH_TAG_OPTIONS.map((tag) => (
-                                <SelectItem key={tag} value={tag}>{formatTag(tag)}</SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                          <Button
-                            type="button"
-                            size="sm"
-                            className="min-h-[32px] px-2.5"
-                            disabled={isSavingResult}
-                            onClick={() => { void handleSaveSearchResultAsSpot(result.id); }}
-                          >
-                            {isSavingResult ? 'Saving...' : 'Save Spot'}
-                          </Button>
-                        </div>
-                      ) : null}
-                    </div>
+                      result={result}
+                      index={index}
+                      isSaved={false}
+                      active={activeSearchResultId === result.id}
+                      observerRootRef={searchResultsContainerRef}
+                      selectedTag={selectedTag}
+                      isEditorOpen={isEditorOpen}
+                      isSavingResult={isSavingResult}
+                      isDeletingResult={false}
+                      handleSetSearchResultTag={handleSetSearchResultTag}
+                      handleFocusSearchResult={handleFocusSearchResult}
+                      handlePreviewSearchResult={handlePreviewSearchResult}
+                      handleOpenSearchResultTagEditor={handleOpenSearchResultTagEditor}
+                      handleSaveSearchResultAsSpot={handleSaveSearchResultAsSpot}
+                      handleDeleteCustomSpot={handleDeleteCustomSpot}
+                      handleLoadSearchResultPhotos={handleLoadSearchResultPhotos}
+                    />
                   );
                 })}
               </div>
