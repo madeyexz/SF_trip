@@ -342,7 +342,7 @@ export default function MapPanel() {
       <div className="relative flex-1 min-h-0 map-container-responsive">
         <div id="map" ref={mapElementRef} />
         <form
-          className="absolute top-3 left-3 z-20 w-[min(360px,calc(100%-24px))] border border-border bg-[rgba(10,10,10,0.94)] px-3 py-2.5"
+          className="absolute top-3 left-3 z-20 flex max-h-[calc(100%-24px)] w-[min(360px,calc(100%-24px))] flex-col overflow-hidden border border-border bg-[rgba(10,10,10,0.94)] px-3 py-2.5"
           onSubmit={(event) => {
             event.preventDefault();
             void handleSearchMapLocation(mapSearchQuery);
@@ -478,7 +478,7 @@ export default function MapPanel() {
             {searchLocationError || 'Searches return multiple pinned places. Save any result into a trip category.'}
           </p>
           {placeSearchResults.length > 0 ? (
-            <div ref={searchResultsContainerRef} className="mt-2 max-h-[min(52vh,520px)] overflow-y-auto border-t border-border pt-2">
+            <div ref={searchResultsContainerRef} className="mt-2 min-h-0 flex-1 overflow-y-auto border-t border-border pt-2">
               <div className="mb-2 flex items-center justify-between gap-2">
                 <div>
                   <p className="m-0 text-[0.62rem] font-semibold uppercase tracking-[0.12em] text-foreground-secondary">
