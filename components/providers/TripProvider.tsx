@@ -1,6 +1,6 @@
 'use client';
 
-import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { useAuthActions } from '@convex-dev/auth/react';
 import { useConvexAuth } from 'convex/react';
@@ -26,9 +26,10 @@ import {
   formatTag, formatDate, formatDateDayMonth, formatDistance, formatDurationFromSeconds,
   buildISODateRange, daysFromNow, formatSourceLabel
 } from '@/lib/helpers';
+import { sortPlanItems } from '@/lib/planner-domain.ts';
 import { getSafeExternalHref } from '@/lib/security';
 import {
-  createPlanId, sortPlanItems, sanitizePlannerByDate, compactPlannerByDate,
+  createPlanId,
   parseEventTimeRange, getSuggestedPlanSlot,
   buildPlannerIcs, buildGoogleCalendarStopUrls,
   MAX_ROUTE_STOPS
@@ -48,6 +49,10 @@ import {
 } from '@/lib/device-location';
 import { getOrCreateCoalescedPromise } from '@/lib/async-coalesce';
 import { mapAsyncInParallel } from '@/lib/async-map';
+import { TripContext, useTrip } from './trip/context.ts';
+import { useTripBootstrap } from './trip/bootstrap.ts';
+import { usePlannerPersistence } from './trip/planner-persistence.ts';
+import { useMapSearchPreferencesPersistence } from './trip/map-search-preferences.ts';
 
 const TAG_COLORS = {
   eat: '#FF8800',
@@ -187,15 +192,7 @@ function getTagIconNode(tag) {
   return TAG_ICON_NODES[normalizePlaceTag(tag)] || mapPinIconNode;
 }
 
-export { TAG_COLORS };
-
-const TripContext = createContext<any>(null);
-
-export function useTrip() {
-  const ctx = useContext(TripContext);
-  if (!ctx) throw new Error('useTrip must be used inside TripProvider');
-  return ctx;
-}
+export { TAG_COLORS, useTrip };
 
 export default function TripProvider({ children }: { children: ReactNode }) {
   const { isLoading: authLoading, isAuthenticated } = useConvexAuth();
@@ -219,7 +216,6 @@ export default function TripProvider({ children }: { children: ReactNode }) {
   const crimeIdleListenerRef = useRef<any>(null);
   const searchAreaIdleListenerRef = useRef<any>(null);
   const crimeLookbackHydratedRef = useRef(false);
-  const mapSearchPrefsHydratedRef = useRef(false);
   const skipNextSearchAreaIdleRef = useRef(false);
   const searchVisibleAreaRequestedRef = useRef(false);
   const lastCrimeFetchAtRef = useRef(0);
@@ -291,6 +287,15 @@ export default function TripProvider({ children }: { children: ReactNode }) {
   const [profile, setProfile] = useState<any>(null);
   const [authUserId, setAuthUserId] = useState('');
   const [isSigningOut, setIsSigningOut] = useState(false);
+
+  useMapSearchPreferencesPersistence({
+    mapSearchQuery,
+    setMapSearchQuery,
+    mapSearchScope,
+    setMapSearchScope,
+    mapSearchSort,
+    setMapSearchSort
+  });
   const placeTagOptions = useMemo(() => {
     const tags = new Set<string>();
     for (const place of allPlaces) tags.add(normalizePlaceTag(place.tag));
@@ -350,29 +355,6 @@ export default function TripProvider({ children }: { children: ReactNode }) {
       localStorage.setItem('crimeLookbackHours', String(crimeLookbackHours));
     } catch {}
   }, [crimeLookbackHours]);
-
-  useEffect(() => {
-    try {
-      const stored = JSON.parse(localStorage.getItem('mapSearchPreferences') || 'null');
-      if (stored && typeof stored === 'object') {
-        if (typeof stored.query === 'string') setMapSearchQuery(stored.query);
-        if (typeof stored.scope === 'string') setMapSearchScope(stored.scope);
-        if (typeof stored.sort === 'string') setMapSearchSort(stored.sort);
-      }
-    } catch {}
-    mapSearchPrefsHydratedRef.current = true;
-  }, []);
-
-  useEffect(() => {
-    if (!mapSearchPrefsHydratedRef.current) return;
-    try {
-      localStorage.setItem('mapSearchPreferences', JSON.stringify({
-        query: mapSearchQuery,
-        scope: mapSearchScope,
-        sort: mapSearchSort
-      }));
-    } catch {}
-  }, [mapSearchQuery, mapSearchScope, mapSearchSort]);
 
   const uniqueDates = useMemo(() => {
     if (tripStart && tripEnd) {
@@ -448,74 +430,14 @@ export default function TripProvider({ children }: { children: ReactNode }) {
     return stops;
   }, [dayPlanItems, eventLookup, placeLookup]);
 
-  // ---- Planner persistence ----
-  useEffect(() => {
-    let mounted = true;
-    plannerHydratedRef.current = false;
-    setPlannerByDate({});
-
-    async function loadPlannerFromServer() {
-      if (!isAuthenticated) {
-        if (mounted) {
-          setPlannerByDate({});
-          plannerHydratedRef.current = true;
-        }
-        return;
-      }
-
-      try {
-        const payload = await fetchJson('/api/planner');
-        if (!mounted) return;
-
-        const resolvedUserId = String(payload?.userId || authUserId || '');
-        if (resolvedUserId) setAuthUserId(resolvedUserId);
-        setPlannerByDate(sanitizePlannerByDate(payload?.plannerByDate || {}) as Record<string, any[]>);
-      } catch (error) {
-        console.error('Planner load failed; continuing with in-memory planner state.', error);
-        if (mounted) {
-          setPlannerByDate({});
-        }
-      } finally {
-        if (mounted) plannerHydratedRef.current = true;
-      }
-    }
-
-    void loadPlannerFromServer();
-    return () => {
-      mounted = false;
-      plannerHydratedRef.current = true;
-    };
-  }, [authUserId, isAuthenticated]);
-
-  const savePlannerToServer = useCallback(async (nextPlannerByDate) => {
-    try {
-      const response = await fetch('/api/planner', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          plannerByDate: compactPlannerByDate(nextPlannerByDate)
-        })
-      });
-
-      if (!response.ok) {
-        const payload = await response.json().catch(() => null);
-        throw new Error(payload?.error || `Planner save failed: ${response.status}`);
-      }
-    } catch (error) {
-      console.error('Planner save failed; retaining local planner cache.', error);
-    }
-  }, []);
-
-  useEffect(() => {
-    const compactPlanner = compactPlannerByDate(plannerByDate);
-    if (!plannerHydratedRef.current) return;
-    if (!isAuthenticated) return;
-
-    const timeoutId = window.setTimeout(() => {
-      void savePlannerToServer(compactPlanner);
-    }, 450);
-    return () => { window.clearTimeout(timeoutId); };
-  }, [isAuthenticated, plannerByDate, savePlannerToServer]);
+  usePlannerPersistence({
+    authUserId,
+    isAuthenticated,
+    plannerByDate,
+    plannerHydratedRef,
+    setAuthUserId,
+    setPlannerByDate
+  });
 
   // ---- Geocode cache ----
   const saveGeocodeCache = useCallback(() => {
@@ -526,6 +448,24 @@ export default function TripProvider({ children }: { children: ReactNode }) {
     setStatus(message);
     setStatusError(isError);
   }, []);
+
+  const { loadSourcesFromServer } = useTripBootstrap({
+    isAuthenticated,
+    setAuthUserId,
+    setProfile,
+    setMapsBrowserKey,
+    setMapsMapId,
+    setTripStart,
+    setTripEnd,
+    setBaseLocationText,
+    setShowSharedPlaceRecommendations,
+    setAllEvents,
+    setAllPlaces,
+    setSources,
+    setIsInitializing,
+    setIsSyncing,
+    setStatusMessage
+  });
 
   const handleSignOut = useCallback(async () => {
     setIsSigningOut(true);
@@ -541,16 +481,6 @@ export default function TripProvider({ children }: { children: ReactNode }) {
       setIsSigningOut(false);
     }
   }, [setStatusMessage, signOut]);
-
-  const loadSourcesFromServer = useCallback(async () => {
-    try {
-      const payload = await fetchJson('/api/sources');
-      setSources(Array.isArray(payload?.sources) ? payload.sources : []);
-    } catch (error) {
-      console.error('Failed to load sources.', error);
-      setSources([]);
-    }
-  }, []);
 
   const clearMapMarkers = useCallback(() => {
     for (const m of markersRef.current) m.map = null;
@@ -1458,78 +1388,6 @@ export default function TripProvider({ children }: { children: ReactNode }) {
      addEventToDayPlan, addPlaceToDayPlan, selectedDate, setStatusMessage]
   );
 
-  // ---- Bootstrap ----
-  useEffect(() => {
-    let mounted = true;
-
-    async function runBackgroundSync() {
-      setIsSyncing(true);
-      try {
-        const response = await fetch('/api/sync', { method: 'POST' });
-        const payload = await response.json().catch(() => null);
-        if (!response.ok) throw new Error(payload?.error || 'Sync failed');
-        if (!mounted) return;
-
-        const syncedEvents = Array.isArray(payload?.events) ? payload.events : [];
-        setAllEvents(syncedEvents);
-        if (Array.isArray(payload?.places)) setAllPlaces(payload.places);
-
-        const ingestionErrors = Array.isArray(payload?.meta?.ingestionErrors) ? payload.meta.ingestionErrors : [];
-        if (ingestionErrors.length > 0) console.error('Sync ingestion errors:', ingestionErrors);
-        await loadSourcesFromServer();
-
-        const errSuffix = ingestionErrors.length > 0 ? ` (${ingestionErrors.length} ingestion errors)` : '';
-        setStatusMessage(`Synced ${syncedEvents.length} events at ${new Date().toLocaleTimeString('en-US', { timeZone: 'America/Los_Angeles' })}${errSuffix}.`, ingestionErrors.length > 0);
-      } catch (error) {
-        console.error('Background sync failed; continuing with cached events.', error);
-      } finally {
-        if (mounted) setIsSyncing(false);
-      }
-    }
-
-    async function bootstrapData() {
-      setIsInitializing(true);
-      try {
-        const [config, eventsPayload, sourcesPayload, mePayload] = await Promise.all([
-          fetchJson('/api/config'),
-          fetchJson('/api/events'),
-          fetchJson('/api/sources').catch(() => ({ sources: [] })),
-          fetchJson('/api/me').catch(() => null)
-        ]);
-        if (!mounted) return;
-        const nextProfile = mePayload?.profile || null;
-        const nextUserId = String(nextProfile?.userId || '');
-        setProfile(nextProfile);
-        setAuthUserId(nextUserId);
-        setMapsBrowserKey(String(config.mapsBrowserKey || ''));
-        setMapsMapId(String(config.mapsMapId || ''));
-        setTripStart(config.tripStart || '');
-        setTripEnd(config.tripEnd || '');
-        setBaseLocationText(config.baseLocation || '');
-        setShowSharedPlaceRecommendations(config.showSharedPlaceRecommendations ?? true);
-        const loadedEvents = Array.isArray(eventsPayload.events) ? eventsPayload.events : [];
-        const loadedPlaces = Array.isArray(eventsPayload.places) ? eventsPayload.places : [];
-        const loadedSources = Array.isArray(sourcesPayload?.sources) ? sourcesPayload.sources : [];
-        setAllEvents(loadedEvents);
-        setAllPlaces(loadedPlaces);
-        setSources(loadedSources);
-        void runBackgroundSync();
-
-        const sampleNote = eventsPayload?.meta?.sampleData ? ' Showing sample data until you sync.' : '';
-        setStatusMessage(`Loaded ${loadedEvents.length} events and ${loadedPlaces.length} curated places.${sampleNote}`);
-      } catch (error) {
-        setStatusMessage(error instanceof Error ? error.message : 'Failed to initialize app.', true);
-      } finally {
-        if (mounted) setIsInitializing(false);
-      }
-    }
-
-    void bootstrapData();
-    return () => {
-      mounted = false;
-    };
-  }, [loadSourcesFromServer, setStatusMessage]);
-
   useEffect(() => {
     if (mapRuntimeActive) return;
     cleanupMapRuntime();
@@ -1643,43 +1501,6 @@ export default function TripProvider({ children }: { children: ReactNode }) {
     if (placeSearchResults.length === 0) return;
     setPlaceSearchResults((prev) => sortPlaceSearchResults(prev, mapSearchSort));
   }, [mapSearchSort, placeSearchResults.length]);
-
-  useEffect(() => {
-    if (!isAuthenticated) {
-      setSources([]);
-      return;
-    }
-
-    let cancelled = false;
-
-    async function loadPersonalData() {
-      try {
-        const [eventsPayload, sourcesPayload] = await Promise.all([
-          fetchJson('/api/events'),
-          fetchJson('/api/sources').catch(() => ({ sources: [] }))
-        ]);
-        if (cancelled) {
-          return;
-        }
-
-        const loadedEvents = Array.isArray(eventsPayload?.events) ? eventsPayload.events : [];
-        const loadedPlaces = Array.isArray(eventsPayload?.places) ? eventsPayload.places : [];
-        const loadedSources = Array.isArray(sourcesPayload?.sources) ? sourcesPayload.sources : [];
-        setAllEvents(loadedEvents);
-        setAllPlaces(loadedPlaces);
-        setSources(loadedSources);
-      } catch (error) {
-        if (!cancelled) {
-          console.error('Failed to load personal events/sources.', error);
-        }
-      }
-    }
-
-    void loadPersonalData();
-    return () => {
-      cancelled = true;
-    };
-  }, [isAuthenticated]);
 
   useEffect(() => {
     if (!mapsReady || !window.google?.maps?.visualization || !mapRef.current) return;

@@ -1,9 +1,11 @@
 import { getAuthUserId } from '@convex-dev/auth/server';
 import { mutation, query } from './_generated/server.js';
 import { v } from 'convex/values';
-
-const MINUTES_IN_DAY = 24 * 60;
-const MIN_PLAN_BLOCK_MINUTES = 30;
+import {
+  normalizePlannerDateISO,
+  sanitizePlannerByDate,
+  sortPlanItems
+} from '../lib/planner-domain.ts';
 
 const planItemValidator = v.object({
   id: v.string(),
@@ -29,79 +31,6 @@ const replacePlannerStateResultValidator = v.object({
   updatedAt: v.string()
 });
 
-type PlanItem = {
-  id: string;
-  kind: 'event' | 'place';
-  sourceKey: string;
-  title: string;
-  locationText: string;
-  link: string;
-  tag: string;
-  startMinutes: number;
-  endMinutes: number;
-};
-
-function cleanText(value: unknown) {
-  return String(value || '').trim();
-}
-
-function normalizeDateISO(value: unknown) {
-  const text = cleanText(value);
-  const match = text.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-  if (!match) {
-    return '';
-  }
-  return `${match[1]}-${match[2]}-${match[3]}`;
-}
-
-function clampMinutes(value: unknown, min: number, max: number) {
-  const parsed = Number(value);
-  if (!Number.isFinite(parsed)) {
-    return min;
-  }
-  return Math.min(max, Math.max(min, Math.round(parsed)));
-}
-
-function sortPlanItems<T extends { startMinutes: number }>(items: T[]) {
-  return [...items].sort((left, right) => left.startMinutes - right.startMinutes);
-}
-
-function sanitizePlannerByDate(value: Record<string, unknown>) {
-  const result: Record<string, PlanItem[]> = {};
-
-  for (const [dateISOInput, itemsInput] of Object.entries(value || {})) {
-    const dateISO = normalizeDateISO(dateISOInput);
-    if (!dateISO || !Array.isArray(itemsInput)) {
-      continue;
-    }
-
-    const nextItems = itemsInput
-      .filter((item) => item && typeof item === 'object')
-      .map((item) => {
-        const row = item as Record<string, unknown>;
-        const startMinutes = clampMinutes(row.startMinutes, 0, MINUTES_IN_DAY - MIN_PLAN_BLOCK_MINUTES);
-        const endMinutes = clampMinutes(row.endMinutes, startMinutes + MIN_PLAN_BLOCK_MINUTES, MINUTES_IN_DAY);
-
-        return {
-          id: cleanText(row.id) || `plan-${Math.random().toString(36).slice(2, 10)}`,
-          kind: row.kind === 'event' ? 'event' : 'place',
-          sourceKey: cleanText(row.sourceKey),
-          title: cleanText(row.title) || 'Untitled stop',
-          locationText: cleanText(row.locationText),
-          link: cleanText(row.link),
-          tag: cleanText(row.tag).toLowerCase(),
-          startMinutes,
-          endMinutes
-        } as PlanItem;
-      })
-      .filter((item) => item.sourceKey);
-
-    result[dateISO] = sortPlanItems(nextItems);
-  }
-
-  return result;
-}
-
 async function requireCurrentUserId(ctx: any) {
   const userId = await getAuthUserId(ctx);
   if (!userId) {
@@ -116,9 +45,9 @@ export async function getPlannerStateForUser(ctx: any, userId: string) {
     .withIndex('by_user', (q: any) => q.eq('userId', userId))
     .collect();
 
-  const plannerByDate: Record<string, PlanItem[]> = {};
+  const plannerByDate: Record<string, any[]> = {};
   for (const row of rows) {
-    const dateISO = normalizeDateISO(row.dateISO);
+    const dateISO = normalizePlannerDateISO(row.dateISO);
     if (!dateISO) {
       continue;
     }

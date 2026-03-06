@@ -1,14 +1,16 @@
 import {
-  MINUTES_IN_DAY,
-  MIN_PLAN_BLOCK_MINUTES,
   clampMinutes,
   snapMinutes,
-  normalizeDateKey,
-  normalizePlaceTag,
   formatMinuteLabel,
   formatDate,
   toDateOnlyISO
 } from './helpers';
+import {
+  MINUTES_IN_DAY,
+  MIN_PLAN_BLOCK_MINUTES,
+  sortPlanItems
+} from './planner-domain.ts';
+import type { PlannerItemRecord } from './planner-domain.ts';
 
 export const PLAN_SNAP_MINUTES = 15;
 export const PLAN_HOUR_HEIGHT = 50;
@@ -19,41 +21,6 @@ export const MAX_ROUTE_STOPS = 8;
 
 export function createPlanId() {
   return `plan-${Math.random().toString(36).slice(2, 9)}`;
-}
-
-export function sortPlanItems(items) {
-  return [...items].sort((left, right) => left.startMinutes - right.startMinutes);
-}
-
-export function sanitizePlannerByDate(value) {
-  const result = {};
-  for (const [dateISO, items] of Object.entries(value || {})) {
-    const normalizedDateISO = normalizeDateKey(dateISO);
-    if (!Array.isArray(items) || !normalizedDateISO) continue;
-
-    const cleanedItems = items
-      .filter((item) => item && typeof item === 'object')
-      .map((item) => {
-        const startMinutes = clampMinutes(Number(item.startMinutes), 0, MINUTES_IN_DAY);
-        const endMinutes = clampMinutes(Number(item.endMinutes), startMinutes + MIN_PLAN_BLOCK_MINUTES, MINUTES_IN_DAY);
-        return {
-          id: typeof item.id === 'string' && item.id ? item.id : createPlanId(),
-          kind: item.kind === 'event' ? 'event' : 'place',
-          sourceKey: String(item.sourceKey || ''),
-          title: String(item.title || 'Untitled stop'),
-          locationText: String(item.locationText || ''),
-          link: String(item.link || ''),
-          tag: normalizePlaceTag(item.tag),
-          startMinutes,
-          endMinutes
-        };
-      })
-      .filter((item) => item.sourceKey);
-
-    const previousItems = Array.isArray(result[normalizedDateISO]) ? result[normalizedDateISO] : [];
-    result[normalizedDateISO] = sortPlanItems([...previousItems, ...cleanedItems]);
-  }
-  return result;
 }
 
 export function compactPlannerByDate(value) {
@@ -147,7 +114,7 @@ function toIcsUtcTimestamp(dateInput) {
   return new Date(dateInput).toISOString().replace(/[-:]/g, '').replace(/\.\d{3}Z$/, 'Z');
 }
 
-export function buildPlannerIcs(dateISO, planItems) {
+export function buildPlannerIcs(dateISO: string, planItems: PlannerItemRecord[]) {
   const dateOnlyISO = toDateOnlyISO(dateISO);
   const sortedItems = sortPlanItems(planItems);
   const timestamp = toIcsUtcTimestamp(new Date());
@@ -176,7 +143,15 @@ export function buildPlannerIcs(dateISO, planItems) {
   return `${lines.join('\r\n')}\r\n`;
 }
 
-export function buildGoogleCalendarItemUrl({ dateISO, item, baseLocationText }) {
+export function buildGoogleCalendarItemUrl({
+  dateISO,
+  item,
+  baseLocationText
+}: {
+  dateISO: string;
+  item: PlannerItemRecord;
+  baseLocationText: string;
+}) {
   const dateOnlyISO = toDateOnlyISO(dateISO);
   const startValue = toCalendarDateTime(dateOnlyISO, item.startMinutes);
   const endMinutes = Math.max(item.endMinutes, item.startMinutes + MIN_PLAN_BLOCK_MINUTES);
@@ -197,7 +172,15 @@ export function buildGoogleCalendarItemUrl({ dateISO, item, baseLocationText }) 
   return `https://calendar.google.com/calendar/render?${params.toString()}`;
 }
 
-export function buildGoogleCalendarStopUrls({ dateISO, planItems, baseLocationText }) {
+export function buildGoogleCalendarStopUrls({
+  dateISO,
+  planItems,
+  baseLocationText
+}: {
+  dateISO: string;
+  planItems: PlannerItemRecord[];
+  baseLocationText: string;
+}) {
   const sortedItems = sortPlanItems(planItems);
   return sortedItems.map((item) => buildGoogleCalendarItemUrl({ dateISO, item, baseLocationText }));
 }
