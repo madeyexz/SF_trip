@@ -63,7 +63,7 @@ function getCollisions(items) {
 
 function PlannerItinerarySkeleton() {
   return (
-    <div className="flex flex-col p-3 min-h-0 h-full overflow-hidden">
+    <div className="flex flex-col p-3 min-h-0 h-full overflow-hidden planner-panel-responsive">
       {/* Header skeleton */}
       <div className="flex items-start justify-between gap-2 mb-2.5">
         <div>
@@ -115,13 +115,13 @@ export default function PlannerItinerary() {
     routeSummary || (selectedDate && dayPlanItems.length ? 'Waiting for routable stops...' : 'Add stops to draw route');
 
   return (
-    <div className="flex flex-col p-3 min-h-0 h-full overflow-hidden">
+    <div className="flex flex-col p-3 min-h-0 h-full overflow-hidden planner-panel-responsive">
       <div className="flex items-start justify-between gap-2 mb-2.5 flex-wrap">
-        <div>
+        <div className="min-w-0">
           <h2 className="m-0 text-base font-bold tracking-tight">{selectedDate ? formatDate(selectedDate) : 'No date selected'}</h2>
-          <div className="flex gap-1.5 items-center mt-1">
+          <div className="flex gap-1.5 items-center mt-1 max-sm:w-full">
             <Select value={travelMode} onValueChange={setTravelMode}>
-              <SelectTrigger id="travel-mode" className="min-h-[30px] min-w-[110px]">
+              <SelectTrigger id="travel-mode" className="min-h-[30px] min-w-[110px] max-sm:w-full">
                 <SelectValue placeholder="Travel mode" />
               </SelectTrigger>
               <SelectContent>
@@ -132,10 +132,10 @@ export default function PlannerItinerary() {
             </Select>
           </div>
         </div>
-        <div className="flex gap-1 shrink-0">
-          <Button type="button" size="sm" variant="secondary" onClick={clearDayPlan} disabled={!selectedDate || dayPlanItems.length === 0}>Clear</Button>
-          <Button type="button" size="sm" variant="secondary" onClick={handleExportPlannerIcs} disabled={!selectedDate || dayPlanItems.length === 0}>.ics</Button>
-          <Button type="button" size="sm" variant="secondary" onClick={handleAddDayPlanToGoogleCalendar} disabled={!selectedDate || dayPlanItems.length === 0}>GCal</Button>
+        <div className="flex gap-1 shrink-0 max-sm:w-full max-sm:flex-wrap">
+          <Button type="button" size="sm" variant="secondary" className="max-sm:flex-1" onClick={clearDayPlan} disabled={!selectedDate || dayPlanItems.length === 0}>Clear</Button>
+          <Button type="button" size="sm" variant="secondary" className="max-sm:flex-1" onClick={handleExportPlannerIcs} disabled={!selectedDate || dayPlanItems.length === 0}>.ics</Button>
+          <Button type="button" size="sm" variant="secondary" className="max-sm:flex-1" onClick={handleAddDayPlanToGoogleCalendar} disabled={!selectedDate || dayPlanItems.length === 0}>GCal</Button>
         </div>
       </div>
 
@@ -170,12 +170,14 @@ export default function PlannerItinerary() {
                 return (
                   <article className={itemClass} key={item.id} style={{ top: `${top}px`, height: `${height}px`, width: `${widthPct}%`, left: `${leftPct}%` }} onPointerDown={(e) => startPlanDrag(e, item, 'move')}>
                     <button type="button" className="absolute left-0 right-0 top-0 h-2 border-none bg-transparent cursor-ns-resize" aria-label="Adjust start time" onPointerDown={(e) => startPlanDrag(e, item, 'resize-start')} />
-                    <div className="absolute top-1 right-1.5 flex items-center gap-1.5">
-                      {hasCollision ? <AlertTriangle size={12} className="text-warning" aria-label="Time conflict" /> : null}
-                      <button type="button" className="px-1.5 py-0.5 rounded-none border border-border bg-bg-elevated text-foreground-secondary text-[0.65rem] font-semibold leading-tight cursor-pointer hover:bg-accent-light hover:border-accent-border hover:text-accent transition-colors" aria-label="Add to Google Calendar" onClick={(e) => { e.stopPropagation(); const url = buildGoogleCalendarItemUrl({ dateISO: selectedDate, item, baseLocationText }); window.open(url, '_blank', 'noopener,noreferrer'); }} title="Add to Google Calendar">+ GCal</button>
-                      <button type="button" className="border-none bg-transparent text-foreground-secondary text-base leading-none cursor-pointer hover:text-foreground disabled:opacity-35 disabled:cursor-not-allowed" aria-label="Remove from plan" onClick={(e) => { e.stopPropagation(); removePlanItem(item.id); }}>x</button>
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="text-[0.72rem] font-bold text-foreground-secondary tracking-wide pr-2">{formatMinuteLabel(item.startMinutes)} - {formatMinuteLabel(item.endMinutes)}</div>
+                      <div className="flex shrink-0 flex-col items-end gap-1 sm:flex-row sm:items-center">
+                        {hasCollision ? <AlertTriangle size={12} className="text-warning" aria-label="Time conflict" /> : null}
+                        <button type="button" className="px-1.5 py-0.5 rounded-none border border-border bg-bg-elevated text-foreground-secondary text-[0.65rem] font-semibold leading-tight cursor-pointer hover:bg-accent-light hover:border-accent-border hover:text-accent transition-colors" aria-label="Add to Google Calendar" onClick={(e) => { e.stopPropagation(); const url = buildGoogleCalendarItemUrl({ dateISO: selectedDate, item, baseLocationText }); window.open(url, '_blank', 'noopener,noreferrer'); }} title="Add to Google Calendar">+ GCal</button>
+                        <button type="button" className="border-none bg-transparent text-foreground-secondary text-base leading-none cursor-pointer hover:text-foreground disabled:opacity-35 disabled:cursor-not-allowed" aria-label="Remove from plan" onClick={(e) => { e.stopPropagation(); removePlanItem(item.id); }}>x</button>
+                      </div>
                     </div>
-                    <div className="text-[0.72rem] font-bold text-foreground-secondary tracking-wide">{formatMinuteLabel(item.startMinutes)} - {formatMinuteLabel(item.endMinutes)}</div>
                     <div className="mt-0.5 text-[0.82rem] font-bold text-foreground leading-tight break-words">{item.title}</div>
                     <div className="mt-0.5 text-[0.65rem] font-semibold uppercase tracking-wide text-accent">Personal</div>
                     {item.locationText ? <div className="mt-0.5 text-[0.72rem] text-foreground-secondary leading-tight break-words">{item.locationText}</div> : null}

@@ -12,7 +12,7 @@ import { getSafeExternalHref } from '@/lib/security';
 function EventsItinerarySkeleton() {
   const titleWidths = ['w-4/5', 'w-3/5', 'w-2/3', 'w-3/4'];
   return (
-    <div className="flex flex-col p-3 overflow-y-auto min-h-0 scrollbar-thin">
+    <div className="flex min-h-0 flex-col overflow-y-auto p-3 scrollbar-thin max-sm:max-h-[38vh]">
       {/* Header skeleton */}
       <div className="flex items-start justify-between gap-2 mb-2.5">
         <div>
@@ -55,7 +55,7 @@ export default function EventsItinerary() {
   }
 
   return (
-    <div className="flex flex-col p-3 overflow-y-auto min-h-0 scrollbar-thin">
+    <div className="flex min-h-0 flex-col overflow-y-auto p-3 scrollbar-thin max-sm:max-h-[38vh]">
       <div className="flex items-start justify-between gap-2 mb-2.5 flex-wrap">
         <div>
           <h2 className="m-0 text-base font-bold tracking-tight">Events {selectedDate ? `· ${formatDateDayMonth(selectedDate)}` : ''}</h2>
@@ -71,7 +71,7 @@ export default function EventsItinerary() {
             </ToggleGroup>
           </div>
         </div>
-        <div className="flex gap-1.5">
+        <div className="flex gap-1.5 max-sm:w-full max-sm:flex-wrap">
           <span className="inline-flex items-center px-2 py-0.5 rounded-none bg-bg-subtle text-muted text-[0.7rem] font-semibold whitespace-nowrap">{visibleEvents.length} showing</span>
           <span className="inline-flex items-center px-2 py-0.5 rounded-none bg-bg-subtle text-muted text-[0.7rem] font-semibold whitespace-nowrap">{travelReadyCount} travel</span>
         </div>

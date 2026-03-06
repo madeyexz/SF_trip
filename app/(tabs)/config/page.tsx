@@ -84,19 +84,19 @@ export default function ConfigPage() {
             {isActive ? 'active' : 'paused'}
           </Badge>
         </div>
-        <div className="flex items-center gap-1.5 mt-2 text-muted text-[0.7rem]">
+        <div className="mt-2 flex flex-wrap items-center gap-1.5 text-[0.7rem] text-muted">
           <span>{source.lastSyncedAt ? `Synced ${new Date(source.lastSyncedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', timeZone: 'America/Los_Angeles' })}` : 'Never synced'}</span>
           {source.lastError ? <span className="text-[#FF4444]">· {source.lastError}</span> : null}
           {source.readonly ? <span className="italic">· Read-only</span> : null}
         </div>
-        <div className="flex gap-1.5 mt-2">
-          <Button type="button" size="sm" variant="default" className="text-[0.7rem] min-h-[26px] px-2 py-0.5" disabled={isSyncingThis || isReadonly} onClick={() => { void handleSyncSource(source); }}>
+        <div className="mt-2 flex flex-wrap gap-1.5">
+          <Button type="button" size="sm" variant="default" className="min-h-[26px] px-2 py-0.5 text-[0.7rem]" disabled={isSyncingThis || isReadonly} onClick={() => { void handleSyncSource(source); }}>
             {isSyncingThis ? <><RefreshCw size={10} className="animate-spin" />Syncing...</> : 'Sync'}
           </Button>
-          <Button type="button" size="sm" variant="secondary" className="text-[0.7rem] min-h-[26px] px-2 py-0.5" disabled={isReadonly} onClick={() => { void handleToggleSourceStatus(source); }}>
+          <Button type="button" size="sm" variant="secondary" className="min-h-[26px] px-2 py-0.5 text-[0.7rem]" disabled={isReadonly} onClick={() => { void handleToggleSourceStatus(source); }}>
             {isActive ? 'Pause' : 'Resume'}
           </Button>
-          <Button type="button" size="sm" variant="danger" className="text-[0.7rem] min-h-[26px] px-2 py-0.5" disabled={isReadonly} onClick={() => { void handleDeleteSource(source); }}>
+          <Button type="button" size="sm" variant="danger" className="min-h-[26px] px-2 py-0.5 text-[0.7rem]" disabled={isReadonly} onClick={() => { void handleDeleteSource(source); }}>
             Remove
           </Button>
         </div>
@@ -105,18 +105,18 @@ export default function ConfigPage() {
   };
 
   return (
-    <section className="flex-1 min-h-0 overflow-y-auto p-8 max-sm:p-4 bg-bg">
+    <section className="flex-1 min-h-0 overflow-y-auto bg-bg p-4 sm:p-8">
       <div className="w-full mx-auto flex flex-col gap-5">
-        <div className="flex items-center justify-between gap-4">
+        <div className="flex items-center justify-between gap-4 max-sm:flex-col max-sm:items-start">
           <div>
             <h2 className="m-0 text-xl font-extrabold tracking-tight uppercase" style={{ fontFamily: "var(--font-space-grotesk, 'Space Grotesk'), sans-serif" }}>Account</h2>
             <p className="mt-0.5 text-muted text-[0.82rem]">Signed in with magic link authentication.</p>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 max-sm:w-full max-sm:flex-wrap">
             <Badge variant="default">
               {authLoading ? 'Loading...' : 'Personal'}
             </Badge>
-            <Button type="button" size="sm" variant="secondary" disabled={isSigningOut || authLoading} onClick={() => { void handleSignOut(); }}>
+            <Button type="button" size="sm" variant="secondary" className="max-sm:flex-1" disabled={isSigningOut || authLoading} onClick={() => { void handleSignOut(); }}>
               {isSigningOut ? 'Signing out...' : 'Sign out'}
             </Button>
           </div>
@@ -126,41 +126,41 @@ export default function ConfigPage() {
           <div className="text-sm font-semibold text-foreground">{profile?.email || 'No email returned'}</div>
         </Card>
 
-        <div className="flex items-center justify-between gap-4">
+        <div className="flex items-center justify-between gap-4 max-sm:flex-col max-sm:items-start">
           <div>
             <h2 className="m-0 text-xl font-extrabold tracking-tight uppercase" style={{ fontFamily: "var(--font-space-grotesk, 'Space Grotesk'), sans-serif" }}>Trip Config</h2>
             <p className="mt-0.5 text-muted text-[0.82rem]">Set your trip date range to populate the day planner.</p>
           </div>
         </div>
         <Card className="p-3">
-          <form className="flex items-center gap-2 max-sm:flex-col" onSubmit={onSaveDates}>
-            <label className="text-sm font-medium text-foreground-secondary shrink-0">Start</label>
+          <form className="flex items-center gap-2 max-sm:flex-col max-sm:items-stretch" onSubmit={onSaveDates}>
+            <label className="shrink-0 text-sm font-medium text-foreground-secondary">Start</label>
             <Input type="date" value={localTripStart} onChange={(event) => setLocalTripStart(event.target.value)} className="max-w-[180px] max-sm:max-w-none" />
-            <label className="text-sm font-medium text-foreground-secondary shrink-0">End</label>
+            <label className="shrink-0 text-sm font-medium text-foreground-secondary">End</label>
             <Input type="date" value={localTripEnd} onChange={(event) => setLocalTripEnd(event.target.value)} className="max-w-[180px] max-sm:max-w-none" />
-            <Button type="submit" size="sm" className="min-h-[36px] min-w-[80px] shrink-0" disabled={dateSaveState === 'saving'}>
+            <Button type="submit" size="sm" className="min-h-[36px] min-w-[80px] shrink-0 max-sm:w-full" disabled={dateSaveState === 'saving'}>
               {dateSaveState === 'saving' ? 'Saving...' : dateSaveState === 'saved' ? <><Check size={14} />Saved</> : 'Save'}
             </Button>
           </form>
         </Card>
 
-        <div className="flex items-center justify-between gap-4">
+        <div className="flex items-center justify-between gap-4 max-sm:flex-col max-sm:items-start">
           <div>
             <h2 className="m-0 text-xl font-extrabold tracking-tight uppercase" style={{ fontFamily: "var(--font-space-grotesk, 'Space Grotesk'), sans-serif" }}>Base Location</h2>
             <p className="mt-0.5 text-muted text-[0.82rem]">Your home base for travel time calculations and route planning.</p>
           </div>
         </div>
         <Card className="p-3">
-          <form className="flex items-center gap-2 max-sm:flex-col" onSubmit={onSaveLocation}>
-            <label className="text-sm font-medium text-foreground-secondary shrink-0">Address</label>
+          <form className="flex items-center gap-2 max-sm:flex-col max-sm:items-stretch" onSubmit={onSaveLocation}>
+            <label className="shrink-0 text-sm font-medium text-foreground-secondary">Address</label>
             <Input type="text" value={localBaseLocation} onChange={(event) => setLocalBaseLocation(event.target.value)} placeholder="e.g. 1100 California St, San Francisco, CA 94108, United States" className="max-sm:max-w-none" />
-            <Button type="submit" size="sm" className="min-h-[36px] min-w-[80px] shrink-0" disabled={locationSaveState === 'saving'}>
+            <Button type="submit" size="sm" className="min-h-[36px] min-w-[80px] shrink-0 max-sm:w-full" disabled={locationSaveState === 'saving'}>
               {locationSaveState === 'saving' ? 'Saving...' : locationSaveState === 'saved' ? <><Check size={14} />Saved</> : 'Save'}
             </Button>
           </form>
         </Card>
 
-        <div className="flex items-center justify-between gap-4">
+        <div className="flex items-center justify-between gap-4 max-sm:flex-col max-sm:items-start">
           <div>
             <h2 className="m-0 text-xl font-extrabold tracking-tight uppercase" style={{ fontFamily: "var(--font-space-grotesk, 'Space Grotesk'), sans-serif" }}>Shared Recommendations</h2>
             <p className="mt-0.5 text-muted text-[0.82rem]">Show or hide the shared Winston map recommendations for your account.</p>
@@ -176,11 +176,12 @@ export default function ConfigPage() {
               </a>
             </p>
           </div>
-          <div className="flex items-center gap-1.5 shrink-0">
+          <div className="flex items-center gap-1.5 shrink-0 max-sm:w-full">
             <Button
               type="button"
               size="sm"
               variant={showSharedPlaceRecommendations ? 'default' : 'secondary'}
+              className="max-sm:flex-1"
               onClick={() => { void handleSaveSharedPlaceRecommendations(true); }}
             >
               On
@@ -189,6 +190,7 @@ export default function ConfigPage() {
               type="button"
               size="sm"
               variant={!showSharedPlaceRecommendations ? 'danger' : 'secondary'}
+              className="max-sm:flex-1"
               onClick={() => { void handleSaveSharedPlaceRecommendations(false); }}
             >
               Off
@@ -196,16 +198,16 @@ export default function ConfigPage() {
           </div>
         </Card>
 
-        <div className="flex items-center justify-between gap-4">
+        <div className="flex items-center justify-between gap-4 max-sm:flex-col max-sm:items-start">
           <div>
             <h2 className="m-0 text-xl font-extrabold tracking-tight uppercase" style={{ fontFamily: "var(--font-space-grotesk, 'Space Grotesk'), sans-serif" }}>Sources</h2>
             <p className="mt-0.5 text-muted text-[0.82rem]">Manage personal event and spot feeds for this trip plan.</p>
           </div>
         </div>
 
-        <form className="flex items-center gap-2 p-2.5 px-3 bg-card border border-border max-sm:flex-col" onSubmit={handleCreateSource}>
+        <form className="flex items-center gap-2 border border-border bg-card p-2.5 px-3 max-sm:flex-col max-sm:items-stretch" onSubmit={handleCreateSource}>
           <Select value={newSourceType} onValueChange={setNewSourceType}>
-            <SelectTrigger className="min-h-[36px] w-[120px] shrink-0">
+            <SelectTrigger className="min-h-[36px] w-[120px] shrink-0 max-sm:w-full">
               <SelectValue placeholder="Type" />
             </SelectTrigger>
             <SelectContent>
@@ -220,7 +222,7 @@ export default function ConfigPage() {
           </Button>
         </form>
 
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '20px' }}>
+        <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
           {[
             { key: 'event', title: 'Events', dotColor: 'bg-accent' },
             { key: 'spot', title: 'Spots', dotColor: 'bg-accent' }

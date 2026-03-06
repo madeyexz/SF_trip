@@ -34,15 +34,45 @@ export default function AppShell({ children }) {
   const syncLabel = isSyncing ? 'Syncing...' : 'Sync';
 
   return (
-    <main className="min-h-dvh h-dvh flex flex-col w-full overflow-hidden">
-      <header className="flex items-center gap-3 px-5 h-[52px] min-h-[52px] border-b border-border bg-[#080808] relative z-30 topbar-responsive">
+    <main className="flex min-h-dvh h-dvh w-full flex-col overflow-hidden">
+      <header className="relative z-30 flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-border bg-[#080808] px-4 py-2 topbar-responsive sm:h-[52px] sm:min-h-[52px] sm:flex-nowrap sm:px-5 sm:py-0">
         <div className="flex items-center gap-2 shrink-0">
           <MapPin size={14} className="text-accent" />
           <h1 className="m-0 text-[13px] font-semibold uppercase tracking-[1px] text-foreground">
             SF Trip Planner
           </h1>
         </div>
-        <nav className="flex items-center gap-0.5 mx-auto overflow-x-auto scrollbar-none topbar-nav-responsive" aria-label="App navigator">
+        <div className="ml-auto flex shrink-0 gap-1.5 topbar-actions-responsive max-sm:order-2">
+          <Button
+            id="sync-button"
+            type="button"
+            size="sm"
+            onClick={handleSync}
+            disabled={isSyncing}
+            title="Sync events and spots"
+            className="max-[420px]:px-2.5"
+          >
+            <RefreshCw size={14} className={isSyncing ? 'animate-spin' : ''} />
+            <span className="max-[420px]:hidden">{syncLabel}</span>
+          </Button>
+          {showMap ? (
+            <Button
+              variant="secondary"
+              id="use-device-location"
+              type="button"
+              size="sm"
+              onClick={handleDeviceLocation}
+              className="max-[420px]:px-2.5"
+            >
+              <Navigation size={14} />
+              <span className="max-[420px]:hidden">My Location</span>
+            </Button>
+          ) : null}
+        </div>
+        <nav
+          className="order-3 flex basis-full items-center gap-0.5 overflow-x-auto border-t border-border pt-2 scrollbar-none topbar-nav-responsive sm:order-none sm:mx-auto sm:basis-auto sm:border-t-0 sm:pt-0"
+          aria-label="App navigator"
+        >
           {NAV_ITEMS.map(({ id, href, icon: Icon, label }) => (
             <button
               key={id}
@@ -55,25 +85,6 @@ export default function AppShell({ children }) {
             </button>
           ))}
         </nav>
-        <div className="flex gap-1.5 shrink-0 topbar-actions-responsive">
-          <Button
-            id="sync-button"
-            type="button"
-            size="sm"
-            onClick={handleSync}
-            disabled={isSyncing}
-            title="Sync events and spots"
-          >
-            <RefreshCw size={14} className={isSyncing ? 'animate-spin' : ''} />
-            {syncLabel}
-          </Button>
-          {showMap ? (
-            <Button variant="secondary" id="use-device-location" type="button" size="sm" onClick={handleDeviceLocation}>
-              <Navigation size={14} />
-              My Location
-            </Button>
-          ) : null}
-        </div>
       </header>
       <div className={`min-h-0 flex-1 grid items-stretch ${hasMapSidebar ? 'layout-sidebar grid-cols-[minmax(0,3fr)_5fr]' : showMap ? 'grid-cols-1' : ''}`} style={showMap ? undefined : { display: 'contents' }}>
         {showMap ? <div className="map-panel-shell min-h-0"><MapPanel /></div> : null}
