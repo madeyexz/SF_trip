@@ -56,9 +56,8 @@ export function normalizeDateKey(value) {
 export function daysFromNow(isoDate) {
   const key = normalizeDateKey(isoDate);
   if (!key) return 0;
-  const target = new Date(`${key}T00:00:00`);
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
+  const target = new Date(`${key}T00:00:00Z`);
+  const today = new Date(`${toISODate(new Date())}T00:00:00Z`);
   return Math.round((target.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
 }
 
@@ -72,6 +71,11 @@ export function formatSourceLabel(sourceUrl) {
 }
 
 export function toISODate(dateInput) {
+  // A calendar date is not an instant. Parsing YYYY-MM-DD as an instant
+  // shifts it to the preceding day in browsers west of UTC.
+  if (typeof dateInput === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(dateInput)) {
+    return dateInput;
+  }
   const date = new Date(dateInput);
   if (Number.isNaN(date.getTime())) return '';
   return [
@@ -87,23 +91,22 @@ export function toMonthISO(isoDate) {
 }
 
 export function addMonthsToMonthISO(monthISO, offset) {
-  const parsed = new Date(`${monthISO}T00:00:00`);
+  const parsed = new Date(`${toMonthISO(monthISO)}T00:00:00Z`);
   if (Number.isNaN(parsed.getTime())) return toMonthISO(toISODate(new Date()));
-  parsed.setMonth(parsed.getMonth() + offset);
-  parsed.setDate(1);
-  return toISODate(parsed);
+  parsed.setUTCMonth(parsed.getUTCMonth() + offset);
+  return parsed.toISOString().slice(0, 10);
 }
 
 export function buildCalendarGridDates(anchorISO) {
-  const anchor = new Date(`${toMonthISO(anchorISO)}T00:00:00`);
+  const anchor = new Date(`${toMonthISO(anchorISO)}T00:00:00Z`);
   if (Number.isNaN(anchor.getTime())) return [];
   const start = new Date(anchor);
-  start.setDate(1 - start.getDay());
+  start.setUTCDate(1 - start.getUTCDay());
   const dates = [];
   for (let index = 0; index < 42; index += 1) {
     const date = new Date(start);
-    date.setDate(start.getDate() + index);
-    dates.push(toISODate(date));
+    date.setUTCDate(start.getUTCDate() + index);
+    dates.push(date.toISOString().slice(0, 10));
   }
   return dates;
 }
@@ -111,41 +114,41 @@ export function buildCalendarGridDates(anchorISO) {
 export function formatDate(isoDate) {
   const normalizedDateISO = normalizeDateKey(isoDate);
   if (!normalizedDateISO) return isoDate;
-  const parsedDate = new Date(`${normalizedDateISO}T00:00:00`);
+  const parsedDate = new Date(`${normalizedDateISO}T00:00:00Z`);
   if (Number.isNaN(parsedDate.getTime())) return isoDate;
-  return parsedDate.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric', timeZone: 'America/Los_Angeles' });
+  return parsedDate.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' });
 }
 
 export function formatDateWeekday(isoDate) {
   const normalizedDateISO = normalizeDateKey(isoDate);
   if (!normalizedDateISO) return isoDate;
-  const parsedDate = new Date(`${normalizedDateISO}T00:00:00`);
+  const parsedDate = new Date(`${normalizedDateISO}T00:00:00Z`);
   if (Number.isNaN(parsedDate.getTime())) return isoDate;
-  return parsedDate.toLocaleDateString(undefined, { weekday: 'short', timeZone: 'America/Los_Angeles' });
+  return parsedDate.toLocaleDateString(undefined, { weekday: 'short', timeZone: 'UTC' });
 }
 
 export function formatDateDayMonth(isoDate) {
   const normalizedDateISO = normalizeDateKey(isoDate);
   if (!normalizedDateISO) return isoDate;
-  const parsedDate = new Date(`${normalizedDateISO}T00:00:00`);
+  const parsedDate = new Date(`${normalizedDateISO}T00:00:00Z`);
   if (Number.isNaN(parsedDate.getTime())) return isoDate;
-  return parsedDate.toLocaleDateString(undefined, { month: 'short', day: 'numeric', timeZone: 'America/Los_Angeles' });
+  return parsedDate.toLocaleDateString(undefined, { month: 'short', day: 'numeric', timeZone: 'UTC' });
 }
 
 export function formatMonthYear(isoDate) {
   const normalizedDateISO = normalizeDateKey(isoDate);
   if (!normalizedDateISO) return isoDate;
-  const parsedDate = new Date(`${normalizedDateISO}T00:00:00`);
+  const parsedDate = new Date(`${normalizedDateISO}T00:00:00Z`);
   if (Number.isNaN(parsedDate.getTime())) return isoDate;
-  return parsedDate.toLocaleDateString(undefined, { month: 'long', year: 'numeric', timeZone: 'America/Los_Angeles' });
+  return parsedDate.toLocaleDateString(undefined, { month: 'long', year: 'numeric', timeZone: 'UTC' });
 }
 
 export function formatDayOfMonth(isoDate) {
   const normalizedDateISO = normalizeDateKey(isoDate);
   if (!normalizedDateISO) return isoDate;
-  const parsedDate = new Date(`${normalizedDateISO}T00:00:00`);
+  const parsedDate = new Date(`${normalizedDateISO}T00:00:00Z`);
   if (Number.isNaN(parsedDate.getTime())) return isoDate;
-  return new Intl.DateTimeFormat('en-US', { day: 'numeric', timeZone: 'America/Los_Angeles' }).format(parsedDate);
+  return new Intl.DateTimeFormat('en-US', { day: 'numeric', timeZone: 'UTC' }).format(parsedDate);
 }
 
 export function formatDistance(totalMeters) {

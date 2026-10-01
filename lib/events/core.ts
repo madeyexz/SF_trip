@@ -7,6 +7,7 @@ import { getScopedConvexClient } from '../convex-client-context.ts';
 import { mapAsyncWithConcurrency } from '../async-map.ts';
 import { validateIngestionSourceUrlForFetch } from '../security-server.ts';
 import { loadCustomSpotsPayload } from '../custom-spots.ts';
+import { getMapsGeocodingKey } from '../maps-config.ts';
 
 const DOC_LOCATION_FILE = path.join(process.cwd(), 'docs', 'my_location.md');
 const DATA_DIR = path.join(process.cwd(), 'data');
@@ -264,7 +265,6 @@ function markRequiredSourcesReadonly(sources) {
 
     return {
       ...source,
-      status: 'active',
       readonly: true
     };
   });
@@ -497,6 +497,10 @@ export async function loadEventsPayload() {
     };
   }
 
+  if (getScopedConvexClient()) {
+    throw new Error('Authenticated event data is unavailable. Shared cache fallback is disabled.');
+  }
+
   try {
     const raw = await readFile(EVENTS_CACHE_FILE, 'utf-8');
     const payload = JSON.parse(raw);
@@ -616,12 +620,46 @@ export async function saveCachedRoutePayload(cacheKey, routePayloadInput) {
   }
 }
 
+export function formatEventDay(startDate, allDay = false) {
+  if (!startDate || Number.isNaN(startDate.getTime())) return '';
+  if (allDay) return startDate.toISOString().slice(0, 10);
+  const parts = new Intl.DateTimeFormat('en-US', {
+    year: 'numeric', month: '2-digit', day: '2-digit', timeZone: 'America/Los_Angeles'
+  }).formatToParts(startDate);
+  const value = (type) => parts.find((part) => part.type === type)?.value;
+  return `${value('year')}-${value('month')}-${value('day')}`;
+}
+
+export function mergeSyncEvents(previousEvents, fetchedEvents, reconcileSourceUrls = []) {
+  const snapshots = new Set(reconcileSourceUrls);
+  // Failed, paused and incremental feeds keep their previously saved events.
+  const preserved = previousEvents.filter((event) => !snapshots.has(event.sourceUrl));
+  const identity = (event) => event.eventUrl || `${event.sourceUrl || event.sourceId || ''}:${event.id}`;
+  const merged = new Map(preserved.map((event) => [identity(event), event]));
+  for (const event of fetchedEvents) merged.set(identity(event), event);
+  return dedupeAndSortEvents([...merged.values()]);
+}
+
+async function loadExistingEventsForSync() {
+  const client = createConvexClient();
+  if (client) {
+    const events = await client.query('events:listEvents', {});
+    if (!Array.isArray(events)) throw new Error('Unable to load saved events safely. Sync cancelled.');
+    return events;
+  }
+  try {
+    const cache = JSON.parse(await readFile(EVENTS_CACHE_FILE, 'utf-8'));
+    return Array.isArray(cache.events) ? cache.events : [];
+  } catch { return []; }
+}
+
 export async function syncEvents() {
   const nowIso = new Date().toISOString();
   const sourceSnapshot = await getSourceSnapshotForSync();
   const tripConfig = await loadTripConfig();
   const customSpots = await loadCustomSpotsPayload();
   const rssFallbackStateBySourceUrl = await loadRssSeenBySourceUrlFromEventsCache();
+  const previousEvents = await loadExistingEventsForSync();
   const eventSyncResult = await syncEventsFromSources({
     eventSources: sourceSnapshot.eventSources,
     rssFallbackStateBySourceUrl
@@ -630,8 +668,9 @@ export async function syncEvents() {
     spotSources: sourceSnapshot.spotSources
   });
   const staticPlaces = await ensureStaticPlacesCoordinates(await loadStaticPlaces());
+  const previousSpots = await loadSpotsFromConvex();
   const fallbackPlaces = mergeStaticRegionPlaces(
-    spotSyncResult.places.length > 0 ? spotSyncResult.places : staticPlaces,
+    spotSyncResult.places.length > 0 ? spotSyncResult.places : previousSpots?.spots?.length ? previousSpots.spots : staticPlaces,
     staticPlaces
   );
   const placeRecommendations = await loadPlaceRecommendationsFromConvex();
@@ -641,16 +680,17 @@ export async function syncEvents() {
   const responsePlaces = mergeCustomSpotsIntoPlaces(mergedPlaces, customSpots);
   const allErrors = [...eventSyncResult.errors, ...spotSyncResult.errors];
 
+  const mergedEvents = mergeSyncEvents(previousEvents, eventSyncResult.events, eventSyncResult.reconcileSourceUrls);
   const cachePayload = {
     meta: {
       syncedAt: nowIso,
       calendars: eventSyncResult.sourceUrls,
-      eventCount: eventSyncResult.events.length,
+      eventCount: mergedEvents.length,
       spotCount: mergedPlaces.length,
       ingestionErrors: allErrors,
       rssSeenBySourceUrl: eventSyncResult.rssStateBySourceUrl
     },
-    events: eventSyncResult.events,
+    events: mergedEvents,
     places: mergedPlaces
   };
   const payload = {
@@ -662,26 +702,31 @@ export async function syncEvents() {
     places: responsePlaces
   };
 
-  await writeTextFileBestEffort(EVENTS_CACHE_FILE, JSON.stringify(cachePayload, null, 2), {
-    ensureDataDir: true,
-    label: 'events cache'
+  // A source is marked seen only after its extracted events are committed.
+  // Never report a successful sync after a rejected durable database mutation.
+  await saveEventsToConvex({
+    ...cachePayload,
+    events: eventSyncResult.events,
+    reconcileSourceUrls: eventSyncResult.reconcileSourceUrls
   });
-  await Promise.allSettled([
-    saveEventsToConvex(payload),
-    saveSpotsToConvex({
-      spots: fallbackPlaces,
-      syncedAt: nowIso,
-      sourceUrls: spotSyncResult.sourceUrls
-    }),
-    saveSourceSyncStatus(
-      sourceSnapshot.eventSources,
-      eventSyncResult.errors,
-      nowIso,
-      eventSyncResult.rssStateBySourceUrl
-    ),
-    saveSourceSyncStatus(sourceSnapshot.spotSources, spotSyncResult.errors, nowIso, {}),
-    saveRssSeenBySourceUrlToEventsCache(eventSyncResult.rssStateBySourceUrl)
-  ]);
+  const savedSpots = previousSpots?.spots?.length ? previousSpots.spots : fallbackPlaces;
+  await saveSpotsToConvex({
+    spots: savedSpots,
+    syncedAt: nowIso,
+    sourceUrls: spotSyncResult.sourceUrls
+  });
+  const cacheWritten = getScopedConvexClient() ? false : await writeTextFileBestEffort(
+    EVENTS_CACHE_FILE, JSON.stringify(cachePayload, null, 2), {
+      ensureDataDir: true,
+      label: 'events cache'
+    }
+  );
+  if (!createConvexClient() && !cacheWritten) {
+    throw new Error('Events could not be saved. Configure durable Convex storage before syncing.');
+  }
+  await saveSourceSyncStatus(sourceSnapshot.eventSources, eventSyncResult.errors, nowIso,
+    eventSyncResult.rssStateBySourceUrl);
+  await saveSourceSyncStatus(sourceSnapshot.spotSources, spotSyncResult.errors, nowIso, {});
 
   return payload;
 }
@@ -695,26 +740,40 @@ export async function syncSingleSource(sourceId) {
     throw new Error('Source not found.');
   }
 
+  if (source.status !== 'active') {
+    throw new Error('This source is paused. Activate it before syncing.');
+  }
   const nowIso = new Date().toISOString();
 
   if (source.sourceType === 'event') {
+    const previousEvents = await loadExistingEventsForSync();
     const rssFallbackStateBySourceUrl = await loadRssSeenBySourceUrlFromEventsCache();
-    const result = await syncEventsFromSources({
-      eventSources: [source],
-      rssFallbackStateBySourceUrl
-    });
-    await Promise.allSettled([
-      saveSourceSyncStatus([source], result.errors, nowIso, result.rssStateBySourceUrl),
-      saveRssSeenBySourceUrlToEventsCache(result.rssStateBySourceUrl)
-    ]);
+    const result = await syncEventsFromSources({ eventSources: [source], rssFallbackStateBySourceUrl });
+    if (result.errors.length) {
+      await saveSourceSyncStatus([source], result.errors, nowIso, {});
+      return { syncedAt: nowIso, events: 0, errors: result.errors };
+    }
+    const events = mergeSyncEvents(previousEvents, result.events, []);
+    const cachePayload = {
+      meta: { syncedAt: nowIso, calendars: allSources.filter((s) => s.sourceType === 'event').map((s) => s.url),
+        eventCount: events.length, rssSeenBySourceUrl: { ...rssFallbackStateBySourceUrl, ...result.rssStateBySourceUrl } },
+      events
+    };
+    await saveEventsToConvex({ ...cachePayload, events: result.events, reconcileSourceUrls: [] });
+    if (!getScopedConvexClient()) {
+      let oldCache = {};
+      try { oldCache = JSON.parse(await readFile(EVENTS_CACHE_FILE, 'utf-8')); } catch { /* no cache yet */ }
+      const written = await writeTextFileBestEffort(EVENTS_CACHE_FILE,
+        JSON.stringify({ ...oldCache, ...cachePayload }, null, 2), { ensureDataDir: true, label: 'events cache' });
+      if (!createConvexClient() && !written) throw new Error('Events could not be saved. Configure durable Convex storage.');
+    }
+    await saveSourceSyncStatus([source], result.errors, nowIso, result.rssStateBySourceUrl);
     return { syncedAt: nowIso, events: result.events.length, errors: result.errors };
   }
-
-  const result = await syncSpotsFromSources({
-    spotSources: [source]
-  });
+  const result = await syncSpotsFromSources({ spotSources: [source] });
   await saveSourceSyncStatus([source], result.errors, nowIso, {});
   return { syncedAt: nowIso, spots: result.places.length, errors: result.errors };
+
 }
 
 export async function backfillConvexCoordinates({ dryRun = false, client: providedClient = null } = {}) {
@@ -846,10 +905,11 @@ async function loadEventsFromConvex(calendars) {
     ]);
 
     if (!Array.isArray(events)) {
+      if (getScopedConvexClient()) throw new Error('Invalid authenticated events response.');
       return null;
     }
 
-    if (!syncMeta && events.length === 0) {
+    if (!getScopedConvexClient() && !syncMeta && events.length === 0) {
       return null;
     }
 
@@ -863,6 +923,7 @@ async function loadEventsFromConvex(calendars) {
       events
     };
   } catch (error) {
+    if (getScopedConvexClient()) throw error;
     console.error('Convex read failed, falling back to file cache.', error);
     return null;
   }
@@ -879,16 +940,13 @@ async function saveEventsToConvex(payload) {
     ? payload.events.map((event) => sanitizeEventForConvex(event))
     : [];
 
-  try {
-    await client.mutation('events:upsertEvents', {
-      events: sanitizedEvents,
-      syncedAt: payload.meta.syncedAt,
-      calendars: payload.meta.calendars,
-      missedSyncThreshold: MISSED_SYNC_THRESHOLD
-    });
-  } catch (error) {
-    console.error('Convex write failed; local cache is still updated.', error);
-  }
+  await client.mutation('events:upsertEvents', {
+    events: sanitizedEvents,
+    syncedAt: payload.meta.syncedAt,
+    calendars: payload.meta.calendars,
+    successfulSourceUrls: payload.reconcileSourceUrls || [],
+    missedSyncThreshold: MISSED_SYNC_THRESHOLD
+  });
 }
 
 async function loadSourcesFromConvex() {
@@ -902,6 +960,7 @@ async function loadSourcesFromConvex() {
     const rows = await client.query('sources:listSources', {
     });
     if (!Array.isArray(rows)) {
+      if (getScopedConvexClient()) throw new Error('Invalid authenticated sources response.');
       return [];
     }
 
@@ -909,6 +968,7 @@ async function loadSourcesFromConvex() {
       .map((row) => normalizeSourceRecord(row))
       .filter(Boolean);
   } catch (error) {
+    if (getScopedConvexClient()) throw error;
     console.error('Convex source read failed, falling back to env sources.', error);
     return null;
   }
@@ -928,10 +988,11 @@ async function loadSpotsFromConvex() {
     ]);
 
     if (!Array.isArray(spots)) {
+      if (getScopedConvexClient()) throw new Error('Invalid authenticated spots response.');
       return null;
     }
 
-    if (!syncMeta && spots.length === 0) {
+    if (!getScopedConvexClient() && !syncMeta && spots.length === 0) {
       return null;
     }
 
@@ -945,6 +1006,7 @@ async function loadSpotsFromConvex() {
       spots
     };
   } catch (error) {
+    if (getScopedConvexClient()) throw error;
     console.error('Convex spots read failed, falling back to file cache.', error);
     return null;
   }
@@ -977,16 +1039,12 @@ async function saveSpotsToConvex({ spots, syncedAt, sourceUrls }) {
     ? spots.map((spot) => sanitizeSpotForConvex(spot))
     : [];
 
-  try {
-    await client.mutation('spots:upsertSpots', {
-      spots: sanitizedSpots,
-      syncedAt,
-      sourceUrls,
-      missedSyncThreshold: MISSED_SYNC_THRESHOLD
-    });
-  } catch (error) {
-    console.error('Convex spots write failed; local cache is still updated.', error);
-  }
+  await client.mutation('spots:upsertSpots', {
+    spots: sanitizedSpots,
+    syncedAt,
+    sourceUrls,
+    missedSyncThreshold: MISSED_SYNC_THRESHOLD
+  });
 }
 
 async function savePlaceRecommendationCoordinatesToConvex(recommendationsInput) {
@@ -1337,6 +1395,8 @@ function shouldSyncRssItem(item, rssState) {
 }
 
 async function loadRssSeenBySourceUrlFromEventsCache() {
+  // Authenticated RSS progress belongs to the user's source record, never the shared disk cache.
+  if (getScopedConvexClient()) return {};
   try {
     const raw = await readFile(EVENTS_CACHE_FILE, 'utf-8');
     const payload = JSON.parse(raw);
@@ -1361,58 +1421,6 @@ async function loadRssSeenBySourceUrlFromEventsCache() {
   }
 }
 
-async function saveRssSeenBySourceUrlToEventsCache(rssStateBySourceUrl) {
-  const normalizedBySource = {};
-  for (const [sourceUrl, state] of Object.entries(rssStateBySourceUrl || {})) {
-    const sourceKey = buildRssSourceStateKey(sourceUrl);
-    const normalizedState = parseRssSeenStateObject(state);
-    if (!sourceKey || Object.keys(normalizedState).length === 0) {
-      continue;
-    }
-    normalizedBySource[sourceKey] = normalizedState;
-  }
-
-  if (Object.keys(normalizedBySource).length === 0) {
-    return;
-  }
-
-  let payload = {
-    meta: {},
-    events: [],
-    places: []
-  };
-
-  try {
-    const raw = await readFile(EVENTS_CACHE_FILE, 'utf-8');
-    const parsed = JSON.parse(raw);
-    payload = {
-      ...payload,
-      ...(parsed && typeof parsed === 'object' ? parsed : {})
-    };
-  } catch {
-    // keep default payload
-  }
-
-  payload.meta = {
-    ...(payload.meta && typeof payload.meta === 'object' ? payload.meta : {}),
-    rssSeenBySourceUrl: {
-      ...(
-        payload.meta &&
-        typeof payload.meta.rssSeenBySourceUrl === 'object' &&
-        !Array.isArray(payload.meta.rssSeenBySourceUrl)
-          ? payload.meta.rssSeenBySourceUrl
-          : {}
-      ),
-      ...normalizedBySource
-    }
-  };
-
-  await writeTextFileBestEffort(EVENTS_CACHE_FILE, JSON.stringify(payload, null, 2), {
-    ensureDataDir: true,
-    label: 'events cache'
-  });
-}
-
 async function getSourceSnapshotForSync() {
   const convexSources = appendMissingRequiredDefaultSources(await loadSourcesFromConvex());
   const eventSourcesFromConvex = getActiveSourcesByType(convexSources, 'event');
@@ -1435,6 +1443,7 @@ async function syncEventsFromSources({ eventSources, rssFallbackStateBySourceUrl
   const errors = [];
   const events = [];
   const rssStateBySourceUrl = {};
+  const reconcileSourceUrls = [];
 
   for (const source of eventSources) {
     const sourceValidation = await validateIngestionSourceUrlForFetch(source?.url);
@@ -1465,7 +1474,10 @@ async function syncEventsFromSources({ eventSources, rssFallbackStateBySourceUrl
         continue;
       }
 
-      const parsed = await ical.async.fromURL(source.url);
+      const parsed = await ical.async.fromURL(source.url, { signal: AbortSignal.timeout(15000), redirect: 'error' });
+      if (parsed?.vcalendar?.type !== 'VCALENDAR' || parsed.vcalendar.version !== '2.0') {
+        throw new Error('Invalid iCal feed: expected a complete VERSION:2.0 VCALENDAR.');
+      }
 
       for (const [, entry] of Object.entries(parsed)) {
         if (entry.type !== 'VEVENT') continue;
@@ -1474,16 +1486,16 @@ async function syncEventsFromSources({ eventSources, rssFallbackStateBySourceUrl
         if (!name) continue;
 
         const startDate = entry.start ? new Date(entry.start) : null;
-        const startDateISO = startDate ? startDate.toISOString().slice(0, 10) : '';
+        const allDay = entry.datetype === 'date' || entry.start?.dateOnly === true;
+        const startDateISO = formatEventDay(startDate, allDay);
         const startDateTimeText = startDate
           ? startDate.toLocaleDateString('en-US', {
               weekday: 'long',
               year: 'numeric',
               month: 'long',
               day: 'numeric',
-              hour: 'numeric',
-              minute: '2-digit',
-              timeZone: 'America/Los_Angeles'
+              ...(allDay ? {} : { hour: 'numeric', minute: '2-digit' }),
+              timeZone: allDay ? 'UTC' : 'America/Los_Angeles'
             })
           : '';
 
@@ -1513,6 +1525,7 @@ async function syncEventsFromSources({ eventSources, rssFallbackStateBySourceUrl
           confidence: 1
         });
       }
+      reconcileSourceUrls.push(source.url);
     } catch (error) {
       errors.push(createIngestionError({
         sourceType: 'event',
@@ -1531,7 +1544,8 @@ async function syncEventsFromSources({ eventSources, rssFallbackStateBySourceUrl
     events: withCoordinates,
     sourceUrls: eventSources.map((source) => source.url),
     errors,
-    rssStateBySourceUrl
+    rssStateBySourceUrl,
+    reconcileSourceUrls
   };
 }
 
@@ -1539,7 +1553,10 @@ async function syncSpotsFromSources({ spotSources }) {
   return {
     places: [],
     sourceUrls: spotSources.map((source) => source.url),
-    errors: []
+    errors: spotSources.map((source) => createIngestionError({
+      sourceType: 'spot', sourceId: source.id, sourceUrl: source.url, stage: 'unsupported',
+      message: 'Automatic spot-source import is not supported yet. Add places manually with Add Spot.'
+    }))
   };
 }
 
@@ -1567,6 +1584,8 @@ async function syncEventsFromRssSource({ source, rssState = {} }) {
   // Firecrawl/RSS disabled by default.
   // Set ENABLE_FIRECRAWL=true to re-enable this pipeline.
   if (!firecrawlEnabled) {
+    errors.push(createIngestionError({ sourceType: 'event', sourceId: source.id, sourceUrl: source.url,
+      stage: 'disabled', message: 'RSS extraction is disabled. Enable ENABLE_FIRECRAWL and configure FIRECRAWL_API_KEY to import newsletters.' }));
     return {
       events: [],
       errors,
@@ -1587,7 +1606,7 @@ async function syncEventsFromRssSource({ source, rssState = {} }) {
     return { events: [], errors, rssState: nextRssState };
   }
 
-  const response = await fetch(source.url, { cache: 'no-store' });
+  const response = await fetch(source.url, { cache: 'no-store', signal: AbortSignal.timeout(15000), redirect: 'error' });
   if (!response.ok) {
     throw new Error(`RSS fetch failed (${response.status}).`);
   }
@@ -1786,7 +1805,10 @@ async function extractEventsFromNewsletterPost(postUrl, firecrawlApiKey) {
   };
 
   const extractResponse = await callFirecrawl('/v1/extract', payload, firecrawlApiKey);
-  return Array.isArray(extractResponse?.data?.events) ? extractResponse.data.events : [];
+  if (!Array.isArray(extractResponse?.data?.events)) {
+    throw new Error('RSS extraction returned no valid event list. The item remains pending for retry.');
+  }
+  return extractResponse.data.events;
 }
 
 async function callFirecrawl(endpoint, payload, apiKey) {
@@ -1801,8 +1823,7 @@ async function callFirecrawl(endpoint, payload, apiKey) {
   });
 
   if (!response.ok) {
-    const text = await response.text();
-    throw new Error(`Firecrawl request failed (${response.status}): ${text}`);
+    throw new Error(`Firecrawl request failed (${response.status}).`);
   }
 
   const jsonPayload = await response.json();
@@ -2394,7 +2415,7 @@ async function saveSourceSyncStatus(sources, errors, syncedAt, rssStateBySourceU
       return client.mutation('sources:updateSource', patch);
     });
 
-  await Promise.allSettled(updateTasks);
+  await Promise.all(updateTasks);
 }
 
 function createIngestionError({ sourceType, sourceId, sourceUrl, eventUrl, stage, message }) {
@@ -2616,12 +2637,7 @@ async function geocodeAddressWithCache(addressText) {
 }
 
 function getGoogleGeocodingKey() {
-  return (
-    process.env.GOOGLE_MAPS_GEOCODING_KEY ||
-    process.env.GOOGLE_MAPS_SERVER_KEY ||
-    process.env.GOOGLE_MAPS_BROWSER_KEY ||
-    ''
-  );
+  return getMapsGeocodingKey();
 }
 
 async function geocodeAddressViaGoogle(addressText, apiKey) {
@@ -2827,10 +2843,11 @@ function dedupeAndSortEvents(events) {
   const bestByUrl = new Map();
 
   for (const event of events) {
-    const existing = bestByUrl.get(event.eventUrl);
+    const key = event.eventUrl || `${event.sourceUrl || event.sourceId || ''}:${event.id}`;
+    const existing = bestByUrl.get(key);
 
     if (!existing || scoreEvent(event) > scoreEvent(existing)) {
-      bestByUrl.set(event.eventUrl, event);
+      bestByUrl.set(key, event);
     }
   }
 

@@ -1,5 +1,3 @@
-import { normalizeDateKey } from './helpers.ts';
-
 export const MINUTES_IN_DAY = 24 * 60;
 export const MIN_PLAN_BLOCK_MINUTES = 30;
 
@@ -25,8 +23,23 @@ export function createPlannerItemId() {
   return `plan-${Math.random().toString(36).slice(2, 10)}`;
 }
 
-export function normalizePlannerDateISO(value: unknown) {
-  return normalizeDateKey(value);
+export function normalizePlannerDateISO(value: unknown): string {
+  // Keep planner normalization dependency-free for Convex's strict runtime.
+  // Preserve the existing date-key contract, including literal ISO date prefixes.
+  const text = String(value || '').trim();
+  if (!text) return '';
+
+  const dateMatch = text.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (dateMatch) return `${dateMatch[1]}-${dateMatch[2]}-${dateMatch[3]}`;
+
+  const parsedDate = new Date(text);
+  if (Number.isNaN(parsedDate.getTime())) return '';
+
+  return [
+    parsedDate.getFullYear(),
+    String(parsedDate.getMonth() + 1).padStart(2, '0'),
+    String(parsedDate.getDate()).padStart(2, '0')
+  ].join('-');
 }
 
 export function clampPlannerMinutes(value: unknown, min: number, max: number) {

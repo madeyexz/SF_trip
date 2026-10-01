@@ -1,6 +1,7 @@
 import { mutation, query } from './_generated/server';
 import { v } from 'convex/values';
 import { requireAuthenticatedUserId } from './authz';
+import { listImportedRecordsForUser, getImportSyncMetaForUser, reconcileImportedRecordsForUser, saveImportSyncMetaForUser } from './importedRecords';
 
 const eventValidator = v.object({
   id: v.string(),
@@ -59,8 +60,8 @@ export const listEvents = query({
   args: {},
   returns: v.array(eventRecordValidator),
   handler: async (ctx) => {
-    await requireAuthenticatedUserId(ctx);
-    const events = await ctx.db.query('events').collect();
+    const userId = await requireAuthenticatedUserId(ctx);
+    const events = await listImportedRecordsForUser(ctx, 'events', userId);
 
     return events
       .filter((event) => !event.isDeleted)
@@ -94,15 +95,8 @@ export const getSyncMeta = query({
   args: {},
   returns: v.union(v.null(), syncMetaValidator),
   handler: async (ctx) => {
-    await requireAuthenticatedUserId(ctx);
-    const row = await ctx.db.query('syncMeta').withIndex('by_key', (q) => q.eq('key', 'events')).first();
-
-    if (!row) {
-      return null;
-    }
-
-    const { _creationTime, _id, ...meta } = row;
-    return meta;
+    const userId = await requireAuthenticatedUserId(ctx);
+    return getImportSyncMetaForUser(ctx, 'events', userId);
   }
 });
 
@@ -182,64 +176,19 @@ export const upsertEvents = mutation({
     events: v.array(eventValidator),
     syncedAt: v.string(),
     calendars: v.array(v.string()),
-    missedSyncThreshold: v.optional(v.number())
+    missedSyncThreshold: v.optional(v.number()),
+    successfulSourceUrls: v.optional(v.array(v.string()))
   },
   returns: upsertEventsResultValidator,
   handler: async (ctx, args) => {
-    await requireAuthenticatedUserId(ctx);
-
-    const missedSyncThreshold = Math.max(1, Number(args.missedSyncThreshold) || 2);
-    const keepUrls = new Set(args.events.map((event) => event.eventUrl));
-    const existingRows = await ctx.db.query('events').collect();
-    const existingByUrl = new Map(existingRows.map((row) => [row.eventUrl, row]));
-
-    for (const row of existingRows) {
-      if (!keepUrls.has(row.eventUrl)) {
-        const nextMissedSyncCount = (Number(row.missedSyncCount) || 0) + 1;
-        if (nextMissedSyncCount >= missedSyncThreshold) {
-          await ctx.db.delete(row._id);
-        } else {
-          await ctx.db.patch(row._id, {
-            missedSyncCount: nextMissedSyncCount,
-            updatedAt: args.syncedAt
-          });
-        }
-      }
-    }
-
-    for (const event of args.events) {
-      const existing = existingByUrl.get(event.eventUrl);
-      const nextEvent = {
-        ...event,
-        missedSyncCount: 0,
-        lastSeenAt: args.syncedAt,
-        updatedAt: args.syncedAt
-      };
-
-      if (existing) {
-        await ctx.db.replace(existing._id, nextEvent);
-      } else {
-        await ctx.db.insert('events', nextEvent);
-      }
-    }
-
-    const existingMeta = await ctx.db
-      .query('syncMeta')
-      .withIndex('by_key', (q) => q.eq('key', 'events'))
-      .first();
-
-    const nextMeta = {
-      key: 'events',
-      syncedAt: args.syncedAt,
-      calendars: args.calendars,
-      eventCount: args.events.length
-    };
-
-    if (existingMeta) {
-      await ctx.db.patch(existingMeta._id, nextMeta);
-    } else {
-      await ctx.db.insert('syncMeta', nextMeta);
-    }
+    const userId = await requireAuthenticatedUserId(ctx);
+    await reconcileImportedRecordsForUser(
+      ctx, 'events', userId, args.events, args.syncedAt,
+      args.successfulSourceUrls, Math.max(1, Number(args.missedSyncThreshold) || 2)
+    );
+    await saveImportSyncMetaForUser(
+      ctx, 'events', userId, args.syncedAt, args.calendars, args.events.length
+    );
 
     return {
       eventCount: args.events.length,

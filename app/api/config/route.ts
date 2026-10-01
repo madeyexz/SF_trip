@@ -1,5 +1,6 @@
 import { loadBaseLocation, saveBaseLocation, getCalendarUrls, loadTripConfig, saveTripConfig } from '@/lib/events';
 import { runWithAuthenticatedClient } from '@/lib/api-guards';
+import { getMapsBrowserConfig } from '@/lib/maps-config';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -12,8 +13,7 @@ export async function GET() {
     ]);
 
     return Response.json({
-      mapsBrowserKey: process.env.GOOGLE_MAPS_BROWSER_KEY || '',
-      mapsMapId: process.env.GOOGLE_MAPS_MAP_ID || '',
+      ...getMapsBrowserConfig(),
       baseLocation,
       calendars: getCalendarUrls(),
       tripStart: tripConfig.tripStart || process.env.TRIP_START || '',

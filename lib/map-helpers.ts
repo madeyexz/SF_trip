@@ -208,19 +208,20 @@ export function loadGoogleMapsScript(apiKey) {
   googleMapsScriptPromise = new Promise<void>((resolve, reject) => {
     const callbackName = `initGoogleMaps_${Math.random().toString(36).slice(2)}`;
     window[callbackName] = () => { delete window[callbackName]; resolve(); };
+    // A failed or abandoned script must not block a later retry.
+    document.getElementById('google-maps-js')?.remove();
     const script = document.createElement('script');
     script.id = 'google-maps-js';
-    script.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(apiKey)}&libraries=places,visualization&loading=async&callback=${callbackName}`;
+    script.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(apiKey)}&libraries=places&loading=async&callback=${callbackName}`;
     script.async = true;
     script.defer = true;
     script.onerror = () => {
       delete window[callbackName];
       googleMapsScriptPromise = null;
+      script.remove();
       reject(new Error('Failed to load Google Maps script.'));
     };
-    if (!document.getElementById('google-maps-js')) {
-      document.head.appendChild(script);
-    }
+    document.head.appendChild(script);
   });
 
   return googleMapsScriptPromise;
@@ -259,6 +260,44 @@ function slugify(value: unknown) {
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '');
+}
+
+export const PLACE_SEARCH_FIELDS = [
+  'id', 'displayName', 'formattedAddress', 'location', 'types', 'googleMapsURI'
+] as const;
+
+async function loadPlacesClass() {
+  if (!window.google?.maps?.importLibrary) {
+    throw new Error('Google Places is not available. Open a map view first.');
+  }
+  const { Place } = await window.google.maps.importLibrary('places') as any;
+  if (!Place) throw new Error('Google Places (New) is not available for this map key.');
+  return Place;
+}
+
+/** Search fields deliberately exclude photos; load those only on preview. */
+export async function requestPlacesTextSearch({
+  textQuery, location, radius = 12000, maxResultCount = 8
+}: {
+  textQuery: string;
+  location: LatLngLike;
+  radius?: number;
+  maxResultCount?: number;
+}) {
+  const query = cleanText(textQuery);
+  const center = toLatLngLiteral(location);
+  if (!query || !center) throw new Error('Enter a search query and choose a map location.');
+  const Place = await loadPlacesClass();
+  if (typeof Place.searchByText !== 'function') {
+    throw new Error('Google Places (New) search is not available for this map key.');
+  }
+  const { places } = await Place.searchByText({
+    textQuery: query,
+    fields: [...PLACE_SEARCH_FIELDS],
+    locationBias: { center, radius: Math.max(1, Math.min(50000, Number(radius) || 12000)) },
+    maxResultCount: Math.max(1, Math.min(20, Math.round(Number(maxResultCount) || 8)))
+  });
+  return Array.isArray(places) ? places : [];
 }
 
 export function guessPlaceSearchTag(typesInput: unknown, fallbackTextInput = '') {
@@ -301,7 +340,8 @@ export function normalizePlacesTextSearchResults(resultsInput: unknown) {
         location,
         lat: point.lat,
         lng: point.lng,
-        mapLink: `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(queryText)}`,
+        mapLink: cleanText((result as any)?.googleMapsURI)
+          || `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(queryText)}${placeId ? `&query_place_id=${encodeURIComponent(placeId)}` : ''}`,
         types,
         suggestedTag: guessPlaceSearchTag(types, queryText)
       };
@@ -493,24 +533,33 @@ export function buildPlacePhotoGalleryHtml({
 
 export async function fetchPlacePhotoGallery(
   placeName: string,
-  location: LatLngLike
+  location: LatLngLike,
+  options: { placeId?: string } = {}
 ): Promise<PlacePhotoGalleryEntry[]> {
-  try {
-    const { Place } = await window.google.maps.importLibrary('places') as any;
-    if (!Place) return [];
+  const Place = await loadPlacesClass();
+  const placeId = cleanText(options.placeId);
+  let place: any;
+  if (placeId) {
+    // A saved/search result already has an exact ID: avoid a second text search.
+    place = new Place({ id: placeId });
+  } else {
     const point = toLatLngLiteral(location);
-    if (!point) return [];
+    const query = cleanText(placeName);
+    if (!point || !query) return [];
     const { places } = await Place.searchByText({
-      textQuery: placeName,
-      fields: ['photos'],
-      locationBias: new window.google.maps.Circle({ center: point, radius: 500 }),
-      maxResultCount: 1,
+      textQuery: query,
+      fields: ['id'],
+      locationBias: { center: point, radius: 500 },
+      maxResultCount: 1
     });
-    return normalizePlacePhotoGallery(places?.[0]?.photos || []);
-  } catch (e) {
-    console.warn('[Places photo] lookup failed for', placeName, e);
-    return [];
+    place = places?.[0];
+    if (!place) return [];
   }
+  if (typeof place.fetchFields !== 'function') {
+    throw new Error('Google Places (New) photo details are not available for this map key.');
+  }
+  const result = await place.fetchFields({ fields: ['photos'] });
+  return normalizePlacePhotoGallery(result?.place?.photos || place.photos || []);
 }
 
 export async function fetchPlacePhotoUri(

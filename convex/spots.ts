@@ -1,9 +1,11 @@
 import { mutation, query } from './_generated/server';
 import { v } from 'convex/values';
 import { requireAuthenticatedUserId } from './authz';
+import { listImportedRecordsForUser, getImportSyncMetaForUser, reconcileImportedRecordsForUser, saveImportSyncMetaForUser } from './importedRecords';
 
 const spotValidator = v.object({
   id: v.string(),
+  sourceUrl: v.optional(v.string()),
   name: v.string(),
   tag: v.string(),
   location: v.string(),
@@ -17,6 +19,7 @@ const spotValidator = v.object({
 });
 const spotRecordValidator = v.object({
   id: v.string(),
+  sourceUrl: v.optional(v.string()),
   name: v.string(),
   tag: v.string(),
   location: v.string(),
@@ -47,13 +50,14 @@ export const listSpots = query({
   args: {},
   returns: v.array(spotRecordValidator),
   handler: async (ctx) => {
-    await requireAuthenticatedUserId(ctx);
-    const rows = await ctx.db.query('spots').collect();
+    const userId = await requireAuthenticatedUserId(ctx);
+    const rows = await listImportedRecordsForUser(ctx, 'spots', userId);
 
     return rows
       .filter((spot) => !spot.isDeleted)
       .map((spot) => ({
         id: spot.id,
+        sourceUrl: spot.sourceUrl,
         name: spot.name,
         tag: spot.tag,
         location: spot.location,
@@ -77,15 +81,8 @@ export const getSyncMeta = query({
   args: {},
   returns: v.union(v.null(), syncMetaValidator),
   handler: async (ctx) => {
-    await requireAuthenticatedUserId(ctx);
-    const row = await ctx.db.query('syncMeta').withIndex('by_key', (q) => q.eq('key', 'spots')).first();
-
-    if (!row) {
-      return null;
-    }
-
-    const { _creationTime, _id, ...meta } = row;
-    return meta;
+    const userId = await requireAuthenticatedUserId(ctx);
+    return getImportSyncMetaForUser(ctx, 'spots', userId);
   }
 });
 
@@ -94,64 +91,19 @@ export const upsertSpots = mutation({
     spots: v.array(spotValidator),
     syncedAt: v.string(),
     sourceUrls: v.array(v.string()),
-    missedSyncThreshold: v.optional(v.number())
+    missedSyncThreshold: v.optional(v.number()),
+    successfulSourceUrls: v.optional(v.array(v.string()))
   },
   returns: upsertSpotsResultValidator,
   handler: async (ctx, args) => {
-    await requireAuthenticatedUserId(ctx);
-
-    const missedSyncThreshold = Math.max(1, Number(args.missedSyncThreshold) || 2);
-    const keepIds = new Set(args.spots.map((spot) => spot.id));
-    const existingRows = await ctx.db.query('spots').collect();
-    const existingById = new Map(existingRows.map((row) => [row.id, row]));
-
-    for (const row of existingRows) {
-      if (!keepIds.has(row.id)) {
-        const nextMissedSyncCount = (Number(row.missedSyncCount) || 0) + 1;
-        if (nextMissedSyncCount >= missedSyncThreshold) {
-          await ctx.db.delete(row._id);
-        } else {
-          await ctx.db.patch(row._id, {
-            missedSyncCount: nextMissedSyncCount,
-            updatedAt: args.syncedAt
-          });
-        }
-      }
-    }
-
-    for (const spot of args.spots) {
-      const existing = existingById.get(spot.id);
-      const nextSpot = {
-        ...spot,
-        missedSyncCount: 0,
-        lastSeenAt: args.syncedAt,
-        updatedAt: args.syncedAt
-      };
-
-      if (existing) {
-        await ctx.db.replace(existing._id, nextSpot);
-      } else {
-        await ctx.db.insert('spots', nextSpot);
-      }
-    }
-
-    const existingMeta = await ctx.db
-      .query('syncMeta')
-      .withIndex('by_key', (q) => q.eq('key', 'spots'))
-      .first();
-
-    const nextMeta = {
-      key: 'spots',
-      syncedAt: args.syncedAt,
-      calendars: args.sourceUrls,
-      eventCount: args.spots.length
-    };
-
-    if (existingMeta) {
-      await ctx.db.patch(existingMeta._id, nextMeta);
-    } else {
-      await ctx.db.insert('syncMeta', nextMeta);
-    }
+    const userId = await requireAuthenticatedUserId(ctx);
+    await reconcileImportedRecordsForUser(
+      ctx, 'spots', userId, args.spots, args.syncedAt,
+      args.successfulSourceUrls, Math.max(1, Number(args.missedSyncThreshold) || 2)
+    );
+    await saveImportSyncMetaForUser(
+      ctx, 'spots', userId, args.syncedAt, args.sourceUrls, args.spots.length
+    );
 
     return {
       spotCount: args.spots.length,

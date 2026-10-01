@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { loadCachedRoutePayload, saveCachedRoutePayload } from '@/lib/events';
 import { runWithAuthenticatedClient } from '@/lib/api-guards';
 import { consumeRateLimit, getRequestRateLimitIp } from '@/lib/security';
+import { getMapsRoutesKey } from '@/lib/maps-config';
 
 export const runtime = 'nodejs';
 
@@ -34,10 +35,7 @@ export async function POST(request) {
       );
     }
 
-    const apiKey =
-      process.env.GOOGLE_MAPS_ROUTES_KEY ||
-      process.env.GOOGLE_MAPS_SERVER_KEY ||
-      process.env.GOOGLE_MAPS_BROWSER_KEY;
+    const apiKey = getMapsRoutesKey();
 
     if (!apiKey) {
       return Response.json(

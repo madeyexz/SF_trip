@@ -1,9 +1,9 @@
 'use client';
 
-import { useCallback, useEffect } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import { fetchJson } from '@/lib/helpers';
-
-let bootstrapPayloadPromiseByAuth = new Map<string, Promise<any>>();
+import { loadTripBootstrapPayload } from '@/lib/trip-bootstrap';
+import { buildSyncStatus } from '@/lib/sync-status';
 
 export function normalizeBootstrapPayload({
   config,
@@ -33,29 +33,8 @@ export function normalizeBootstrapPayload({
   };
 }
 
-async function loadBootstrapPayload(isAuthenticated: boolean) {
-  const bootstrapKey = isAuthenticated ? 'auth' : 'anon';
-  if (!bootstrapPayloadPromiseByAuth.has(bootstrapKey)) {
-    bootstrapPayloadPromiseByAuth.set(
-      bootstrapKey,
-      Promise.all([
-        fetchJson('/api/config'),
-        fetchJson('/api/events'),
-        fetchJson('/api/sources').catch(() => ({ sources: [] })),
-        fetchJson('/api/me').catch(() => null)
-        ]).then(([config, eventsPayload, sourcesPayload, mePayload]) => normalizeBootstrapPayload({
-        config,
-        eventsPayload,
-        sourcesPayload,
-        mePayload
-      })).catch((error) => {
-        bootstrapPayloadPromiseByAuth.delete(bootstrapKey);
-        throw error;
-      })
-    );
-  }
-
-  return bootstrapPayloadPromiseByAuth.get(bootstrapKey)!;
+async function loadBootstrapPayload(signal: AbortSignal) {
+  return normalizeBootstrapPayload(await loadTripBootstrapPayload(fetchJson, signal));
 }
 
 export function useTripBootstrap({
@@ -93,15 +72,27 @@ export function useTripBootstrap({
   setIsSyncing: (value: boolean) => void;
   setStatusMessage: (message: string, isError?: boolean) => void;
 }) {
+  const authGenerationRef = useRef(0);
+  const sourceRequestRef = useRef<AbortController | null>(null);
   const loadSourcesFromServer = useCallback(async () => {
+    const generation = authGenerationRef.current;
+    sourceRequestRef.current?.abort();
+    const controller = new AbortController();
+    sourceRequestRef.current = controller;
     try {
-      const payload = await fetchJson('/api/sources');
+      const payload = await fetchJson('/api/sources', { signal: controller.signal });
+      if (controller.signal.aborted || generation !== authGenerationRef.current) return;
       setSources(Array.isArray(payload?.sources) ? payload.sources : []);
     } catch (error) {
-      console.error('Failed to load sources.', error);
-      setSources([]);
+      if (controller.signal.aborted || generation !== authGenerationRef.current) return;
+      setStatusMessage(
+        error instanceof Error ? `Sources could not be refreshed: ${error.message}` : 'Sources could not be refreshed. Please retry.',
+        true
+      );
+    } finally {
+      if (sourceRequestRef.current === controller) sourceRequestRef.current = null;
     }
-  }, [setSources]);
+  }, [setSources, setStatusMessage]);
 
   useEffect(() => {
     if (authLoading) {
@@ -109,11 +100,32 @@ export function useTripBootstrap({
     }
 
     let mounted = true;
+    const controller = new AbortController();
+    authGenerationRef.current += 1;
+    sourceRequestRef.current?.abort();
+    setProfile(null);
+    setAuthUserId('');
+    setAllEvents([]);
+    setAllPlaces([]);
+    setSources([]);
+    setTripStart('');
+    setTripEnd('');
+    setBaseLocationText('');
+    if (!isAuthenticated) {
+      setIsInitializing(false);
+      setIsSyncing(false);
+      return () => {
+        mounted = false;
+        controller.abort();
+        authGenerationRef.current += 1;
+        sourceRequestRef.current?.abort();
+      };
+    }
 
     async function runBackgroundSync() {
       setIsSyncing(true);
       try {
-        const response = await fetch('/api/sync', { method: 'POST' });
+        const response = await fetch('/api/sync', { method: 'POST', signal: controller.signal });
         const payload = await response.json().catch(() => null);
         if (!response.ok) throw new Error(payload?.error || 'Sync failed');
         if (!mounted) return;
@@ -123,16 +135,22 @@ export function useTripBootstrap({
         if (Array.isArray(payload?.places)) setAllPlaces(payload.places);
 
         const ingestionErrors = Array.isArray(payload?.meta?.ingestionErrors) ? payload.meta.ingestionErrors : [];
-        if (ingestionErrors.length > 0) console.error('Sync ingestion errors:', ingestionErrors);
         await loadSourcesFromServer();
-
-        const errSuffix = ingestionErrors.length > 0 ? ` (${ingestionErrors.length} ingestion errors)` : '';
-        setStatusMessage(
-          `Synced ${syncedEvents.length} events at ${new Date().toLocaleTimeString('en-US', { timeZone: 'America/Los_Angeles' })}${errSuffix}.`,
-          ingestionErrors.length > 0
-        );
+        if (!mounted) return;
+        const result = buildSyncStatus({
+          count: syncedEvents.length,
+          noun: 'events',
+          timeLabel: new Date().toLocaleTimeString('en-US', { timeZone: 'America/Los_Angeles' }),
+          errors: ingestionErrors
+        });
+        setStatusMessage(result.message, result.isError);
       } catch (error) {
-        console.error('Background sync failed; continuing with cached events.', error);
+        if (mounted) {
+          setStatusMessage(
+            error instanceof Error ? `Background sync failed: ${error.message}` : 'Background sync failed. Please retry.',
+            true
+          );
+        }
       } finally {
         if (mounted) setIsSyncing(false);
       }
@@ -141,7 +159,7 @@ export function useTripBootstrap({
     async function bootstrapData() {
       setIsInitializing(true);
       try {
-        const normalized = await loadBootstrapPayload(isAuthenticated);
+        const normalized = await loadBootstrapPayload(controller.signal);
         if (!mounted) return;
         setProfile(normalized.profile);
         setAuthUserId(normalized.authUserId);
@@ -154,21 +172,29 @@ export function useTripBootstrap({
         setAllEvents(normalized.allEvents);
         setAllPlaces(normalized.allPlaces);
         setSources(normalized.sources);
+        return true;
       } catch (error) {
-        console.error('Bootstrap failed', error);
-        if (mounted) setStatusMessage(error instanceof Error ? error.message : 'Bootstrap failed', true);
+        if (mounted) {
+          setStatusMessage(
+            error instanceof Error ? `${error.message} Reload to retry loading your account.` : 'Account loading failed. Reload to retry.',
+            true
+          );
+        }
+        return false;
       } finally {
         if (mounted) setIsInitializing(false);
       }
     }
 
-    void bootstrapData();
-    if (isAuthenticated) {
-      void runBackgroundSync();
-    }
+    void bootstrapData().then(loaded => {
+      if (loaded && mounted) void runBackgroundSync();
+    });
 
     return () => {
       mounted = false;
+      controller.abort();
+      authGenerationRef.current += 1;
+      sourceRequestRef.current?.abort();
     };
   }, [
     authLoading,

@@ -42,6 +42,8 @@ export default defineSchema({
     updatedAt: v.string()
   }).index('by_key', ['key']),
   events: defineTable({
+    // Optional only for nondestructive compatibility with quarantined legacy rows.
+    userId: v.optional(v.string()),
     id: v.string(),
     name: v.string(),
     description: v.string(),
@@ -58,9 +60,12 @@ export default defineSchema({
     isDeleted: v.optional(v.boolean()),
     lastSeenAt: v.optional(v.string()),
     updatedAt: v.optional(v.string())
-  }),
+  }).index('by_user', ['userId']),
   spots: defineTable({
+    // Optional only for nondestructive compatibility with quarantined legacy rows.
+    userId: v.optional(v.string()),
     id: v.string(),
+    sourceUrl: v.optional(v.string()),
     name: v.string(),
     tag: v.string(),
     location: v.string(),
@@ -75,7 +80,7 @@ export default defineSchema({
     isDeleted: v.optional(v.boolean()),
     lastSeenAt: v.optional(v.string()),
     updatedAt: v.optional(v.string())
-  }),
+  }).index('by_user', ['userId']),
   customSpots: defineTable({
     id: v.string(),
     userId: v.string(),
@@ -142,9 +147,10 @@ export default defineSchema({
     updatedAt: v.string()
   }).index('by_address_key', ['addressKey']),
   syncMeta: defineTable({
+    userId: v.optional(v.string()),
     key: v.string(),
     syncedAt: v.string(),
     calendars: v.array(v.string()),
     eventCount: v.number()
-  }).index('by_key', ['key'])
+  }).index('by_key', ['key']).index('by_user_key', ['userId', 'key'])
 });

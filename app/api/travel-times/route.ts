@@ -1,6 +1,7 @@
 import { runWithAuthenticatedClient } from '@/lib/api-guards';
 import { consumeRateLimit, getRequestRateLimitIp } from '@/lib/security';
 import { normalizeTravelTimeMatrixEntries } from '@/lib/travel-times';
+import { getMapsRoutesKey } from '@/lib/maps-config';
 
 export const runtime = 'nodejs';
 
@@ -35,10 +36,7 @@ export async function POST(request: Request) {
       );
     }
 
-    const apiKey =
-      process.env.GOOGLE_MAPS_ROUTES_KEY ||
-      process.env.GOOGLE_MAPS_SERVER_KEY ||
-      process.env.GOOGLE_MAPS_BROWSER_KEY;
+    const apiKey = getMapsRoutesKey();
 
     if (!apiKey) {
       return Response.json(

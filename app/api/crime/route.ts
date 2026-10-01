@@ -1,28 +1,13 @@
 import { consumeRateLimit, getRequestRateLimitIp } from '@/lib/security';
+import { CRIME_DATASET_ID, loadCrimeData, type CrimeBounds } from '@/lib/crime-data';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-const DATASET_ID = 'wg3w-h783';
-const DATASET_URL = `https://data.sfgov.org/resource/${DATASET_ID}.json`;
 const DEFAULT_HOURS = 24;
 const MAX_HOURS = 7 * 24;
 const DEFAULT_LIMIT = 4000;
 const MAX_LIMIT = 10000;
-const EXCLUDED_CATEGORIES = [
-  'Non-Criminal',
-  'Case Closure',
-  'Lost Property',
-  'Courtesy Report',
-  'Recovered Vehicle'
-];
-
-type CrimeBounds = {
-  south: number;
-  west: number;
-  north: number;
-  east: number;
-};
 
 function clampInteger(value: string | null, fallback: number, min: number, max: number) {
   const parsed = Number.parseInt(String(value || ''), 10);
@@ -34,10 +19,6 @@ function clampFloat(value: string | null, min: number, max: number) {
   const parsed = Number.parseFloat(String(value || ''));
   if (!Number.isFinite(parsed)) return null;
   return Math.max(min, Math.min(max, parsed));
-}
-
-function sqlStringLiteral(value: string) {
-  return `'${String(value).replace(/'/g, "''")}'`;
 }
 
 function parseCrimeBounds(searchParams: URLSearchParams): CrimeBounds | null {
@@ -53,37 +34,6 @@ function parseCrimeBounds(searchParams: URLSearchParams): CrimeBounds | null {
     west: Number(west),
     north: Number(north),
     east: Number(east)
-  };
-}
-
-function buildIncidentWhereClause(sinceDateISO: string, bounds: CrimeBounds | null) {
-  const excluded = EXCLUDED_CATEGORIES.map(sqlStringLiteral).join(', ');
-  const clauses = [
-    `incident_date >= ${sqlStringLiteral(sinceDateISO)}`,
-    'latitude IS NOT NULL',
-    'longitude IS NOT NULL',
-    `incident_category NOT IN (${excluded})`
-  ];
-  if (bounds) {
-    clauses.push(`latitude >= ${bounds.south} AND latitude <= ${bounds.north}`);
-    clauses.push(`longitude >= ${bounds.west} AND longitude <= ${bounds.east}`);
-  }
-  return clauses.join(' AND ');
-}
-
-function normalizeIncident(row: any, sinceComparableISO: string) {
-  const lat = Number(row?.latitude);
-  const lng = Number(row?.longitude);
-  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
-  const incidentDatetime = String(row?.incident_datetime || '');
-  if (incidentDatetime && incidentDatetime < sinceComparableISO) return null;
-  return {
-    lat,
-    lng,
-    incidentDatetime,
-    incidentCategory: String(row?.incident_category || ''),
-    incidentSubcategory: String(row?.incident_subcategory || ''),
-    neighborhood: String(row?.analysis_neighborhood || '')
   };
 }
 
@@ -111,45 +61,17 @@ export async function GET(request: Request) {
   const hours = clampInteger(url.searchParams.get('hours'), DEFAULT_HOURS, 1, MAX_HOURS);
   const limit = clampInteger(url.searchParams.get('limit'), DEFAULT_LIMIT, 200, MAX_LIMIT);
   const bounds = parseCrimeBounds(url.searchParams);
-  const sinceISO = new Date(Date.now() - hours * 60 * 60 * 1000).toISOString();
-  const sinceComparableISO = sinceISO.replace('Z', '');
-  const sinceDateISO = `${sinceISO.slice(0, 10)}T00:00:00.000`;
-  const whereClause = buildIncidentWhereClause(sinceDateISO, bounds);
-
-  const queryUrl = new URL(DATASET_URL);
-  queryUrl.searchParams.set(
-    '$select',
-    'incident_datetime,incident_category,incident_subcategory,analysis_neighborhood,latitude,longitude'
-  );
-  queryUrl.searchParams.set('$where', whereClause);
-  queryUrl.searchParams.set('$order', 'incident_datetime DESC');
-  queryUrl.searchParams.set('$limit', String(limit));
-
-  const requestHeaders: Record<string, string> = {};
-  if (process.env.SFGOV_APP_TOKEN) {
-    requestHeaders['X-App-Token'] = process.env.SFGOV_APP_TOKEN;
-  }
-
-  const upstream = await fetch(queryUrl.toString(), {
-    headers: requestHeaders,
-    next: { revalidate: 60 }
+  const result = await loadCrimeData({
+    hours, limit, bounds,
+    appToken: process.env.SFGOV_APP_TOKEN
   });
-
-  if (!upstream.ok) {
-    const body = await upstream.text().catch(() => '');
+  if (!result.ok) {
     return Response.json(
-      {
-        error: `Upstream SF Open Data request failed (${upstream.status}).`,
-        details: body.slice(0, 300)
-      },
-      { status: 502 }
+      { error: result.error, unavailable: true },
+      { status: result.status }
     );
   }
-
-  const rows = await upstream.json().catch(() => []);
-  const incidents = Array.isArray(rows)
-    ? rows.map((row: any) => normalizeIncident(row, sinceComparableISO)).filter(Boolean)
-    : [];
+  const incidents = result.incidents;
 
   return Response.json(
     {
@@ -159,8 +81,8 @@ export async function GET(request: Request) {
       count: incidents.length,
       source: {
         provider: 'SF Open Data',
-        datasetId: DATASET_ID,
-        datasetUrl: `https://data.sfgov.org/d/${DATASET_ID}`
+        datasetId: CRIME_DATASET_ID,
+        datasetUrl: `https://data.sfgov.org/d/${CRIME_DATASET_ID}`
       },
       bounds,
       generatedAt: new Date().toISOString()

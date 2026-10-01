@@ -28,6 +28,7 @@ import {
 } from '@/lib/helpers';
 import { sortPlanItems } from '@/lib/planner-domain.ts';
 import { getSafeExternalHref } from '@/lib/security';
+import { buildSyncStatus } from '@/lib/sync-status';
 import {
   createPlanId,
   parseEventTimeRange, getSuggestedPlanSlot,
@@ -39,10 +40,11 @@ import {
   createRouteRequestCacheKey, requestPlannedRoute,
   loadGoogleMapsScript, buildInfoWindowAddButton, buildPlacePhotoGalleryHtml,
   createPlacePhotoCacheKey, fetchPlacePhotoGallery, getNextPlacePhotoIndex,
-  normalizePlacesTextSearchResults, buildCustomSpotPayloadFromSearchResult,
+  normalizePlacesTextSearchResults, requestPlacesTextSearch, buildCustomSpotPayloadFromSearchResult,
   buildSearchResultTypeChips, estimateWalkDurationMinutes, sortPlaceSearchResults, getMapBoundsSearchRadius,
   calculateDistanceMeters, type PlacePhotoGalleryEntry
 } from '@/lib/map-helpers';
+import { createCrimeMapOverlay, createCrimeRequestGate, startCrimeMapRuntime } from '@/lib/crime-map-overlay';
 import { requestTravelTimeMatrix } from '@/lib/travel-times';
 import {
   applyDeviceLocation,
@@ -69,19 +71,9 @@ const TAG_COLORS = {
 export const CRIME_LOOKBACK_HOURS_OPTIONS = [1, 24, 72] as const;
 const DEFAULT_CRIME_LOOKBACK_HOURS = 72;
 const CRIME_HEATMAP_LIMIT = 6000;
-const CRIME_REFRESH_INTERVAL_MS = 2 * 60 * 1000;
-const CRIME_IDLE_DEBOUNCE_MS = 450;
 const CRIME_MIN_REQUEST_INTERVAL_MS = 20 * 1000;
 const DEFAULT_CRIME_HEATMAP_STRENGTH = 'high';
-const CRIME_HEATMAP_GRADIENT = [
-  'rgba(0, 0, 0, 0)',
-  'rgba(254, 202, 202, 0.06)',
-  'rgba(248, 113, 113, 0.22)',
-  'rgba(239, 68, 68, 0.45)',
-  'rgba(225, 29, 72, 0.68)',
-  'rgba(159, 18, 57, 0.86)',
-  'rgba(127, 29, 29, 0.96)'
-];
+
 
 function getCrimeCategoryWeight(category) {
   const c = String(category || '').toLowerCase();
@@ -212,14 +204,12 @@ export default function TripProvider({ children }: { children: ReactNode }) {
   const markersRef = useRef<any[]>([]);
   const regionPolygonsRef = useRef<any[]>([]);
   const crimeHeatmapRef = useRef<any>(null);
-  const crimeRefreshTimerRef = useRef<number | null>(null);
-  const crimeIdleListenerRef = useRef<any>(null);
+  const stopCrimeRuntimeRef = useRef<(() => void) | null>(null);
   const mapClickListenerRef = useRef<any>(null);
   const searchAreaIdleListenerRef = useRef<any>(null);
   const crimeLookbackHydratedRef = useRef(false);
-  const crimeVisibilityRefreshHydratedRef = useRef(false);
-  const crimeControlsRefreshHydratedRef = useRef(false);
-  const crimeLookbackRefreshHydratedRef = useRef(false);
+  const crimeRequestGateRef = useRef(createCrimeRequestGate());
+  const lastCrimeSnapshotRef = useRef<{ generatedAt: string; hours: number } | null>(null);
   const lastCrimeIncidentsRef = useRef<any[]>([]);
   const skipNextSearchAreaIdleRef = useRef(false);
   const searchVisibleAreaRequestedRef = useRef(false);
@@ -245,6 +235,8 @@ export default function TripProvider({ children }: { children: ReactNode }) {
   const [statusError, setStatusError] = useState(false);
   const [crimeLayerMeta, setCrimeLayerMeta] = useState<CrimeLayerMeta>(EMPTY_CRIME_LAYER_META);
   const [crimeHeatmapStrength, setCrimeHeatmapStrength] = useState(DEFAULT_CRIME_HEATMAP_STRENGTH);
+  const crimeHeatmapStrengthRef = useRef(crimeHeatmapStrength);
+  crimeHeatmapStrengthRef.current = crimeHeatmapStrength;
   const [crimeLookbackHours, setCrimeLookbackHours] = useState<number>(DEFAULT_CRIME_LOOKBACK_HOURS);
   const [mapRuntimeActive, setMapRuntimeActive] = useState(false);
   const [mapsReady, setMapsReady] = useState(false);
@@ -447,7 +439,7 @@ export default function TripProvider({ children }: { children: ReactNode }) {
     return stops;
   }, [dayPlanItems, eventLookup, placeLookup]);
 
-  usePlannerPersistence({
+  const { plannerPersistenceStatus, plannerPersistenceError, plannerReady, retryPlannerPersistence } = usePlannerPersistence({
     authUserId,
     isAuthenticated,
     plannerByDate,
@@ -465,6 +457,14 @@ export default function TripProvider({ children }: { children: ReactNode }) {
     setStatus(message);
     setStatusError(isError);
   }, []);
+
+  const plannerReadyRef = useRef(plannerReady);
+  plannerReadyRef.current = plannerReady;
+  const ensurePlannerReady = useCallback(() => {
+    if (plannerReadyRef.current) return true;
+    setStatusMessage(plannerPersistenceError || 'Your saved plan is still loading. Please wait before editing.', true);
+    return false;
+  }, [plannerPersistenceError, setStatusMessage]);
 
   const { loadSourcesFromServer } = useTripBootstrap({
     authLoading,
@@ -548,20 +548,18 @@ export default function TripProvider({ children }: { children: ReactNode }) {
 
   const cleanupMapRuntime = useCallback(() => {
     renderGenerationRef.current += 1;
+    crimeRequestGateRef.current.invalidate();
+    lastCrimeQueryRef.current = '';
+    lastCrimeFetchAtRef.current = 0;
+    lastCrimeSnapshotRef.current = null;
     clearMapMarkers();
     clearRoute();
     if (mapClickListenerRef.current?.remove) {
       mapClickListenerRef.current.remove();
       mapClickListenerRef.current = null;
     }
-    if (crimeIdleListenerRef.current?.remove) {
-      crimeIdleListenerRef.current.remove();
-      crimeIdleListenerRef.current = null;
-    }
-    if (crimeRefreshTimerRef.current) {
-      window.clearInterval(crimeRefreshTimerRef.current);
-      crimeRefreshTimerRef.current = null;
-    }
+    stopCrimeRuntimeRef.current?.();
+    stopCrimeRuntimeRef.current = null;
     if (crimeHeatmapRef.current) {
       crimeHeatmapRef.current.setMap(null);
       crimeHeatmapRef.current = null;
@@ -586,53 +584,56 @@ export default function TripProvider({ children }: { children: ReactNode }) {
   }, [clearMapMarkers, clearRoute, clearSearchResultMarkers, closeActiveInfoWindow]);
 
   const applyCrimeHeatmapData = useCallback((incidentsInput, generatedAtValue = '', hoursValue = DEFAULT_CRIME_LOOKBACK_HOURS) => {
-    if (!mapsReady || !mapRef.current || !window.google?.maps?.visualization) return;
-    const profile = getCrimeHeatmapProfile(crimeHeatmapStrength);
-    const radius = Math.max(12, Math.round(getCrimeHeatmapRadiusForZoom(mapRef.current?.getZoom?.()) * profile.radiusScale));
+    if (!mapsReady || !mapRef.current || hiddenCategoriesRef.current.has('crime')) return;
+    const map = mapRef.current;
     const incidents = Array.isArray(incidentsInput) ? incidentsInput : [];
+    const resolvedGeneratedAt = String(generatedAtValue || new Date().toISOString());
     lastCrimeIncidentsRef.current = incidents;
-    const weightedPoints = incidents
-      .map((incident) => {
+    lastCrimeSnapshotRef.current = { generatedAt: resolvedGeneratedAt, hours: hoursValue };
+    const reportError = (error: unknown) => {
+      if (mapRef.current !== map || hiddenCategoriesRef.current.has('crime')) return;
+      setCrimeLayerMeta((prev) => ({
+        ...prev, loading: false,
+        error: error instanceof Error ? error.message : 'Crime overlay could not render.'
+      }));
+    };
+    try {
+      const profile = getCrimeHeatmapProfile(crimeHeatmapStrengthRef.current);
+      const radius = Math.max(12, Math.round(getCrimeHeatmapRadiusForZoom(map.getZoom?.()) * profile.radiusScale));
+      const weightedPoints = incidents.flatMap((incident) => {
         const lat = Number(incident?.lat);
         const lng = Number(incident?.lng);
-        if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
-        return {
+        if (!Number.isFinite(lat) || !Number.isFinite(lng)) return [];
+        return [{
           location: new window.google.maps.LatLng(lat, lng),
           weight: getCrimeCategoryWeight(incident?.incidentCategory) * profile.weightMultiplier
-        };
-      })
-      .filter(Boolean);
-
-    if (!crimeHeatmapRef.current) {
-      crimeHeatmapRef.current = new window.google.maps.visualization.HeatmapLayer({
-        data: weightedPoints,
-        dissipating: true,
-        radius,
-        opacity: profile.opacity,
-        maxIntensity: profile.maxIntensity,
-        gradient: CRIME_HEATMAP_GRADIENT
+        }];
       });
-    } else {
-      crimeHeatmapRef.current.setData(weightedPoints);
-      crimeHeatmapRef.current.set('radius', radius);
-      crimeHeatmapRef.current.set('opacity', profile.opacity);
-      crimeHeatmapRef.current.set('maxIntensity', profile.maxIntensity);
+      if (crimeHeatmapRef.current?.hasFailed()) {
+        crimeHeatmapRef.current.setMap(null);
+        crimeHeatmapRef.current = null;
+      }
+      if (!crimeHeatmapRef.current) {
+        crimeHeatmapRef.current = createCrimeMapOverlay(window.google.maps, {
+          data: weightedPoints, radius, opacity: profile.opacity,
+          maxIntensity: profile.maxIntensity, onError: reportError
+        });
+      } else {
+        crimeHeatmapRef.current.setData(weightedPoints);
+        crimeHeatmapRef.current.setOptions({ radius, opacity: profile.opacity, maxIntensity: profile.maxIntensity });
+      }
+      // Set success first, so even synchronous attachment failures remain visible.
+      setCrimeLayerMeta({ loading: false, count: incidents.length, hours: hoursValue, generatedAt: resolvedGeneratedAt, error: '' });
+      crimeHeatmapRef.current.setMap(map);
+    } catch (error) {
+      reportError(error);
     }
-    crimeHeatmapRef.current.setMap(hiddenCategoriesRef.current.has('crime') ? null : mapRef.current);
-
-    const resolvedGeneratedAt = String(generatedAtValue || new Date().toISOString());
-    setCrimeLayerMeta({
-      loading: false,
-      count: incidents.length,
-      hours: hoursValue,
-      generatedAt: resolvedGeneratedAt,
-      error: ''
-    });
-  }, [mapsReady, crimeHeatmapStrength]);
+  }, [mapsReady]);
 
   const refreshCrimeHeatmap = useCallback(async ({ force = false }: { force?: boolean } = {}) => {
-    if (!mapsReady || !mapRef.current || !window.google?.maps?.visualization) return;
-    const boundsQuery = buildCrimeBoundsQuery(mapRef.current);
+    if (!mapsReady || !mapRef.current || hiddenCategoriesRef.current.has('crime')) return;
+    const map = mapRef.current;
+    const boundsQuery = buildCrimeBoundsQuery(map);
     const requestPath = `/api/crime?hours=${crimeLookbackHours}&limit=${CRIME_HEATMAP_LIMIT}${boundsQuery ? `&${boundsQuery}` : ''}`;
     const now = Date.now();
     if (!force) {
@@ -640,30 +641,28 @@ export default function TripProvider({ children }: { children: ReactNode }) {
       const recentlyFetched = now - lastCrimeFetchAtRef.current < CRIME_MIN_REQUEST_INTERVAL_MS;
       if (sameQuery && recentlyFetched) return;
     }
+    const request = crimeRequestGateRef.current.begin();
+    const isCurrent = () => request.isCurrent() && mapRef.current === map && !hiddenCategoriesRef.current.has('crime');
     lastCrimeQueryRef.current = requestPath;
     lastCrimeFetchAtRef.current = now;
     setCrimeLayerMeta((prev) => ({ ...prev, loading: true, error: '' }));
 
     try {
-      const response = await fetch(requestPath);
+      const response = await fetch(requestPath, { signal: request.signal });
       const payload = await response.json().catch(() => null);
-      if (lastCrimeQueryRef.current !== requestPath) return;
-      if (!response.ok) {
-        throw new Error(payload?.error || `Crime data request failed: ${response.status}`);
-      }
-      const incidents = Array.isArray(payload?.incidents) ? payload.incidents : [];
+      if (!isCurrent()) return;
+      if (!response.ok) throw new Error(payload?.error || `Crime data request failed: ${response.status}`);
       const responseHours = Number(payload?.hours);
       applyCrimeHeatmapData(
-        incidents,
+        Array.isArray(payload?.incidents) ? payload.incidents : [],
         String(payload?.generatedAt || new Date().toISOString()),
         isCrimeLookbackHoursOption(responseHours) ? responseHours : crimeLookbackHours
       );
     } catch (error) {
+      if (!isCurrent()) return;
       console.error('Crime heatmap refresh failed.', error);
-      if (lastCrimeQueryRef.current !== requestPath) return;
       setCrimeLayerMeta((prev) => ({
-        ...prev,
-        loading: false,
+        ...prev, loading: false,
         error: error instanceof Error ? error.message : 'Failed to refresh crime layer.'
       }));
     }
@@ -885,7 +884,7 @@ export default function TripProvider({ children }: { children: ReactNode }) {
     const photoCacheKey = createPlacePhotoCacheKey(result);
     if (!photoCacheKey) return;
 
-    if (result.photoLoadState === 'loading' || result.photoLoadState === 'loaded' || result.photoLoadState === 'error') {
+    if (result.photoLoadState === 'loading' || result.photoLoadState === 'loaded') {
       return;
     }
 
@@ -909,7 +908,7 @@ export default function TripProvider({ children }: { children: ReactNode }) {
 
     try {
       const gallery = await getOrCreateCoalescedPromise(placePhotoInFlightRef.current, photoCacheKey, async () => {
-        return fetchPlacePhotoGallery(result.name, { lat: result.lat, lng: result.lng });
+        return fetchPlacePhotoGallery(result.name, { lat: result.lat, lng: result.lng }, { placeId: result.placeId });
       });
       placePhotoCacheRef.current.set(photoCacheKey, gallery);
       setSearchResultPhotoState(resultId, {
@@ -923,10 +922,12 @@ export default function TripProvider({ children }: { children: ReactNode }) {
           activeSearchResultInfoWindowRef.current.anchor
         );
       }
-    } catch {
+    } catch (error) {
       setSearchResultPhotoState(resultId, { photoLoadState: 'error' });
+      const message = error instanceof Error ? error.message : 'Could not load place photos.';
+      setStatusMessage(`${message} Preview again to retry.`, true);
     }
-  }, [openSearchResultInfoWindow, placeSearchResults, setSearchResultPhotoState]);
+  }, [openSearchResultInfoWindow, placeSearchResults, setSearchResultPhotoState, setStatusMessage]);
 
   const renderSearchResultMarkers = useCallback((results) => {
     if (!mapRef.current || !window.google?.maps?.marker) return;
@@ -1047,33 +1048,16 @@ export default function TripProvider({ children }: { children: ReactNode }) {
     if (deviceLocationMarkerRef.current) {
       deviceLocationMarkerRef.current.map = mapRef.current;
     }
-    if (crimeHeatmapRef.current) {
-      crimeHeatmapRef.current.setMap(hiddenCategories.has('crime') ? null : mapRef.current);
-    }
-    if (!crimeVisibilityRefreshHydratedRef.current) {
-      crimeVisibilityRefreshHydratedRef.current = true;
-    }
-  }, [hiddenCategories, refreshCrimeHeatmap]);
+  }, [hiddenCategories]);
 
   useEffect(() => {
-    if (!crimeControlsRefreshHydratedRef.current) {
-      crimeControlsRefreshHydratedRef.current = true;
-      return;
-    }
-    if (!mapsReady || hiddenCategories.has('crime')) return;
-    applyCrimeHeatmapData(lastCrimeIncidentsRef.current, crimeLayerMeta.generatedAt, crimeLookbackHours);
-  }, [applyCrimeHeatmapData, crimeHeatmapStrength, crimeLayerMeta.generatedAt, crimeLookbackHours, hiddenCategories, mapsReady]);
-
-  useEffect(() => {
-    if (!mapsReady || hiddenCategories.has('crime')) return;
-    if (!crimeLookbackRefreshHydratedRef.current) {
-      crimeLookbackRefreshHydratedRef.current = true;
-      return;
-    }
-    void refreshCrimeHeatmap({ force: true });
-  }, [crimeLookbackHours, hiddenCategories, mapsReady, refreshCrimeHeatmap]);
+    const snapshot = lastCrimeSnapshotRef.current;
+    if (!mapsReady || hiddenCategories.has('crime') || !snapshot) return;
+    applyCrimeHeatmapData(lastCrimeIncidentsRef.current, snapshot.generatedAt, snapshot.hours);
+  }, [applyCrimeHeatmapData, crimeHeatmapStrength, hiddenCategories, mapsReady]);
 
   const addEventToDayPlan = useCallback((event) => {
+    if (!ensurePlannerReady()) return;
     if (!selectedDate) { setStatusMessage('Select a specific date before adding events to your day plan.', true); return; }
     setPlannerByDate((prev) => {
       const current = Array.isArray(prev[selectedDate]) ? prev[selectedDate] : [];
@@ -1087,9 +1071,10 @@ export default function TripProvider({ children }: { children: ReactNode }) {
       }]);
       return { ...prev, [selectedDate]: next };
     });
-  }, [selectedDate, setStatusMessage]);
+  }, [ensurePlannerReady, selectedDate, setStatusMessage]);
 
   const addPlaceToDayPlan = useCallback((place) => {
+    if (!ensurePlannerReady()) return;
     const tag = normalizePlaceTag(place.tag);
     if (tag === 'avoid') { setStatusMessage('This area is flagged as unsafe and cannot be added to your day plan.', true); return; }
     if (tag === 'safe' && Array.isArray(place.boundary) && place.boundary.length >= 3) {
@@ -1109,22 +1094,25 @@ export default function TripProvider({ children }: { children: ReactNode }) {
       }]);
       return { ...prev, [selectedDate]: next };
     });
-  }, [selectedDate, setStatusMessage]);
+  }, [ensurePlannerReady, selectedDate, setStatusMessage]);
 
   const removePlanItem = useCallback((itemId) => {
+    if (!ensurePlannerReady()) return;
     if (!selectedDate) return;
     setPlannerByDate((prev) => {
       const current = Array.isArray(prev[selectedDate]) ? prev[selectedDate] : [];
       return { ...prev, [selectedDate]: current.filter((i) => i.id !== itemId) };
     });
-  }, [selectedDate]);
+  }, [ensurePlannerReady, selectedDate]);
 
   const clearDayPlan = useCallback(() => {
+    if (!ensurePlannerReady()) return;
     if (!selectedDate) return;
     setPlannerByDate((prev) => ({ ...prev, [selectedDate]: [] }));
-  }, [selectedDate]);
+  }, [ensurePlannerReady, selectedDate]);
 
   const startPlanDrag = useCallback((pointerEvent, item, mode) => {
+    if (!ensurePlannerReady()) return;
     if (!selectedDate) return;
     pointerEvent.preventDefault();
     pointerEvent.stopPropagation();
@@ -1140,6 +1128,7 @@ export default function TripProvider({ children }: { children: ReactNode }) {
 
     setActivePlanId(item.id);
     const onMove = (moveEvent) => {
+      if (!ensurePlannerReady()) return;
       const deltaY = moveEvent.clientY - startY;
       const deltaMinutes = snap(deltaY / MINUTE_HEIGHT);
       const duration = Math.max(MIN_PLAN_BLOCK, initialEnd - initialStart);
@@ -1162,7 +1151,7 @@ export default function TripProvider({ children }: { children: ReactNode }) {
     const onUp = () => { window.removeEventListener('pointermove', onMove); window.removeEventListener('pointerup', onUp); setActivePlanId(''); };
     window.addEventListener('pointermove', onMove);
     window.addEventListener('pointerup', onUp);
-  }, [selectedDate]);
+  }, [ensurePlannerReady, selectedDate]);
 
   const calculateTravelTimes = useCallback(async (evtsWithPositions: any[], activeTravelMode: string) => {
     if (!baseLatLngRef.current) return evtsWithPositions;
@@ -1477,7 +1466,9 @@ export default function TripProvider({ children }: { children: ReactNode }) {
             wireInfoWindowActions(cachedPhotoGallery);
             if (!placePhotoCacheRef.current.has(photoCacheKey) && position) {
               getOrCreateCoalescedPromise(placePhotoInFlightRef.current, photoCacheKey, async () => {
-                return fetchPlacePhotoGallery(pwp.name, { lat: position.lat, lng: position.lng });
+                const placeId = pwp.placeId || (String(pwp.sourceKey || '').startsWith('google-place:')
+                  ? String(pwp.sourceKey).slice('google-place:'.length) : '');
+                return fetchPlacePhotoGallery(pwp.name, { lat: position.lat, lng: position.lng }, { placeId });
               }).then((gallery) => {
                 placePhotoCacheRef.current.set(photoCacheKey, gallery);
                 if (infoWindowRef.current && activePlaceInfoWindowKeyRef.current === photoCacheKey) {
@@ -1485,6 +1476,11 @@ export default function TripProvider({ children }: { children: ReactNode }) {
                   activePlaceInfoWindowKeyRef.current = photoCacheKey;
                   renderPlaceInfoWindow(gallery);
                   wireInfoWindowActions(gallery);
+                }
+              }).catch((error) => {
+                if (activePlaceInfoWindowKeyRef.current === photoCacheKey) {
+                  const message = error instanceof Error ? error.message : 'Could not load place photos.';
+                  setStatusMessage(`${message} Open the place again to retry.`, true);
                 }
               });
             }
@@ -1537,10 +1533,7 @@ export default function TripProvider({ children }: { children: ReactNode }) {
           return;
         }
         await loadGoogleMapsScript(mapsBrowserKey);
-        await Promise.all([
-          window.google.maps.importLibrary('marker'),
-          window.google.maps.importLibrary('visualization')
-        ]);
+        await window.google.maps.importLibrary('marker');
         if (cancelled || !mapElementRef.current || !window.google?.maps) return;
         mapRef.current = new window.google.maps.Map(mapElementRef.current, {
           center: { lat: 37.7749, lng: -122.4194 }, zoom: 13,
@@ -1638,50 +1631,27 @@ export default function TripProvider({ children }: { children: ReactNode }) {
     setPlaceSearchResults((prev) => sortPlaceSearchResults(prev, mapSearchSort));
   }, [mapSearchSort, placeSearchResults.length]);
 
+  const crimeLayerVisible = !hiddenCategories.has('crime');
   useEffect(() => {
-    if (!mapsReady || !window.google?.maps?.visualization || !mapRef.current) return;
-    let cancelled = false;
-    let idleDebounceTimer: number | null = null;
-    void refreshCrimeHeatmap({ force: true });
-
-    if (crimeIdleListenerRef.current?.remove) {
-      crimeIdleListenerRef.current.remove();
-      crimeIdleListenerRef.current = null;
-    }
-    crimeIdleListenerRef.current = mapRef.current.addListener('idle', () => {
-      if (cancelled) return;
-      if (idleDebounceTimer) window.clearTimeout(idleDebounceTimer);
-      idleDebounceTimer = window.setTimeout(() => {
-        if (cancelled) return;
-        void refreshCrimeHeatmap();
-      }, CRIME_IDLE_DEBOUNCE_MS);
+    const stop = startCrimeMapRuntime({
+      enabled: mapsReady && crimeLayerVisible,
+      map: mapRef.current,
+      refresh: refreshCrimeHeatmap,
+      invalidate: () => crimeRequestGateRef.current.invalidate(),
+      onStop: () => {
+        setCrimeLayerMeta((prev) => ({ ...prev, loading: false }));
+        if (crimeHeatmapRef.current) {
+          crimeHeatmapRef.current.setMap(null);
+          crimeHeatmapRef.current = null;
+        }
+      }
     });
-
-    crimeRefreshTimerRef.current = window.setInterval(() => {
-      if (cancelled) return;
-      void refreshCrimeHeatmap({ force: true });
-    }, CRIME_REFRESH_INTERVAL_MS);
-
+    stopCrimeRuntimeRef.current = stop;
     return () => {
-      cancelled = true;
-      if (idleDebounceTimer) {
-        window.clearTimeout(idleDebounceTimer);
-        idleDebounceTimer = null;
-      }
-      if (crimeIdleListenerRef.current?.remove) {
-        crimeIdleListenerRef.current.remove();
-        crimeIdleListenerRef.current = null;
-      }
-      if (crimeRefreshTimerRef.current) {
-        window.clearInterval(crimeRefreshTimerRef.current);
-        crimeRefreshTimerRef.current = null;
-      }
-      if (crimeHeatmapRef.current) {
-        crimeHeatmapRef.current.setMap(null);
-        crimeHeatmapRef.current = null;
-      }
+      stop();
+      if (stopCrimeRuntimeRef.current === stop) stopCrimeRuntimeRef.current = null;
     };
-  }, [mapsReady, refreshCrimeHeatmap]);
+  }, [crimeLayerVisible, mapsReady, refreshCrimeHeatmap]);
 
   // ---- Re-render on filter changes ----
   useEffect(() => {
@@ -1757,8 +1727,11 @@ export default function TripProvider({ children }: { children: ReactNode }) {
       const ingestionErrors = Array.isArray(payload?.meta?.ingestionErrors) ? payload.meta.ingestionErrors : [];
       if (ingestionErrors.length > 0) console.error('Sync ingestion errors:', ingestionErrors);
       await loadSourcesFromServer();
-      const errSuffix = ingestionErrors.length > 0 ? ` (${ingestionErrors.length} ingestion errors)` : '';
-      setStatusMessage(`Synced ${syncedEvents.length} events at ${new Date().toLocaleTimeString('en-US', { timeZone: 'America/Los_Angeles' })}${errSuffix}.`, ingestionErrors.length > 0);
+      const syncStatus = buildSyncStatus({
+        count: syncedEvents.length, noun: 'events', errors: ingestionErrors,
+        timeLabel: new Date().toLocaleTimeString('en-US', { timeZone: 'America/Los_Angeles' })
+      });
+      setStatusMessage(syncStatus.message, syncStatus.isError);
     } catch (error) {
       setStatusMessage(error instanceof Error ? error.message : 'Sync failed', true);
     } finally {
@@ -1941,20 +1914,15 @@ export default function TripProvider({ children }: { children: ReactNode }) {
     skipNextSearchAreaIdleRef.current = true;
     setStatusMessage(`Searching for "${trimmedQuery}"...`);
     try {
-      const { Place } = await window.google.maps.importLibrary('places') as any;
-      if (!Place?.searchByText) {
-        throw new Error('Google Places search is not available for this map key.');
-      }
-
       const visibleArea = searchVisibleAreaRequestedRef.current;
       searchVisibleAreaRequestedRef.current = false;
       const origin = await getResolvedSearchOrigin(mapSearchScope, { visibleArea });
       const isNearMeScope = mapSearchScope === 'near_me';
       const keywordRadius = /\bnearby\b|\bnear me\b/.test(trimmedQuery.toLowerCase()) || isNearMeScope ? 4500 : origin.radius;
-      const { places } = await Place.searchByText({
+      const places = await requestPlacesTextSearch({
         textQuery: trimmedQuery,
-        fields: ['id', 'displayName', 'formattedAddress', 'location', 'types'],
-        locationBias: new window.google.maps.Circle({ center: origin.point, radius: keywordRadius }),
+        location: origin.point,
+        radius: keywordRadius,
         maxResultCount: 8
       });
       let normalizedResults = normalizePlacesTextSearchResults(places).map((result) => {
@@ -2118,9 +2086,14 @@ export default function TripProvider({ children }: { children: ReactNode }) {
       if (!response.ok) {
         throw new Error(payload?.error || 'Failed to sync source.');
       }
-      await loadSourcesFromServer();
+      const [, updated] = await Promise.all([loadSourcesFromServer(), fetchJson('/api/events')]);
+      if (Array.isArray(updated?.events)) setAllEvents(updated.events);
+      if (Array.isArray(updated?.places)) setAllPlaces(updated.places);
       const count = payload.events ?? payload.spots ?? 0;
-      setStatusMessage(`Synced ${count} items from "${source.label || source.url}".`);
+      const syncStatus = buildSyncStatus({
+        count, noun: 'items', sourceLabel: source.label || source.url, errors: payload.errors
+      });
+      setStatusMessage(syncStatus.message, syncStatus.isError);
     } catch (error) {
       setStatusMessage(error instanceof Error ? error.message : 'Failed to sync source.', true);
     } finally {
@@ -2236,7 +2209,7 @@ export default function TripProvider({ children }: { children: ReactNode }) {
     hasSearchLocation: placeSearchResults.length > 0,
     isSyncing, placeTagFilter, setPlaceTagFilter, hiddenCategories, toggleCategory,
     calendarMonthISO, setCalendarMonthISO,
-    plannerByDate,
+    plannerByDate, plannerPersistenceStatus, plannerPersistenceError, plannerReady, retryPlannerPersistence,
     activePlanId, setActivePlanId,
     routeSummary, isRouteUpdating,
     isSigningOut,
