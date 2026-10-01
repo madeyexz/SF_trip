@@ -29,6 +29,7 @@ import {
 import { sortPlanItems } from '@/lib/planner-domain.ts';
 import { getSafeExternalHref } from '@/lib/security';
 import { buildSyncStatus } from '@/lib/sync-status';
+import { downloadTextFile } from '@/lib/download-file';
 import {
   createPlanId,
   parseEventTimeRange, getSuggestedPlanSlot,
@@ -413,9 +414,9 @@ export default function TripProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (!selectedDate) return;
-    const selectedMonth = toMonthISO(selectedDate);
-    if (!calendarMonthISO || calendarMonthISO !== selectedMonth) setCalendarMonthISO(selectedMonth);
-  }, [calendarMonthISO, selectedDate]);
+    // Follow an explicitly selected day, but do not undo Prev/Next browsing.
+    setCalendarMonthISO(toMonthISO(selectedDate));
+  }, [selectedDate]);
 
   const effectiveDateFilter = showAllEvents ? '' : selectedDate;
 
@@ -2104,16 +2105,12 @@ export default function TripProvider({ children }: { children: ReactNode }) {
   const handleExportPlannerIcs = useCallback(() => {
     if (!selectedDate || dayPlanItems.length === 0) { setStatusMessage('Add planner stops before exporting iCal.', true); return; }
     const icsContent = buildPlannerIcs(selectedDate, dayPlanItems);
-    const blob = new Blob([icsContent], { type: 'text/calendar;charset=utf-8' });
-    const downloadUrl = window.URL.createObjectURL(blob);
-    const anchor = document.createElement('a');
-    anchor.href = downloadUrl;
-    anchor.download = `sf-trip-${selectedDate}.ics`;
-    document.body.appendChild(anchor);
-    anchor.click();
-    anchor.remove();
-    window.URL.revokeObjectURL(downloadUrl);
-    setStatusMessage(`Exported iCal for ${formatDate(selectedDate)}.`);
+    try {
+      downloadTextFile(icsContent, `sf-trip-${selectedDate}.ics`, 'text/calendar;charset=utf-8');
+      setStatusMessage(`Started iCal download for ${formatDate(selectedDate)}.`);
+    } catch {
+      setStatusMessage('Could not start iCal download. Please retry.', true);
+    }
   }, [dayPlanItems, selectedDate, setStatusMessage]);
 
   const handleAddDayPlanToGoogleCalendar = useCallback(() => {
