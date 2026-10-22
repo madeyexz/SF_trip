@@ -1,11 +1,10 @@
 // @ts-nocheck
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
-import ical from 'node-ical';
 import { ConvexHttpClient } from 'convex/browser';
 import { getScopedConvexClient } from '../convex-client-context.ts';
 import { mapAsyncWithConcurrency } from '../async-map.ts';
-import { validateIngestionSourceUrlForFetch } from '../security-server.ts';
+import { untrustedSources, validateIngestionSourceUrlForFetch } from '../security-server.ts';
 import { loadCustomSpotsPayload } from '../custom-spots.ts';
 import { getMapsGeocodingKey } from '../maps-config.ts';
 
@@ -1474,7 +1473,7 @@ async function syncEventsFromSources({ eventSources, rssFallbackStateBySourceUrl
         continue;
       }
 
-      const parsed = await ical.async.fromURL(source.url, { signal: AbortSignal.timeout(15000), redirect: 'error' });
+      const parsed = await untrustedSources.fetchIcal(source.url);
       if (parsed?.vcalendar?.type !== 'VCALENDAR' || parsed.vcalendar.version !== '2.0') {
         throw new Error('Invalid iCal feed: expected a complete VERSION:2.0 VCALENDAR.');
       }
@@ -1606,7 +1605,7 @@ async function syncEventsFromRssSource({ source, rssState = {} }) {
     return { events: [], errors, rssState: nextRssState };
   }
 
-  const response = await fetch(source.url, { cache: 'no-store', signal: AbortSignal.timeout(15000), redirect: 'error' });
+  const response = await untrustedSources.fetch(source.url);
   if (!response.ok) {
     throw new Error(`RSS fetch failed (${response.status}).`);
   }
