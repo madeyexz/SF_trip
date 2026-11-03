@@ -21,8 +21,8 @@
     "convex:deploy": "convex deploy"
   },
   "dependencies": {
-    "@auth/core": "0.37.0",
-    "@convex-dev/auth": "^0.0.90",
+    "@auth/core": "0.41.3",
+    "@convex-dev/auth": "^0.0.96",
     "@radix-ui/react-select": "^2.2.6",
     "@radix-ui/react-slot": "^1.2.4",
     "@radix-ui/react-tabs": "^1.1.13",
@@ -33,7 +33,7 @@
     "convex": "^1.31.7",
     "framer-motion": "^12.34.2",
     "lucide-react": "^0.563.0",
-    "next": "^15.1.0",
+    "next": "^15.5.28",
     "node-ical": "^0.25.1",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
@@ -42,7 +42,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.39.2",
-    "@next/eslint-plugin-next": "15.5.12",
+    "@next/eslint-plugin-next": "15.5.28",
     "@tailwindcss/postcss": "^4.1.18",
     "@types/node": "^25.2.3",
     "@types/react": "^19.2.13",
